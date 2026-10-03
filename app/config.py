@@ -33,6 +33,8 @@ class Config:
     data_dir: str = os.getenv("DATA_DIR", "")
     # Victron-Logger im Hintergrund (Einstellungen im Webinterface); 0 = nie starten
     victron_logger: bool = os.getenv("VICTRON_LOGGER", "1") != "0"
+    # VRM (Cloud, optional): persönlicher Zugriffstoken aus VRM → Einstellungen → Integrationen
+    vrm_token: str = os.getenv("VRM_TOKEN", "").strip()
 
 
 config = Config()

@@ -90,3 +90,22 @@ Zusätzlich (oder alternativ) zu Home Assistant kann das Tool den GX selbst per 
 - Geräte werden automatisch gesucht („Verbindung testen & Geräte suchen“). Der Suchlauf fragt auch Unit-IDs
   ohne Gerät ab – dadurch kann im GX unter Modbus TCP ein harmloser Fehler „Error finding service …“ stehen.
 - Netzwerk: Der Container braucht Zugriff auf den GX, Port 502/TCP (Firewall-Regel nur vom Docker-Host).
+
+## VRM (Victron-Cloud) – optionales drittes Standbein
+
+Mit `VRM_TOKEN` (VRM → Einstellungen → Integrationen → Zugriffstokens) und der Anlagen-ID liefert die VRM-API
+für beliebige vergangene Zeiträume die Energieflüsse: Gc/Gb (Netz → Verbraucher/Batterie), Pc/Pb/Pg (PV → …),
+Bc/Bg (Batterie → …). Wählbar als `vrm:<code>` bzw. zusammengesetzt `vrm:grid_import`, `vrm:consumption`,
+`vrm:battery_charged`, `vrm:battery_discharged`, `vrm:pv`, `vrm:grid_export`; zusätzlich im Abgleich.
+
+Praxisvergleich (Aug/Sep 2026) mit den lokalen Werten:
+
+| | lokal | VRM |
+|---|---|---|
+| Netzbezug | EasyMeter 74,8 / 29,3 kWh | 79,4 / 30,8 kWh (+5–6 %, saldiert) |
+| Netz → Batterie | VE.Bus 3,98 / 6,5 kWh | 4,0 / 6,5 kWh (identisch) |
+| Batterie entladen | Batteriewächter (DC) 832,6 / 688,5 kWh | Bc + Bg (AC) 685,0 / 549,7 kWh |
+
+Der DC-Zähler des Batteriewächters enthält die Wandlungsverluste des Wechselrichters; VRM zählt, was beim
+Verbraucher ankommt. Mit dem DC-Wert fällt der Batterieanteil im Mix höher und PV direkt niedriger aus
+(August: Ø 23,36 statt 22,68 ct/kWh für einen Mieter).

@@ -32,6 +32,17 @@
   <a class="btn sec pick-btn" href="/victron/compare?hours=24">Abgleich HA ↔ Victron</a>
 </div>
 <div class="card">
+  <h2 style="margin-top:0">VRM (Victron-Cloud, optional)</h2>
+  <p class="muted">Drittes Standbein: Energieflüsse aus dem VRM-Portal, auch rückwirkend. Wählbar als <code>vrm:…</code>
+  (z. B. <code>vrm:grid_import</code> = Gc + Gb) und als zusätzliche Spalte im Abgleich. Token als <code>VRM_TOKEN</code>
+  in der .env / in Portainer (VRM → Einstellungen → Integrationen → Zugriffstokens).</p>
+  <p>Token: {{ "gesetzt ✔" if vrm_ok else "nicht gesetzt" }}</p>
+  <div class="grid">
+    <div><label>VRM-Anlagen-ID (idSite)</label><input type="text" name="vrm_site_id" value="{{ st.vrm_site_id }}"></div>
+  </div>
+  {% if vrm_ok %}<button class="sec pick-btn" formaction="/vrm/sites" formmethod="post">Anlagen suchen / Verbindung testen</button>{% endif %}
+</div>
+<div class="card">
   <h2 style="margin-top:0">Haus-Entitäten (Energiemix)</h2>
   <p class="muted">Zählersensoren (kWh) mit Langzeitstatistik. Über „Aus HA wählen“ direkt aus Home Assistant auswählen.
   Je Feld wahlweise <b>1 Entität (gesamt)</b> oder <b>3 Phasen (L1/L2/L3)</b> – Phasen werden addiert.

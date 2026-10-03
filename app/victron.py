@@ -115,6 +115,8 @@ KEYS = [
     Key("grid_export", "Energiezähler: Einspeisung (Zähler)", "counter"),
     Key("grid_import_saldo", "Netzbezug saldiert aus Netzleistung L1–L3 (10 s)", "power"),
     Key("grid_export_saldo", "Einspeisung saldiert aus Netzleistung L1–L3 (10 s)", "power"),
+    Key("grid_import_phases", "Netzbezug je Phase einzeln (nicht saldiert, 10 s)", "power"),
+    Key("grid_export_phases", "Einspeisung je Phase einzeln (nicht saldiert, 10 s)", "power"),
     Key("consumption", "Verbrauch AC-Lasten L1–L3 (10 s)", "power"),
     Key("battery_charged", "Batterie geladen (Batteriewächter-Zähler)", "counter"),
     Key("battery_discharged", "Batterie entladen (Batteriewächter-Zähler)", "counter"),
@@ -166,9 +168,12 @@ async def read_power(reader: ModbusReader, units: dict) -> dict[str, float]:
     if units.get("system") is not None:
         r = await reader.read(units["system"], 817, 6)  # 817–819 Verbrauch, 820–822 Netz
         out["consumption"] = u16(r, 0) + u16(r, 1) + u16(r, 2)
-        grid = s16(r, 3) + s16(r, 4) + s16(r, 5)  # je Abtastung saldiert
+        phases = [s16(r, 3), s16(r, 4), s16(r, 5)]
+        grid = sum(phases)  # je Abtastung über die Phasen saldiert (wie ein saldierender Zähler)
         out["grid_import_saldo"] = max(0, grid)
         out["grid_export_saldo"] = max(0, -grid)
+        out["grid_import_phases"] = sum(max(0, p) for p in phases)  # Vergleich: ohne Saldierung
+        out["grid_export_phases"] = sum(max(0, -p) for p in phases)
         b = s16(await reader.read(units["system"], 842, 1))  # + = Laden
         out["battery_charge_power"] = max(0, b)
         out["battery_discharge_power"] = max(0, -b)
@@ -343,7 +348,7 @@ def virtual_entities() -> list[dict]:
 
 # Welche virtuelle Entität zum jeweiligen Haus-Feld passt (für den Vergleich in der Abrechnung)
 COMPARE = [
-    ("entity_grid", "Netzbezug", ["grid_import", "grid_import_saldo"]),
+    ("entity_grid", "Netzbezug", ["grid_import", "grid_import_saldo", "grid_import_phases"]),
     ("entity_total", "Gesamtverbrauch", ["consumption"]),
     ("entity_battery", "Batterie entladen", ["battery_discharged", "battery_discharge_power"]),
     ("entity_battery_charge", "Batterie geladen", ["battery_charged", "battery_charge_power"]),

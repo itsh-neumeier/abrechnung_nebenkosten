@@ -10,7 +10,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from . import billing as calc
-from . import invoice_import, mailer, render, victron
+from . import invoice_import, mailer, render, victron, vrm
 from .config import config
 from .db import Allocation, Billing, FixedCost, Party, get_settings
 from .ha import HAClient
@@ -129,9 +129,15 @@ async def fetch_values(s: Session, b: Billing) -> list[str]:
     """Holt Verbrauchswerte aus HA bzw. dem Victron-Logger („victron:…“).
     Gibt Entitäten ohne Daten zurück."""
     ents = [e for e, _ in required_entities(s)]
-    ha_ids = [e for e in ents if not victron.is_victron(e)]
+    ha_ids = [e for e in ents if not victron.is_victron(e) and not vrm.is_vrm(e)]
     vic_ids = [e for e in ents if victron.is_victron(e)]
+    vrm_ids = [e for e in ents if vrm.is_vrm(e)]
     fetched, meta = {}, {}
+    if vrm_ids:
+        r_vals, r_meta = await vrm.consumption(get_settings(s)["vrm_site_id"], vrm_ids,
+                                               b.period_start, b.period_end, config.timezone)
+        fetched.update(r_vals)
+        meta.update(r_meta)
     if ha_ids:
         client = HAClient(config.ha_url, config.ha_token)
         fetched, meta = await client.consumption_detail(ha_ids, b.period_start, b.period_end, config.timezone)
@@ -396,7 +402,8 @@ async def compare_period(s: Session, t0: datetime, t1: datetime) -> list[dict]:
     """Abgleich für einen frei wählbaren Zeitraum: Haus-Felder (HA) ↔ Victron-Logger."""
     st = get_settings(s)
     rows = []
-    ha_specs = {f: [e for e in calc.split_ids(st[f]) if not victron.is_victron(e)] for f, _, _ in victron.COMPARE}
+    ha_specs = {f: [e for e in calc.split_ids(st[f]) if not victron.is_victron(e) and not vrm.is_vrm(e)]
+                for f, _, _ in victron.COMPARE}
     ha_ids = sorted({e for ids in ha_specs.values() for e in ids})
     ha_vals, ha_meta, ha_error = {}, {}, ""
     if ha_ids and config.ha_url and config.ha_token:
@@ -420,4 +427,30 @@ async def compare_period(s: Session, t0: datetime, t1: datetime) -> list[dict]:
                 "deviation": (v / ha_value - 1) if (v is not None and ha_value) else None,
                 "ha_error": ha_error,
             })
+    rows += await _vrm_rows(st, ha_specs, ha_vals, (t0, t1), ha_error)
+    return rows
+
+
+async def _vrm_rows(st: dict, ha_specs: dict, ha_vals: dict, bounds, ha_error: str) -> list[dict]:
+    """Zusätzliche Vergleichszeilen aus VRM (falls Token und Anlagen-ID gesetzt)."""
+    if not (vrm.configured() and st["vrm_site_id"]):
+        return []
+    ids = [vrm.PREFIX + k for _, _, keys in vrm.COMPARE for k in keys]
+    try:
+        vals, _ = await vrm.consumption(st["vrm_site_id"], ids, None, None, config.timezone, bounds=bounds)
+    except Exception as e:  # noqa: BLE001
+        return [{"label": "VRM", "ha_spec": "", "ha_value": None, "ha_coverage": None, "victron_key": "",
+                 "victron_label": f"VRM-Fehler: {e}", "victron_value": None, "coverage": None,
+                 "deviation": None, "ha_error": ha_error}]
+    rows = []
+    for field, label, keys in vrm.COMPARE:
+        ids_f = ha_specs.get(field, [])
+        ha_value = calc._sum(ha_vals, " + ".join(ids_f)) if ids_f else None
+        for k in keys:
+            v = vals.get(vrm.PREFIX + k)
+            rows.append({"label": label, "ha_spec": " + ".join(ids_f), "ha_value": ha_value, "ha_coverage": None,
+                         "victron_key": vrm.PREFIX + k, "victron_label": "VRM (Cloud) – " + vrm.label(k),
+                         "victron_value": v, "coverage": 1.0 if v is not None else None,
+                         "deviation": (v / ha_value - 1) if (v is not None and ha_value) else None,
+                         "ha_error": ha_error})
     return rows

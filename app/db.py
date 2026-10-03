@@ -190,7 +190,9 @@ SETTING_DEFAULTS = {
     "victron_enabled": "",
     "victron_host": "",
     "victron_port": "502",
-    "victron_units": "",  # gefundene Unit-IDs (JSON), leer = automatisch suchen  # Hinweis-Mail bei neu importierter Rechnung
+    "victron_units": "",  # gefundene Unit-IDs (JSON), leer = automatisch suchen
+    # VRM (Cloud, optional) – Token kommt aus VRM_TOKEN
+    "vrm_site_id": "",  # Hinweis-Mail bei neu importierter Rechnung
     "landlord_name": "",
     "landlord_address": "",
     "landlord_contact": "",

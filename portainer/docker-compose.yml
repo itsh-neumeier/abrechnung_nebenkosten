@@ -39,6 +39,8 @@ services:
       IMAP_SENDER: ${IMAP_SENDER:-awattar.de}
       IMAP_INTERVAL_MIN: ${IMAP_INTERVAL_MIN:-60}
       IMAP_SINCE_DAYS: ${IMAP_SINCE_DAYS:-40}
+      # VRM (Victron-Cloud, optional)
+      VRM_TOKEN: ${VRM_TOKEN:-}
     ports:
       - "${APP_PORT:-8000}:8000"
     volumes:

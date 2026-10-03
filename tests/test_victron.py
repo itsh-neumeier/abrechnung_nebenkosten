@@ -93,6 +93,7 @@ def test_discover_and_read_only():
     assert units == {"system": 100, "vebus": 229, "battery": 225, "grid": 31}
     assert power["consumption"] == 1500
     assert power["grid_import_saldo"] == 50 and power["grid_export_saldo"] == 0  # -1000 + 600 + 450 = 50 W
+    assert power["grid_import_phases"] == 1050 and power["grid_export_phases"] == 1000  # je Phase einzeln
     assert power["battery_discharge_power"] == 500 and power["battery_charge_power"] == 0
     assert counters == {"grid_import": 74.79, "grid_export": 1.0, "battery_discharged": 6500.0,
                         "battery_charged": 123.4, "vebus_acin1toacout": 20.0, "vebus_acin1toinverter": 10.0,

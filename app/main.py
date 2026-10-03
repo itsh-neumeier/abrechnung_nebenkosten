@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from . import invoice_import, mailbox, mailer, service, victron
+from . import invoice_import, mailbox, mailer, service, victron, vrm
 from .config import config
 from .db import Allocation, Billing, FixedCost, Party, get_session, get_settings, init_db, save_settings
 from .ha import HAClient
@@ -128,7 +128,8 @@ def settings_page(request: Request, s: Session = Depends(get_session)):
     return render(request, "settings.html", st=get_settings(s), ha_url=config.ha_url,
                   ha_token_set=bool(config.ha_token), house_entities=service.HOUSE_ENTITIES,
                   victron=service.VICTRON_HINTS,
-                  smtp=config, mail_ok=mailer.configured(), imap_ok=mailbox.configured())
+                  smtp=config, mail_ok=mailer.configured(), imap_ok=mailbox.configured(),
+                  vrm_ok=vrm.configured())
 
 
 @app.post("/settings")
@@ -167,7 +168,10 @@ _entity_cache: dict = {"at": 0.0, "data": None}
 @app.get("/api/entities")
 async def api_entities(refresh: bool = False, s: Session = Depends(get_session)):
     """Zähler-/Leistungssensoren aus Home Assistant + virtuelle Victron-Entitäten des Loggers."""
-    virtual = victron.virtual_entities() if get_settings(s)["victron_enabled"] else []
+    st_ = get_settings(s)
+    virtual = victron.virtual_entities() if st_["victron_enabled"] else []
+    if vrm.configured() and st_["vrm_site_id"]:
+        virtual += vrm.virtual_entities()
     if not (config.ha_url and config.ha_token):
         if virtual:
             return virtual
@@ -219,6 +223,22 @@ async def victron_compare(request: Request, hours: int = 24, s: Session = Depend
     t0 = t1 - timedelta(hours=hours)
     rows = await service.compare_period(s, t0, t1)
     return render(request, "victron_compare.html", rows=rows, hours=hours, t0=t0, t1=t1, st=get_settings(s))
+
+
+@app.post("/vrm/sites")
+async def vrm_sites(request: Request, s: Session = Depends(get_session)):
+    """VRM-Anlagen des Tokens suchen; bei genau einer Anlage wird sie direkt übernommen."""
+    form = await request.form()
+    if form.get("vrm_site_id"):
+        save_settings(s, {"vrm_site_id": str(form.get("vrm_site_id")).strip()})
+    try:
+        sites = await vrm.VRMClient(config.vrm_token).installations()
+    except Exception as e:  # noqa: BLE001
+        return redirect("/settings", f"VRM: {e}")
+    if len(sites) == 1 and not get_settings(s)["vrm_site_id"]:
+        save_settings(s, {"vrm_site_id": str(sites[0]["id"])})
+    listing = ", ".join(f"{x['name']} = {x['id']}" for x in sites) or "keine"
+    return redirect("/settings", f"VRM-Anlagen: {listing}")
 
 
 @app.get("/api/victron/status")
