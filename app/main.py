@@ -62,7 +62,8 @@ def render(request: Request, name: str, **ctx) -> HTMLResponse:
 
 def redirect(url: str, msg: str = "") -> RedirectResponse:
     if msg:
-        url += ("&" if "?" in url else "?") + "msg=" + quote(msg)
+        url, hash_, frag = url.partition("#")  # Meldung vor den Anker, sonst kommt sie nicht an
+        url += ("&" if "?" in url else "?") + "msg=" + quote(msg) + hash_ + frag
     return RedirectResponse(url, status_code=303)
 
 
@@ -213,12 +214,32 @@ async def settings_test():
 @app.post("/settings/testmail")
 async def settings_testmail(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
-    to = str(form.get("to", "")).strip()
+    to = str(form.get("test_to", "") or form.get("to", "")).strip()
+    if not mailer.configured():
+        return redirect("/settings#mail", "SMTP ist nicht eingerichtet (SMTP_HOST / SMTP_FROM in Portainer).")
+    if not to:
+        return redirect("/settings#mail", "Bitte eine Empfängeradresse für die Test-E-Mail eintragen.")
     try:
-        mailer.send_mail([to], "Test Nebenkostenabrechnung", "Der E-Mail-Versand funktioniert.", [])
-        return redirect("/settings", f"Test-E-Mail an {to} verschickt")
+        mailer.send_mail([to], "Test Nebenkostenabrechnung",
+                         f"Der E-Mail-Versand funktioniert.\n\nServer: {config.smtp_host}:{config.smtp_port} "
+                         f"({config.smtp_security})\nAbsender: {config.smtp_from}\n", [])
+        return redirect("/settings#mail", f"Test-E-Mail an {to} verschickt – bitte Posteingang (und Spam) prüfen.")
     except Exception as e:  # noqa: BLE001
-        return redirect("/settings", f"E-Mail fehlgeschlagen: {e}")
+        return redirect("/settings#mail", f"E-Mail fehlgeschlagen: {mailer.explain(e)}")
+
+
+@app.post("/settings/testimap")
+async def settings_testimap(request: Request):
+    """Postfach prüfen mit den Absender-Angaben aus dem Formular (ohne Speichern, ohne Import)."""
+    form = await request.form()
+    if not mailbox.configured():
+        return redirect("/settings#eingang", "IMAP ist nicht eingerichtet (IMAP_HOST / IMAP_USER / IMAP_PASSWORD).")
+    patterns = mailbox.sender_patterns({"imap_senders": str(form.get("imap_senders", ""))})
+    try:
+        msg = await asyncio.to_thread(mailbox.test_connection, patterns, bool(form.get("imap_forwarded")))
+    except Exception as e:  # noqa: BLE001
+        msg = f"Postfach-Test fehlgeschlagen: {e}"
+    return redirect("/settings#eingang", msg)
 
 
 # --------------------------------------------------------------------------- WhatsApp über n8n

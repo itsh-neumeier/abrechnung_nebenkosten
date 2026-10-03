@@ -68,6 +68,24 @@ def matches(msg: EmailMessage, patterns: list[str], forwarded: bool = True) -> t
     return False, ""
 
 
+def test_connection(patterns: list[str], forwarded: bool) -> str:
+    """Anmeldung + Suche ohne Import: was würde beim nächsten Abruf erkannt?"""
+    raws = _fetch_messages(config.imap_since_days)
+    hits = []
+    with_pdf = 0
+    for raw in raws:
+        msg = invoice_import.parse_email(raw)
+        if not invoice_import.pdf_attachments(msg):
+            continue
+        with_pdf += 1
+        ok, why = matches(msg, patterns, forwarded)
+        if ok:
+            hits.append(f"„{str(msg.get('Subject', ''))[:60]}“ ({why})")
+    out = (f"Postfach OK: {len(raws)} Mail(s) der letzten {config.imap_since_days} Tage, {with_pdf} mit PDF, "
+           f"{len(hits)} als Rechnung erkannt")
+    return out + (": " + "; ".join(hits[-3:]) if hits else " – Absender-Einstellung prüfen.")
+
+
 def _fetch_messages(since_days: int) -> list[bytes]:
     since = (date.today() - timedelta(days=since_days)).strftime("%d-%b-%Y")
     with imaplib.IMAP4_SSL(config.imap_host, config.imap_port) as imap:

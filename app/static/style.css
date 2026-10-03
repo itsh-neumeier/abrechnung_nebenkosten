@@ -117,3 +117,5 @@ main{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env
   input[type=text],input[type=number],input[type=date],input[type=password],select,textarea{font-size:16px} /* kein Auto-Zoom auf iOS */
 }
 html.standalone footer.ver{padding-bottom:max(18px,env(safe-area-inset-bottom))}
+.inline-test{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.inline-test>div{flex:1 1 220px}

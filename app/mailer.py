@@ -46,3 +46,19 @@ def send_mail(to: list[str], subject: str, body: str, attachments: list[tuple[st
         if config.smtp_user:
             server.login(config.smtp_user, config.smtp_password)
         server.send_message(msg, to_addrs=recipients)
+
+
+def explain(e: Exception) -> str:
+    """Typische SMTP-Fehler verständlich machen."""
+    text = str(e)
+    if isinstance(e, smtplib.SMTPAuthenticationError):
+        return f"Anmeldung abgelehnt – SMTP_USER/SMTP_PASSWORD prüfen ({text})"
+    if isinstance(e, smtplib.SMTPSenderRefused):
+        return (f"Absender abgelehnt – SMTP_FROM muss die Adresse des Postfachs (oder ein Alias davon) sein, "
+                f"mit dem du dich anmeldest ({text})")
+    if isinstance(e, smtplib.SMTPRecipientsRefused):
+        return f"Empfänger abgelehnt ({text})"
+    if isinstance(e, (ConnectionRefusedError, TimeoutError, OSError)) and not isinstance(e, smtplib.SMTPException):
+        return (f"Server nicht erreichbar – SMTP_HOST/SMTP_PORT/SMTP_SECURITY prüfen "
+                f"(587 = starttls, 465 = ssl) ({text})")
+    return text

@@ -189,7 +189,7 @@
   <label>Zusatztext auf der Abrechnung (optional)</label><textarea name="invoice_text">{{ st.invoice_text }}</textarea>
 </div>
 <div class="card">
-  <h2 style="margin-top:0">E-Mail-Versand</h2>
+  <h2 style="margin-top:0" id="mail">E-Mail-Versand</h2>
   {% if mail_ok %}
   <p>SMTP: <code>{{ smtp.smtp_host }}:{{ smtp.smtp_port }}</code> ({{ smtp.smtp_security }}) · Absender <code>{{ smtp.smtp_from }}</code></p>
   {% else %}
@@ -200,6 +200,10 @@
   <label>Betreff</label><input type="text" name="mail_subject" value="{{ st.mail_subject }}">
   <label>Text</label><textarea name="mail_body" rows="7">{{ st.mail_body }}</textarea>
   <p class="muted">Platzhalter: {name}, {wohneinheit}, {we_id}, {zeitraum}, {betrag}, {absender}, {gebaeude}</p>
+  <div class="inline-test">
+    <div><label>Test-E-Mail an</label><input type="text" name="test_to" value="{{ st.notify_email or st.mail_bcc }}" placeholder="ich@example.de"></div>
+    <button class="sec" formaction="/settings/testmail" {% if not mail_ok %}disabled title="SMTP nicht eingerichtet"{% endif %}>Test-E-Mail senden</button>
+  </div>
 </div>
 <div class="card">
   <h2 style="margin-top:0" id="eingang">Rechnungseingang</h2>
@@ -223,14 +227,12 @@
   </select>
   <p class="muted">Bei den automatischen Varianten gehen die Abrechnungen an alle Parteien mit E-Mail-Adresse. Die Hinweis-Mail unten listet dann trotzdem alle Hinweise auf.</p>
   <label>Hinweis-Mail bei neuer Rechnung an</label><input type="text" name="notify_email" value="{{ st.notify_email }}" placeholder="ich@example.de">
+  <button class="sec" formaction="/settings/testimap" {% if not imap_ok %}disabled title="IMAP nicht eingerichtet"{% endif %}>Postfach testen (ohne Import)</button>
+  <button class="sec" formaction="/settings/testmail" {% if not mail_ok %}disabled title="SMTP nicht eingerichtet"{% endif %}
+          onclick="this.form.test_to.value = this.form.notify_email.value || this.form.test_to.value">Test-Hinweis-Mail senden</button>
+  <p class="muted">„Postfach testen“ nutzt die Absender oben auch ungespeichert und importiert nichts.</p>
 </div>
 <button>Speichern</button>
 </form>
-{% if mail_ok %}
-<form method="post" action="/settings/testmail" class="card" style="margin-top:16px">
-  <label>Test-E-Mail senden an</label>
-  <input type="text" name="to" value="{{ st.mail_bcc }}" required>
-  <button class="sec">Test senden</button>
-</form>
-{% endif %}
+
 {% endblock %}
