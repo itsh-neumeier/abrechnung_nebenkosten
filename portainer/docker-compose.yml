@@ -41,6 +41,10 @@ services:
       IMAP_SINCE_DAYS: ${IMAP_SINCE_DAYS:-40}
       # VRM (Victron-Cloud, optional)
       VRM_TOKEN: ${VRM_TOKEN:-}
+      # WhatsApp Business Cloud API (Meta, optional)
+      WA_TOKEN: ${WA_TOKEN:-}
+      WA_PHONE_NUMBER_ID: ${WA_PHONE_NUMBER_ID:-}
+      WA_APP_SECRET: ${WA_APP_SECRET:-}
     ports:
       - "${APP_PORT:-8000}:8000"
     volumes:

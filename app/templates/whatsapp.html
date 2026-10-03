@@ -1,53 +1,95 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>WhatsApp-Versand über n8n</h1>
+<h1>WhatsApp-Versand</h1>
 <div class="card">
-  <p>Die Abrechnung schickt je Partei einen Webhook an <b>n8n</b>; der n8n-Flow stellt das PDF per WhatsApp zu und meldet
-  das Ergebnis zurück (💬 in der Abrechnung). Welche Partei WhatsApp bekommt, stellst du unter <a href="/parties">Parteien</a>
-  ein (Nummer + Versand „WhatsApp“ oder „E-Mail und WhatsApp“). Der Versand läuft über dieselben Knöpfe wie die E-Mail
-  („senden“ / „Alle senden“ bzw. automatisch beim Abschließen).</p>
-  <ol class="muted" style="margin:0;padding-left:20px">
+  <p>Abrechnungen können per WhatsApp verschickt werden – <b>direkt</b> über die offizielle WhatsApp Business Cloud API
+  von Meta oder <b>über n8n</b> (Webhook, dort z. B. Evolution API oder Cloud API). Welche Partei WhatsApp bekommt,
+  stellst du unter <a href="/parties">Parteien</a> ein (Nummer + Versand „WhatsApp“ oder „E-Mail und WhatsApp“).
+  Der Versand läuft über dieselben Knöpfe wie die E-Mail („senden“ / „Alle senden“ bzw. automatisch beim Abschließen).</p>
+</div>
+
+<form method="post" action="/whatsapp">
+<div class="card">
+  <h2 style="margin-top:0">Versandweg</h2>
+  <div class="grid">
+    <div><label>WhatsApp senden …</label><select name="wa_mode">
+      {% for k, v in modes.items() %}<option value="{{ k }}" {% if st.wa_mode == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+    </select></div>
+    <div><label>Vorlagenname (Cloud API)</label><input type="text" name="wa_template_name" value="{{ st.wa_template_name }}"></div>
+    <div><label>Vorlagensprache (Cloud API)</label><input type="text" name="wa_template_lang" value="{{ st.wa_template_lang }}"></div>
+  </div>
+  <button>Speichern</button>
+</div>
+
+<div class="card" id="native">
+  <h2 style="margin-top:0">Direkt: WhatsApp Business Cloud API {% if st.wa_mode == 'native' %}<span class="badge final">aktiv</span>{% endif %}</h2>
+  <p>Zugang: {{ "✔ eingerichtet" if native_ok else "✘ nicht eingerichtet" }}{% if phone_id %} · Telefonnummern-ID <code>{{ phone_id }}</code>{% endif %}
+  · Status-Webhook: {{ "✔ App-Geheimnis gesetzt" if app_secret_set else "App-Geheimnis fehlt (WA_APP_SECRET)" }}</p>
+  <button class="sec" formaction="/whatsapp/check" {% if not native_ok %}disabled{% endif %}>Verbindung testen</button>
+  <details style="margin-top:10px" {% if not native_ok %}open{% endif %}><summary><b>Einrichtung bei Meta</b></summary>
+  <ol class="muted" style="padding-left:20px">
+    <li><b>Meta-Business-Konto</b> anlegen (business.facebook.com) und unter developers.facebook.com eine <b>App</b> vom Typ
+      „Business“ mit dem Produkt <b>WhatsApp</b> erstellen. Eine eigene Telefonnummer hinzufügen und verifizieren
+      (die Nummer darf nicht gleichzeitig in der normalen WhatsApp-App genutzt werden).</li>
+    <li>Im Business Manager unter <i>Systembenutzer</i> einen Benutzer anlegen, ihm die App und das WhatsApp-Konto zuweisen
+      und ein <b>dauerhaftes Token</b> mit <code>whatsapp_business_messaging</code> und <code>whatsapp_business_management</code> erzeugen.</li>
+    <li>In Portainer / <code>.env</code> eintragen: <code>WA_TOKEN</code> (Token), <code>WA_PHONE_NUMBER_ID</code>
+      (WhatsApp → API-Setup → Telefonnummern-ID), <code>WA_APP_SECRET</code> (App-Einstellungen → Allgemein → App-Geheimcode).
+      Stack neu deployen.</li>
+    <li><b>Nachrichtenvorlage</b> im WhatsApp Manager anlegen: Name <code>{{ st.wa_template_name }}</code>, Sprache
+      <code>{{ st.wa_template_lang }}</code>, Kategorie <b>Utility</b>, Kopfzeile <b>Dokument</b>, Text z. B.<br>
+      <i>„Hallo {{ '{{1}}' }}, anbei Ihre Nebenkostenabrechnung für {{ '{{2}}' }}. Betrag: {{ '{{3}}' }}. Viele Grüße“</i><br>
+      ({{ '{{1}}' }} Name, {{ '{{2}}' }} Zeitraum, {{ '{{3}}' }} Betrag). Rechnungen gehen außerhalb des 24-Stunden-Fensters
+      raus – ohne genehmigte Vorlage nimmt Meta sie nicht an.</li>
+    <li>Optional <b>Zustellstatus</b> (gesendet → zugestellt → gelesen): in der App unter WhatsApp → Konfiguration → Webhook
+      die Rückruf-URL {% if meta_webhook %}<code>{{ meta_webhook }}</code>{% else %}<code>https://&lt;APP_BASE_URL&gt;/api/whatsapp/webhook</code>
+      (APP_BASE_URL setzen – muss von außen per HTTPS erreichbar sein){% endif %} und das Prüf-Token
+      <code>{{ verify_token }}</code> eintragen, dann das Feld <code>messages</code> abonnieren. Ohne Webhook zeigt die Abrechnung „gesendet“.</li>
+    <li>Oben „direkt – WhatsApp Business Cloud API“ wählen, speichern und unten „Test senden“.</li>
+  </ol>
+  <p class="muted">Kosten: Meta berechnet Vorlagen-Nachrichten der Kategorie Utility pro Nachricht (in Deutschland im
+  Cent-Bereich, aktuelle Preise in der Meta-Dokumentation). Testnummern von Meta senden nur an bis zu 5 freigeschaltete Empfänger.</p>
+  </details>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Über n8n {% if st.wa_mode != 'native' %}<span class="badge final">aktiv</span>{% endif %}</h2>
+  <ol class="muted" style="margin:0 0 6px;padding-left:20px">
     <li>Unten den Flow für deine WhatsApp-Variante kopieren und in n8n in einen leeren Workflow einfügen (Strg+V).</li>
     <li>Im Knoten <b>Konfiguration</b> Zugangsdaten eintragen, Workflow speichern und <b>aktivieren</b>.</li>
     <li>Im Knoten <b>Webhook</b> die <b>Production URL</b> kopieren und hier eintragen, dann „Test senden“.</li>
   </ol>
-</div>
-
-<form method="post" action="/whatsapp" class="card">
-  <h2 style="margin-top:0">Verbindung</h2>
   <div class="grid">
     <div><label>n8n-Webhook-URL (Production URL)</label>
       <input type="text" name="n8n_webhook_url" value="{{ st.n8n_webhook_url }}" placeholder="http://n8n:5678/webhook/{{ path }}"></div>
     <div><label>App-URL aus Sicht von n8n (für PDF-Link und Rückmeldung)</label>
       <input type="text" name="n8n_app_url" value="{{ st.n8n_app_url }}" placeholder="http://192.168.x.x:8000"></div>
-    <div><label>WhatsApp-Variante</label><select name="wa_provider">
+    <div><label>WhatsApp-Variante in n8n</label><select name="wa_provider">
       {% for k, v in providers.items() %}<option value="{{ k }}" {% if st.wa_provider == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
     </select></div>
   </div>
-  {% if not app_url %}<div class="warn">App-URL fehlt – ohne sie kann n8n das PDF nicht laden und nicht zurückmelden.</div>{% endif %}
+  {% if st.wa_mode != 'native' and not app_url %}<div class="warn">App-URL fehlt – ohne sie kann n8n das PDF nicht laden und nicht zurückmelden.</div>{% endif %}
   <label>Nachrichtentext (Evolution API) – Platzhalter {name} {zeitraum} {betrag} {faellig} {we_id} {absender}</label>
   <textarea name="wa_message" rows="5">{{ st.wa_message }}</textarea>
-  <div class="grid">
-    <div><label>Vorlagenname (Cloud API)</label><input type="text" name="wa_template_name" value="{{ st.wa_template_name }}"></div>
-    <div><label>Vorlagensprache (Cloud API)</label><input type="text" name="wa_template_lang" value="{{ st.wa_template_lang }}"></div>
-  </div>
   <div class="check"><input type="checkbox" name="n8n_pdf_base64" id="b64" {% if st.n8n_pdf_base64 %}checked{% endif %}><label for="b64" style="margin:0">PDF zusätzlich als Base64 im Webhook mitschicken (Evolution API braucht dann keinen Zugriff auf die App)</label></div>
   <label>Token (Header <code>{{ header }}</code>) – steckt bereits im kopierten Flow</label>
   <input type="text" value="{{ secret }}" readonly onclick="this.select()">
   <button>Speichern</button>
   <button class="sec" name="new_secret" value="1" onclick="return confirm('Neues Token erzeugen? Der Flow in n8n muss danach neu kopiert werden.')">Neues Token erzeugen</button>
+</div>
 </form>
 
 <form method="post" action="/whatsapp/test" class="card">
   <h2 style="margin-top:0">Test</h2>
-  <p class="muted">Schickt über n8n ein Test-PDF an die Nummer. Der Flow meldet das Ergebnis zurück.</p>
+  <p class="muted">Schickt ein Test-PDF an die Nummer – {{ 'direkt über die Cloud API (Vorlage mit Parametern „Test“)' if st.wa_mode == 'native' else 'über n8n; der Flow meldet das Ergebnis zurück' }}.</p>
   <div class="grid">
     <div><label>Nummer</label><input type="text" name="phone" list="phones" placeholder="+49 151 23456789" required>
       <datalist id="phones">{% for p in parties if p.phone %}<option value="{{ p.phone }}">{{ p.name }}</option>{% endfor %}</datalist></div>
   </div>
-  <button {% if not st.n8n_webhook_url %}disabled title="Erst Webhook-URL speichern"{% endif %}>Test senden</button>
-  {% if last %}<p>Letzte Rückmeldung aus n8n ({{ last.at[:16]|replace('T', ' ') }}, {{ last.provider }}):
-    {% if last.ok %}<span class="badge final">✔ zugestellt</span>{% else %}<span class="badge" style="color:var(--danger)">✘ Fehler</span> <code>{{ last.error }}</code>{% endif %}</p>{% endif %}
+  {% set ready = native_ok if st.wa_mode == 'native' else st.n8n_webhook_url %}
+  <button {% if not ready %}disabled title="Versandweg noch nicht eingerichtet"{% endif %}>Test senden</button>
+  {% if last %}<p>Letzter Test ({{ last.at[:16]|replace('T', ' ') }}, {{ last.provider }}):
+    {% if last.ok %}<span class="badge final">✔ {{ last.status or 'zugestellt' }}</span>{% else %}<span class="badge" style="color:var(--danger)">✘ Fehler</span> <code>{{ last.error }}</code>{% endif %}</p>{% endif %}
 </form>
 
 {% for k, label in providers.items() %}

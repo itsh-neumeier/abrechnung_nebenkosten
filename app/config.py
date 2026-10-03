@@ -35,6 +35,12 @@ class Config:
     victron_logger: bool = os.getenv("VICTRON_LOGGER", "1") != "0"
     # VRM (Cloud, optional): persönlicher Zugriffstoken aus VRM → Einstellungen → Integrationen
     vrm_token: str = os.getenv("VRM_TOKEN", "").strip()
+    # WhatsApp Business Cloud API (Meta, optional) – direkter Versand ohne n8n
+    wa_token: str = os.getenv("WA_TOKEN", "").strip()  # dauerhaftes Zugriffstoken (Systembenutzer)
+    wa_phone_number_id: str = os.getenv("WA_PHONE_NUMBER_ID", "").strip()
+    wa_app_secret: str = os.getenv("WA_APP_SECRET", "").strip()  # prüft die Signatur des Status-Webhooks
+    wa_api_version: str = os.getenv("WA_API_VERSION", "v21.0").strip()
+    wa_graph_url: str = os.getenv("WA_GRAPH_URL", "https://graph.facebook.com").strip().rstrip("/")
 
 
 config = Config()

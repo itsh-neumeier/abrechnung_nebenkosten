@@ -123,9 +123,16 @@ HA-API (Suche, Filter Energie/Wasser, nur mit Langzeitstatistik, aktueller Zähl
 3. **Fixkosten & Umlagen**: „IPTV-Bereitstellung“ (Betrag, Parteien), „Trinkwasser“ (Menge × Preis,
    Wasserzähler-Entität, €/m³, Prozente) und „Warmwasserbereitung“ (Strom, Shelly-Entität, Prozente).
 
-### WhatsApp-Versand über n8n
+### WhatsApp-Versand (direkt über die Cloud API oder über n8n)
 
-Menü **WhatsApp / n8n**: Die App schickt je Partei einen Webhook an n8n (Text, Nummer, PDF als Base64 und
+**Direkt:** offizielle WhatsApp Business Cloud API von Meta, ohne Zusatzdienst. `WA_TOKEN` (dauerhaftes Token eines
+Systembenutzers), `WA_PHONE_NUMBER_ID` und `WA_APP_SECRET` in `.env` / Portainer setzen, im Menü **WhatsApp**
+„direkt“ wählen. Versand je Partei: PDF hochladen → genehmigte Vorlage (Utility, Kopfzeile *Dokument*, Text mit
+{{1}} Name, {{2}} Zeitraum, {{3}} Betrag) senden. Zustellstatus (gesendet → zugestellt → gelesen / Fehler) über den
+Meta-Webhook `https://<APP_BASE_URL>/api/whatsapp/webhook` (Prüf-Token steht auf der Seite, Signatur wird mit
+`WA_APP_SECRET` geprüft; braucht öffentliches HTTPS – ohne Webhook bleibt der Status „gesendet“).
+
+**Über n8n:** Menü **WhatsApp**: Die App schickt je Partei einen Webhook an n8n (Text, Nummer, PDF als Base64 und
 signierter Download-Link, 7 Tage gültig); der n8n-Flow stellt das PDF per WhatsApp zu und meldet das Ergebnis
 zurück (💬 *zugestellt* in der Abrechnung). Zwei fertige Flows zum Kopieren bzw. Herunterladen:
 
@@ -135,8 +142,8 @@ zurück (💬 *zugestellt* in der Abrechnung). Zwei fertige Flows zum Kopieren b
 Einrichtung: Flow kopieren → in n8n einfügen (Strg+V) → Knoten *Konfiguration* ausfüllen → aktivieren →
 Production-URL des Webhooks und die App-URL (wie n8n die App erreicht) eintragen → „Test senden“.
 Bei den Parteien WhatsApp-Nummer und Versandweg (E-Mail / WhatsApp / beides) wählen. Der Versand läuft über
-dieselben Knöpfe wie die E-Mail bzw. automatisch beim Abschließen. Die Endpunkte `/api/n8n/…` sind ohne
-Basic-Auth erreichbar, aber durch Token bzw. signierte Links geschützt.
+dieselben Knöpfe wie die E-Mail bzw. automatisch beim Abschließen. Die Endpunkte `/api/n8n/…` und `/api/whatsapp/webhook` sind ohne
+Basic-Auth erreichbar, aber durch Token, Signatur bzw. signierte Links geschützt.
 
 ## Entwicklung
 

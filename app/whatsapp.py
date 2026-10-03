@@ -32,7 +32,18 @@ class WhatsAppError(Exception):
     pass
 
 
+MODES = {"n8n": "über n8n (Webhook)", "native": "direkt – WhatsApp Business Cloud API (Meta)"}
+
+
+def native(st: dict) -> bool:
+    return st.get("wa_mode") == "native"
+
+
 def configured(st: dict) -> bool:
+    if native(st):
+        from . import wa_cloud
+
+        return wa_cloud.configured()
     return bool(st.get("n8n_webhook_url"))
 
 
@@ -88,7 +99,7 @@ def build_payload(st: dict, secret: str, *, bid: int, pid: int, name: str, unit_
                   filename: str, pdf: Optional[bytes], test: bool = False) -> dict:
     base = app_url(st)
     if not base:
-        raise WhatsAppError("App-URL für n8n fehlt (WhatsApp / n8n → „App-URL aus Sicht von n8n“).")
+        raise WhatsAppError("App-URL für n8n fehlt (Menü WhatsApp → „App-URL aus Sicht von n8n“).")
     return {
         "event": "invoice.test" if test else "invoice.send",
         "test": test,
@@ -115,7 +126,7 @@ def build_payload(st: dict, secret: str, *, bid: int, pid: int, name: str, unit_
 def post(st: dict, secret: str, payload: dict, timeout: float = 20.0) -> str:
     url = st.get("n8n_webhook_url", "").strip()
     if not url:
-        raise WhatsAppError("n8n-Webhook-URL ist nicht eingetragen (Menü WhatsApp / n8n).")
+        raise WhatsAppError("n8n-Webhook-URL ist nicht eingetragen (Menü WhatsApp).")
     if not payload.get("phone"):
         raise WhatsAppError("keine WhatsApp-Nummer hinterlegt")
     try:

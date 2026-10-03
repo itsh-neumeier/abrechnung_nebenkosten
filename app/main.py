@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from . import invoice_import, mailbox, mailer, service, victron, vrm, whatsapp
+from . import invoice_import, mailbox, mailer, service, victron, vrm, wa_cloud, whatsapp
 from .config import config
 from .db import Allocation, Billing, FixedCost, Party, get_session, get_settings, init_db, save_settings
 from .ha import HAClient
@@ -64,7 +64,7 @@ def redirect(url: str, msg: str = "") -> RedirectResponse:
 
 @app.middleware("http")
 async def basic_auth(request: Request, call_next):
-    if config.app_user and config.app_password and not request.url.path.startswith(("/healthz", "/api/n8n/")):
+    if config.app_user and config.app_password and not request.url.path.startswith(("/healthz", "/api/n8n/", "/api/whatsapp/")):
         header = request.headers.get("authorization", "")
         ok = False
         if header.startswith("Basic "):
@@ -163,7 +163,7 @@ async def settings_testmail(request: Request, s: Session = Depends(get_session))
 
 
 # --------------------------------------------------------------------------- WhatsApp über n8n
-WA_KEYS = ("n8n_webhook_url", "n8n_app_url", "wa_provider", "wa_message", "wa_template_name", "wa_template_lang")
+WA_KEYS = ("wa_mode", "n8n_webhook_url", "n8n_app_url", "wa_provider", "wa_message", "wa_template_name", "wa_template_lang")
 
 
 @app.get("/whatsapp", response_class=HTMLResponse)
@@ -172,7 +172,12 @@ def whatsapp_page(request: Request, s: Session = Depends(get_session)):
     secret = whatsapp.ensure_secret(s, st)
     flows = {k: whatsapp.flow_json(k, st, secret) for k in whatsapp.PROVIDERS}
     last = json.loads(st["n8n_last_test"]) if st["n8n_last_test"] else None
+    verify = _wa_verify_token(s, st)
+    base = config.app_base_url
     return render(request, "whatsapp.html", st=st, secret=secret, flows=flows, providers=whatsapp.PROVIDERS,
+                  modes=whatsapp.MODES, native_ok=wa_cloud.configured(), phone_id=config.wa_phone_number_id,
+                  app_secret_set=bool(config.wa_app_secret), verify_token=verify,
+                  meta_webhook=(base + "/api/whatsapp/webhook") if base else "",
                   app_url=whatsapp.app_url(st), path=whatsapp.WEBHOOK_PATH, header=whatsapp.HEADER, last=last,
                   parties=s.query(Party).order_by(Party.sort, Party.id).all())
 
@@ -182,6 +187,8 @@ async def whatsapp_save(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
     data = {k: str(form.get(k, "")).strip() for k in WA_KEYS}
     data["n8n_app_url"] = data["n8n_app_url"].rstrip("/")
+    if data["wa_mode"] not in whatsapp.MODES:
+        data["wa_mode"] = "n8n"
     data["n8n_pdf_base64"] = "1" if form.get("n8n_pdf_base64") else ""
     if form.get("new_secret"):
         data["n8n_secret"] = secrets.token_urlsafe(24)
@@ -190,12 +197,43 @@ async def whatsapp_save(request: Request, s: Session = Depends(get_session)):
     return redirect("/whatsapp", "Neues Token erzeugt – Flow in n8n neu kopieren!" if form.get("new_secret") else "Gespeichert")
 
 
+def _wa_verify_token(s: Session, st: dict) -> str:
+    if not st.get("wa_verify_token"):
+        st["wa_verify_token"] = secrets.token_urlsafe(18)
+        save_settings(s, {"wa_verify_token": st["wa_verify_token"]})
+        s.commit()
+    return st["wa_verify_token"]
+
+
+@app.post("/whatsapp/check")
+def whatsapp_check():
+    try:
+        info = wa_cloud.CloudClient().info()
+        return redirect("/whatsapp", f"Cloud API OK: {info.get('verified_name', '?')} · {info.get('display_phone_number', '?')}"
+                                     f" · Qualität {info.get('quality_rating', '?')}")
+    except Exception as e:  # noqa: BLE001
+        return redirect("/whatsapp", f"Cloud API: {e}")
+
+
 @app.post("/whatsapp/test")
 async def whatsapp_test(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
     st = get_settings(s)
     secret = whatsapp.ensure_secret(s, st)
     phone = str(form.get("phone", "")).strip()
+    if whatsapp.native(st):
+        to = whatsapp.normalize_phone(phone)
+        try:
+            wamid = wa_cloud.CloudClient().send_document(
+                to, service.test_pdf(), "Test.pdf", st["wa_template_name"], st["wa_template_lang"],
+                ["Test", "Testzeitraum", "0,00 €"])
+            save_settings(s, {"n8n_last_test": json.dumps({
+                "ok": True, "at": datetime.now().isoformat(timespec="seconds"), "status": "gesendet",
+                "raw_status": "sent", "message_id": wamid, "provider": "Cloud API direkt", "error": ""})})
+            s.commit()
+            return redirect("/whatsapp", f"Test an +{to} gesendet – Zustellstatus erscheint unten, sobald Meta ihn meldet.")
+        except Exception as e:  # noqa: BLE001
+            return redirect("/whatsapp", f"Test fehlgeschlagen: {e}")
     try:
         payload = whatsapp.build_payload(
             st, secret, bid=0, pid=0, name="Test", unit_id="TEST", phone=phone, email="", period="Test",
@@ -253,6 +291,29 @@ async def n8n_status(request: Request, s: Session = Depends(get_session)):
         return {"ok": True, "result": service.wa_status(s, data)}
     except KeyError:
         raise HTTPException(404, "Abrechnung unbekannt")
+
+
+@app.get("/api/whatsapp/webhook")
+def meta_webhook_verify(request: Request, s: Session = Depends(get_session)):
+    """Einrichtung des Webhooks in der Meta-App (hub.challenge zurückgeben)."""
+    q = request.query_params
+    token = get_settings(s)["wa_verify_token"]
+    if q.get("hub.mode") == "subscribe" and token and secrets.compare_digest(q.get("hub.verify_token", ""), token):
+        return Response(q.get("hub.challenge", ""), media_type="text/plain")
+    raise HTTPException(403, "Verify-Token falsch")
+
+
+@app.post("/api/whatsapp/webhook")
+async def meta_webhook(request: Request, s: Session = Depends(get_session)):
+    """Zustellstatus von Meta (sent / delivered / read / failed)."""
+    body = await request.body()
+    if not wa_cloud.check_signature(body, request.headers.get("x-hub-signature-256", "")):
+        raise HTTPException(403, "Signatur ungültig (WA_APP_SECRET prüfen)")
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        raise HTTPException(400, "JSON erwartet")
+    return {"ok": True, "matched": service.wa_cloud_status(s, wa_cloud.statuses(payload))}
 
 
 _entity_cache: dict = {"at": 0.0, "data": None}

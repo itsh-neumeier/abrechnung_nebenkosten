@@ -209,7 +209,9 @@ SETTING_DEFAULTS = {
     "mail_body": "Hallo {name},\n\nanbei die Nebenkostenabrechnung für den Zeitraum {zeitraum}.\n"
                  "Betrag: {betrag}\n\nViele Grüße\n{absender}",
     "mail_bcc": "",
-    # WhatsApp über n8n
+    # WhatsApp: n8n oder direkt über die Cloud API
+    "wa_mode": "n8n",  # n8n | native
+    "wa_verify_token": "",  # Prüf-Token für den Meta-Webhook (wird erzeugt)
     "n8n_webhook_url": "",
     "n8n_app_url": "",  # URL der App aus Sicht von n8n (PDF-Download, Statusmeldung)
     "n8n_secret": "",

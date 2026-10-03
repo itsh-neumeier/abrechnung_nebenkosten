@@ -113,3 +113,87 @@ def test_whatsapp_send_and_status(monkeypatch):
         c.post("/api/n8n/status", json={"billing_id": 0, "party_id": 0, "ok": False, "error": "nicht registriert",
                                         "provider": "cloud"}, headers={whatsapp.HEADER: secret})
         assert "nicht registriert" in c.get("/whatsapp").text
+
+
+def test_native_cloud_api(monkeypatch):
+    """Direkter Versand über die Cloud API inkl. Statusmeldung über den Meta-Webhook."""
+    import hashlib
+    import hmac
+
+    import dataclasses
+
+    from app import main, wa_cloud
+    from app.config import config
+
+    cfg = dataclasses.replace(config, wa_token="TOK", wa_phone_number_id="PNID", wa_app_secret="APPSECRET")
+    monkeypatch.setattr(wa_cloud, "config", cfg)
+    monkeypatch.setattr(main, "config", cfg)
+    graph = []
+
+    def fake_post(url, headers=None, data=None, files=None, json=None, timeout=None):
+        graph.append({"url": url, "auth": headers.get("Authorization"), "data": data, "files": files, "json": json})
+        if url.endswith("/media"):
+            assert files["file"][1][:4] == b"%PDF" and files["file"][2] == "application/pdf"
+            return httpx.Response(200, json={"id": "MEDIA1"})
+        if json["to"] == "4900000000":
+            return httpx.Response(400, json={"error": {"message": "Template name does not exist", "code": 132001}})
+        return httpx.Response(200, json={"messages": [{"id": f"wamid.{len(graph)}"}]})
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        return httpx.Response(200, json={"verified_name": "Hausverwaltung", "display_phone_number": "+49 9545 1",
+                                         "quality_rating": "GREEN"})
+
+    monkeypatch.setattr(wa_cloud.httpx, "post", fake_post)
+    monkeypatch.setattr(wa_cloud.httpx, "get", fake_get)
+
+    with TestClient(app) as c:
+        c.post("/settings", data={"entity_grid": "sensor.grid", "entity_total": "sensor.total", "vat_rate": "19"})
+        c.post("/parties/0", data={"name": "Eigentümer", "is_owner": "1", "active": "1"})
+        c.post("/parties/0", data={"name": "Familie Muster", "unit_id": "WE-001", "meters": "sensor.eg",
+                                   "active": "1", "phone": "+49 151 2345678", "channel": "whatsapp"})
+        c.post("/whatsapp", data={"wa_mode": "native", "wa_template_name": "nebenkostenabrechnung",
+                                  "wa_template_lang": "de"})
+        page = c.get("/whatsapp").text
+        assert "✔ eingerichtet" in page and "PNID" in page
+        assert "Hausverwaltung" in c.post("/whatsapp/check").text
+
+        r = c.post("/billings", data=BILL, follow_redirects=False)
+        url = r.headers["location"].split("?")[0]
+        c.post(url, data={"action": "save", **BILL, **VALUES})
+        c.post(url, data={"action": "finalize", **BILL, **VALUES})
+        c.post(url, data={"action": "send_all"})
+        upload, msg = graph[0], graph[1]
+        assert upload["url"] == "https://graph.facebook.com/v21.0/PNID/media" and upload["auth"] == "Bearer TOK"
+        tpl = msg["json"]["template"]
+        assert msg["json"]["to"] == "491512345678" and tpl["name"] == "nebenkostenabrechnung"
+        assert tpl["components"][0]["parameters"][0]["document"] == {
+            "id": "MEDIA1", "filename": "Nebenkostenabrechnung_2026-09_WE-001.pdf"}
+        assert [p["text"] for p in tpl["components"][1]["parameters"]][0] == "Familie Muster"
+        assert "💬 gesendet" in c.get(url).text
+
+        # Webhook-Einrichtung (Verify) und Statusmeldungen von Meta
+        verify = c.get("/whatsapp").text.split("Prüf-Token")[1].split("<code>")[1].split("</code>")[0]
+        ok = c.get("/api/whatsapp/webhook", params={"hub.mode": "subscribe", "hub.verify_token": verify,
+                                                    "hub.challenge": "1234"})
+        assert ok.status_code == 200 and ok.text == "1234"
+        assert c.get("/api/whatsapp/webhook", params={"hub.mode": "subscribe", "hub.verify_token": "x",
+                                                      "hub.challenge": "1"}).status_code == 403
+
+        def hook(status, wamid="wamid.2", **extra):
+            body = json.dumps({"object": "whatsapp_business_account", "entry": [{"changes": [{"value": {
+                "statuses": [{"id": wamid, "status": status, "recipient_id": "491512345678", **extra}]}}]}]}).encode()
+            sig = "sha256=" + hmac.new(b"APPSECRET", body, hashlib.sha256).hexdigest()
+            return c.post("/api/whatsapp/webhook", content=body,
+                          headers={"x-hub-signature-256": sig, "content-type": "application/json"})
+
+        assert c.post("/api/whatsapp/webhook", content=b"{}", headers={"x-hub-signature-256": "sha256=00"}).status_code == 403
+        assert hook("read").json()["matched"] == 1
+        assert hook("delivered").json()["matched"] == 1  # verspätet – „gelesen“ bleibt
+        assert "💬 gelesen" in c.get(url).text
+        hook("failed", errors=[{"code": 131026, "title": "Message undeliverable"}])
+        page = c.get(url).text
+        assert "💬 Fehler" in page and "Message undeliverable" in page
+
+        # Testnachricht direkt; Fehler der API wird lesbar angezeigt
+        assert "gesendet" in c.post("/whatsapp/test", data={"phone": "+49 170 1111111"}).text
+        assert "Vorlage existiert nicht" in c.post("/whatsapp/test", data={"phone": "+49 00000000"}).text

@@ -12,7 +12,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from . import billing as calc
-from . import invoice_import, mailer, render, victron, vrm, whatsapp
+from . import invoice_import, mailer, render, victron, vrm, wa_cloud, whatsapp
 from .config import config
 from .db import Allocation, Billing, FixedCost, Party, get_settings
 from .ha import HAClient, HAError
@@ -369,16 +369,10 @@ def send_invoices(s: Session, b: Billing, party_ids: list[int] | None = None,
                     report.append((rp["name"], False, "WhatsApp: keine Nummer hinterlegt"))
             else:
                 try:
-                    secret = whatsapp.ensure_secret(s, st)
                     pdf = pdf or render.invoice_pdf(b, rp)
-                    payload = whatsapp.build_payload(
-                        st, secret, bid=b.id, pid=pid, name=rp["name"], unit_id=rp.get("unit_id", ""), phone=phone,
-                        email=party.email if party else "", period=render.period_text(b), total=rp["total"],
-                        total_text=fields["betrag"], due=render.due_date(b).isoformat(),
-                        message=st["wa_message"].format_map(fields), filename=render.pdf_name(b, rp), pdf=pdf)
-                    state = whatsapp.post(st, secret, payload)
-                    entry["wa"] = {"ok": True, "at": now, "to": payload["phone"], "status": state}
-                    report.append((rp["name"], True, f"WhatsApp +{payload['phone']} {state}"))
+                    entry["wa"] = _send_whatsapp(s, st, b, rp, party, fields, pdf, now)
+                    w = entry["wa"]
+                    report.append((rp["name"], True, f"WhatsApp +{w['to']} {w['status']}"))
                 except Exception as e:  # noqa: BLE001
                     entry["wa"] = {"ok": False, "at": now, "error": str(e)}
                     report.append((rp["name"], False, f"WhatsApp: {e}"))
@@ -386,6 +380,64 @@ def send_invoices(s: Session, b: Billing, party_ids: list[int] | None = None,
             sent[str(pid)] = entry
     b.sent = sent
     return report
+
+
+def _send_whatsapp(s: Session, st: dict, b: Billing, rp: dict, party: Party, fields: dict, pdf: bytes,
+                   now: str) -> dict:
+    """Eine Abrechnung per WhatsApp – direkt über die Cloud API oder als Webhook an n8n."""
+    name, period, filename = rp["name"], render.period_text(b), render.pdf_name(b, rp)
+    if whatsapp.native(st):
+        to = whatsapp.normalize_phone(party.phone)
+        wamid = wa_cloud.CloudClient().send_document(
+            to, pdf, filename, st["wa_template_name"], st["wa_template_lang"], [name, period, fields["betrag"]])
+        return {"ok": True, "at": now, "to": to, "status": "gesendet", "message_id": wamid,
+                "provider": "Cloud API direkt"}
+    secret = whatsapp.ensure_secret(s, st)
+    payload = whatsapp.build_payload(
+        st, secret, bid=b.id, pid=rp["id"], name=name, unit_id=rp.get("unit_id", ""), phone=party.phone,
+        email=party.email, period=period, total=rp["total"], total_text=fields["betrag"],
+        due=render.due_date(b).isoformat(), message=st["wa_message"].format_map(fields), filename=filename, pdf=pdf)
+    state = whatsapp.post(st, secret, payload)
+    return {"ok": True, "at": now, "to": payload["phone"], "status": state, "provider": "n8n"}
+
+
+def wa_cloud_status(s: Session, items: list[dict]) -> int:
+    """Statusmeldungen des Meta-Webhooks den gesendeten Nachrichten zuordnen. Ergebnis: Anzahl Treffer."""
+    from .db import save_settings
+
+    hits = 0
+    pending = {i["id"]: i for i in items if i.get("id")}
+    if not pending:
+        return 0
+    now = datetime.now().isoformat(timespec="seconds")
+
+    def apply(wa: dict, item: dict) -> dict:
+        if not wa_cloud.newer(wa.get("raw_status", "sent"), item["status"]):
+            return wa
+        failed = item["status"] == "failed"
+        return {**wa, "ok": not failed, "raw_status": item["status"],
+                "status": wa_cloud.STATUS_DE.get(item["status"], item["status"]),
+                "error": item["error"] if failed else "", "status_at": now}
+
+    st = get_settings(s)
+    if st["n8n_last_test"]:
+        last = json.loads(st["n8n_last_test"])
+        if last.get("message_id") in pending:
+            save_settings(s, {"n8n_last_test": json.dumps(apply(last, pending[last["message_id"]]), ensure_ascii=False)})
+            hits += 1
+    for b in s.query(Billing).order_by(Billing.id.desc()).limit(60).all():
+        changed = False
+        sent = {k: dict(v) for k, v in (b.sent or {}).items()}
+        for entry in sent.values():
+            wa = entry.get("wa") or {}
+            if wa.get("message_id") in pending:
+                entry["wa"] = apply(wa, pending[wa["message_id"]])
+                changed = True
+                hits += 1
+        if changed:
+            b.sent = sent
+    s.commit()
+    return hits
 
 
 def test_pdf() -> bytes:
