@@ -109,3 +109,19 @@ Praxisvergleich (Aug/Sep 2026) mit den lokalen Werten:
 Der DC-Zähler des Batteriewächters enthält die Wandlungsverluste des Wechselrichters; VRM zählt, was beim
 Verbraucher ankommt. Mit dem DC-Wert fällt der Batterieanteil im Mix höher und PV direkt niedriger aus
 (August: Ø 23,36 statt 22,68 ct/kWh für einen Mieter).
+
+### Entscheidung: Energiemix aus VRM
+
+Für den Energiemix werden die VRM-Werte verwendet (Knopf „VRM-Werte für den Energiemix übernehmen“):
+
+| Feld | Wert |
+|---|---|
+| Gesamtverbrauch | `vrm:consumption` (Gc + Pc + Bc) |
+| Batterie entladen | `vrm:Bc` – Batterie → Verbraucher, AC-seitig; **ohne Bg** (Verkauf ins Netz) |
+| Batterie geladen gesamt | `vrm:battery_charged` (Gb + Pb) |
+| Netz → Batterie | `vrm:Gb` (identisch mit VE.Bus `acin1toinverter`) |
+| Netzbezug | nur Kontrolle – gerechnet wird mit dem Bezug laut Rechnung |
+
+Alle Mix-Felder aus einer Quelle halten die Bilanz konsistent; der berechnete PV-Direktanteil entspricht dann
+VRM `Pc`. Ergebnis mit echten Daten: August Ø 22,68 statt 23,30 ct/kWh, September Ø 22,52 statt 23,33 ct/kWh
+(Mieter mit 245,8 kWh) gegenüber dem lokalen DC-Batteriezähler.

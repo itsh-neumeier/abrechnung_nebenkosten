@@ -40,7 +40,26 @@
   <div class="grid">
     <div><label>VRM-Anlagen-ID (idSite)</label><input type="text" name="vrm_site_id" value="{{ st.vrm_site_id }}"></div>
   </div>
-  {% if vrm_ok %}<button class="sec pick-btn" formaction="/vrm/sites" formmethod="post">Anlagen suchen / Verbindung testen</button>{% endif %}
+  {% if vrm_ok %}<button class="sec pick-btn" formaction="/vrm/sites" formmethod="post">Anlagen suchen / Verbindung testen</button>
+  <button type="button" class="sec pick-btn" id="vrm-mix">VRM-Werte für den Energiemix übernehmen</button>
+  <p class="muted">Setzt Gesamtverbrauch = <code>vrm:consumption</code>, Batterie entladen = <code>vrm:Bc</code> (AC-seitig, ohne Verkauf
+  ins Netz), Batterie geladen = <code>vrm:battery_charged</code>, Netz → Batterie = <code>vrm:Gb</code>. Netzbezug bleibt Kontrolle –
+  gerechnet wird mit der Rechnung. Danach speichern.</p>
+  <script>
+  document.getElementById('vrm-mix').addEventListener('click', () => {
+    const map = {{ vrm_mix|tojson }};
+    for (const [name, value] of Object.entries(map)) {
+      const input = document.querySelector(`input[name="${name}"]`);
+      if (!input) continue;
+      const mode = input.closest('.phase-box')?.querySelector('.phase-mode');
+      if (mode && mode.value !== '1') { mode.value = '1'; mode.dispatchEvent(new Event('change')); }
+      input.value = value;
+      input.dispatchEvent(new Event('input', {bubbles: true}));
+    }
+    const st = document.getElementById('victron-status');
+    if (st) st.textContent = 'VRM-Werte eingetragen – bitte speichern.';
+  });
+  </script>{% endif %}
 </div>
 <div class="card">
   <h2 style="margin-top:0">Haus-Entitäten (Energiemix)</h2>

@@ -12,6 +12,7 @@
 | E-Mail-Versand | SMTP, Adresse je Partei, automatisch beim Abschließen oder manuell |
 | Layout | ohne Logo: „Nebenkostenabrechnung“, Objektanschrift, Wohneinheit, Gebäude-ID + Wohneinheiten-ID |
 | Entitäten | Auswahl live über die HA-API im Webinterface |
+| Energiemix-Quelle | VRM: Verbrauch, Batterie → Verbraucher (Bc, AC-seitig), Batterie geladen (Gb + Pb), Netz → Batterie (Gb); lokal (HA/Victron-Logger) als Kontrolle |
 | Netzbezug | Energiemix rechnet immer mit dem Bezug laut Rechnung (amtlicher Zähler, Zählerwechsel inklusive); Zähler aus HA bzw. `victron:grid_import` nur zur Kontrolle (Warnung ab 5 %) |
 | Rechnungseingang | aWATTar-PDF aus E-Mail (IMAP, nur lesend) oder Upload; Positionen in Cent/kWh → Arbeitspreis, Euro/Monat/Jahr → Fixkosten, „HOURLY“ → Börsenpreis |
 | Trinkwasser | monatsscharf: m³ des Abrechnungszeitraums aus HA × (Wasser- + Abwasserpreis je m³ aus den Einstellungen), nach festen Prozenten; kein Import der Wasserrechnung |

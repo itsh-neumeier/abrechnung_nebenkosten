@@ -57,7 +57,8 @@ VICTRON_HINTS = {
         "suggest": ["system_consumption_l1", "system_consumption_l2", "system_consumption_l3"],
     },
     "entity_battery": {
-        "hint": "battery_history_dischargedenergy (SmartShunt/BMV/BMS, misst nur die Batterie).",
+        "hint": "Lokal: battery_history_dischargedenergy (DC-seitig, inkl. Wandlungsverluste). "
+                "Mit VRM: vrm:Bc (Batterie → Verbraucher, AC-seitig, ohne Verkauf ins Netz) – genauer.",
         "suggest": ["battery_history_dischargedenergy"],
     },
     "entity_battery_charge": {
@@ -134,8 +135,11 @@ async def fetch_values(s: Session, b: Billing) -> list[str]:
     vrm_ids = [e for e in ents if vrm.is_vrm(e)]
     fetched, meta = {}, {}
     if vrm_ids:
-        r_vals, r_meta = await vrm.consumption(get_settings(s)["vrm_site_id"], vrm_ids,
-                                               b.period_start, b.period_end, config.timezone)
+        try:
+            r_vals, r_meta = await vrm.consumption(get_settings(s)["vrm_site_id"], vrm_ids,
+                                                   b.period_start, b.period_end, config.timezone)
+        except Exception:  # noqa: BLE001  – VRM nicht erreichbar: übrige Quellen trotzdem laden
+            r_vals, r_meta = {e: None for e in vrm_ids}, {}
         fetched.update(r_vals)
         meta.update(r_meta)
     if ha_ids:

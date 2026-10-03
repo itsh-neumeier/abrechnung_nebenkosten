@@ -40,14 +40,22 @@ DERIVED = {
     "grid_export": (["Pg", "Bg"], "Einspeisung (Pg + Bg)"),
     "consumption": (["Gc", "Pc", "Bc"], "Verbrauch (Gc + Pc + Bc)"),
     "battery_charged": (["Gb", "Pb"], "Batterie geladen (Gb + Pb)"),
-    "battery_discharged": (["Bc", "Bg"], "Batterie entladen (Bc + Bg)"),
+    "battery_discharged": (["Bc", "Bg"], "Batterie entladen inkl. Verkauf ins Netz (Bc + Bg)"),
     "pv": (["Pc", "Pb", "Pg"], "PV-Erzeugung (Pc + Pb + Pg)"),
+}
+# Empfohlene Belegung der Haus-Felder, wenn der Energiemix aus VRM kommen soll (alles aus einer Quelle,
+# Batterie AC-seitig nach dem Wechselrichter; Bg = Verkauf ins Netz zählt nicht zum Hausverbrauch).
+MIX_FIELDS = {
+    "entity_total": "vrm:consumption",
+    "entity_battery": "vrm:Bc",
+    "entity_battery_charge": "vrm:battery_charged",
+    "entity_battery_charge_grid": "vrm:Gb",
 }
 # Vergleich mit den Haus-Feldern
 COMPARE = [
     ("entity_grid", "Netzbezug", ["grid_import"]),
     ("entity_total", "Gesamtverbrauch", ["consumption"]),
-    ("entity_battery", "Batterie entladen", ["battery_discharged"]),
+    ("entity_battery", "Batterie entladen", ["Bc"]),
     ("entity_battery_charge", "Batterie geladen", ["battery_charged"]),
     ("entity_battery_charge_grid", "Netz → Batterie", ["Gb"]),
 ]

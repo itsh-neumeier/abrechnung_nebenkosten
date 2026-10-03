@@ -129,7 +129,7 @@ def settings_page(request: Request, s: Session = Depends(get_session)):
                   ha_token_set=bool(config.ha_token), house_entities=service.HOUSE_ENTITIES,
                   victron=service.VICTRON_HINTS,
                   smtp=config, mail_ok=mailer.configured(), imap_ok=mailbox.configured(),
-                  vrm_ok=vrm.configured())
+                  vrm_ok=vrm.configured(), vrm_mix=vrm.MIX_FIELDS)
 
 
 @app.post("/settings")
