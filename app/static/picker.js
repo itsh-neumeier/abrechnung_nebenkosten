@@ -58,7 +58,11 @@
     const tr = ev.target.closest('tr[data-id]');
     if (!tr || !target) return;
     const id = tr.dataset.id;
-    if (target.dataset.entity === 'multi') {
+    if (target.dataset.entity === 'sum') {
+      const cur = target.value.split(/[\s+,;]+/).filter(Boolean);
+      if (!cur.includes(id)) cur.push(id);
+      target.value = cur.join(' + ');
+    } else if (target.dataset.entity === 'multi') {
       const cur = target.value.split(/\s+/).filter(Boolean);
       if (!cur.includes(id)) cur.push(id);
       target.value = cur.join('\n');

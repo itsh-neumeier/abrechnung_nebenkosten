@@ -53,7 +53,7 @@ def energy_entities(st: dict[str, str]) -> calc.EnergyEntities:
 def required_entities(s: Session) -> list[tuple[str, str]]:
     """Alle Entitäten, deren Verbrauch für eine Abrechnung gebraucht wird: (entity_id, Rolle)."""
     st = get_settings(s)
-    out: list[tuple[str, str]] = [(st[k], role) for k, role in HOUSE_ENTITIES if st[k]]
+    out: list[tuple[str, str]] = [(e, role) for k, role in HOUSE_ENTITIES for e in calc.split_ids(st[k])]
     parties = active_parties(s)
     names = {p.id: p.name for p in parties}
     for p in parties:

@@ -31,6 +31,7 @@ Verbrauch je Partei oder gleichmäßig.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Optional
 
@@ -133,6 +134,18 @@ def _pct(x: float) -> str:
     return _de(x * 100, 1) + " %"
 
 
+def split_ids(spec: str) -> list[str]:
+    """„sensor.a + sensor.b“ (auch Komma/Leerzeichen) -> Liste der Entitäten."""
+    return [e for e in re.split(r"[\s,;+]+", spec or "") if e]
+
+
+def _sum(values: dict[str, Optional[float]], spec: str) -> Optional[float]:
+    """Summe mehrerer Entitäten; None, wenn keine davon einen Wert hat."""
+    vals = [values.get(e) for e in split_ids(spec)]
+    vals = [float(v) for v in vals if v is not None]
+    return sum(vals) if vals else None
+
+
 def _val(values: dict[str, Optional[float]], entity: str) -> float:
     if not entity:
         return 0.0
@@ -156,11 +169,11 @@ def missing_entities(required: list[str], values: dict[str, Optional[float]]) ->
 def energy_mix(bill: BillCfg, ent: EnergyEntities, values: dict[str, Optional[float]],
                warnings: list[str]) -> dict:
     """Zerlegt den Gesamtverbrauch in die vier Quellen (kWh und Anteile)."""
-    total = values.get(ent.total) if ent.total else None
-    discharge = _val(values, ent.battery_discharge)
-    charge_total = _val(values, ent.battery_charge_total)
-    charge_grid = _val(values, ent.battery_charge_grid)
-    grid_meter = values.get(ent.grid) if ent.grid else None
+    total = _sum(values, ent.total) if ent.total else None
+    discharge = _sum(values, ent.battery_discharge) or 0.0
+    charge_total = _sum(values, ent.battery_charge_total) or 0.0
+    charge_grid = _sum(values, ent.battery_charge_grid) or 0.0
+    grid_meter = _sum(values, ent.grid) if ent.grid else None
     grid_import = grid_meter if grid_meter is not None else bill.grid_kwh
 
     if charge_total > 0:
@@ -182,7 +195,7 @@ def energy_mix(bill: BillCfg, ent: EnergyEntities, values: dict[str, Optional[fl
     kwh["bat_pv"] = discharge * (1 - grey_frac)
     kwh["grid"] = max(0.0, (grid_import or 0.0) - charge_grid)
     if ent.pv_direct:
-        kwh["pv"] = _val(values, ent.pv_direct)
+        kwh["pv"] = _sum(values, ent.pv_direct) or 0.0
     else:
         kwh["pv"] = max(0.0, total - kwh["grid"] - discharge)
 

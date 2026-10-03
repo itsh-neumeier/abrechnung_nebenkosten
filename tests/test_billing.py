@@ -152,3 +152,13 @@ def test_water_price_from_settings_parts(setup):
     assert "10,00 m³ × (Wasser 2,15 € + Abwasser 2,60 €)/m³ = 47,50 €" in note
     water.price_parts = [("Wasser", 0.0), ("Abwasser", 0.0)]
     assert any("kein Preis" in w for w in run(bill, parties, values, allocs=[water])["warnings"])
+
+
+def test_house_entities_can_be_summed(setup):
+    """Victron: Batterie entladen = Wechselrichter->AC-out + Wechselrichter->AC-in (Summe mehrerer Zähler)."""
+    bill, parties, values = setup
+    values.pop("sensor.dis")
+    values.update({"sensor.inv_acout": 200.0, "sensor.inv_acin": 50.0})
+    ent = EnergyEntities(**{**ENT.__dict__, "battery_discharge": "sensor.inv_acout + sensor.inv_acin"})
+    src = {s["key"]: s for s in run(bill, parties, values, ent=ent)["sources"]}
+    assert src["bat_pv"]["kwh"] + src["bat_grid"]["kwh"] == pytest.approx(250)

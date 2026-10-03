@@ -10,10 +10,11 @@
 <form method="post" action="/settings">
 <div class="card">
   <h2 style="margin-top:0">Haus-Entitäten (Energiemix)</h2>
-  <p class="muted">Zählersensoren (kWh) mit Langzeitstatistik. Über „Aus HA wählen“ direkt aus Home Assistant auswählen.</p>
+  <p class="muted">Zählersensoren (kWh) mit Langzeitstatistik. Über „Aus HA wählen“ direkt aus Home Assistant auswählen.
+  Mehrere Zähler je Feld mit <code>+</code> verbinden – sie werden addiert (z. B. <code>sensor.a + sensor.b</code>).</p>
   {% for key, label in house_entities %}
   <label>{{ label }}</label>
-  <input type="text" name="{{ key }}" value="{{ st[key] }}" data-entity>
+  <input type="text" name="{{ key }}" value="{{ st[key] }}" data-entity="sum">
   {% endfor %}
   <p class="muted">Aus diesen Werten wird der Mix berechnet:
     Netz direkt = Netzbezug − Netz→Batterie · Batterie aus Netz = Entladung × (Netz→Batterie ÷ Batterie geladen) ·
