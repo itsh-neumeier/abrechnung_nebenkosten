@@ -7,25 +7,29 @@ In der Entitäten-Auswahl („Aus HA wählen“) einfach nach dem Schlüssel suc
 
 ## Zuordnung zu den Feldern unter *Einstellungen → Haus-Entitäten*
 
-| Feld im Tool | hass-victron-Schlüssel | Bedeutung |
-|---|---|---|
-| **Batterie aus Netz geladen – dyn. ESS** | `vebus_acin1toinverter` | Energie AC-in 1 (Netz) → Wechselrichter = Batterieladung aus dem Netz |
-| **Batterie entladen** | `vebus_invertertoacout` (+ ggf. `vebus_invertertoacin1`, siehe unten) | Wechselrichter (Batterie) → AC-out (Verbraucher) |
-| **Batterie geladen gesamt** | `battery_history_chargedenergy` (SmartShunt/BMV/BMS) | gesamte Ladung der Batterie (Netz + PV) |
-| Netzbezug | eigener Stromzähler in HA oder `grid_energy_forward_total` (Victron-Netzzähler) | Bezug aus dem Netz |
+Aufbau hier: **alle Verbraucher am AC-out des MultiPlus-II**, Netz an AC-in 1.
 
-Der Netzladeanteil ergibt sich dann aus `vebus_acin1toinverter ÷ battery_history_chargedenergy`
-(jeweils Verbrauch im Abrechnungsmonat).
+| Feld im Tool | Sensor | Bedeutung |
+|---|---|---|
+| **Netzbezug (Stromzähler)** | eigener Zähler in HA (Kontrolle gegen die Rechnung) | Bezug aus dem Netz |
+| **Gesamtverbrauch Haus** | Victron-Verbrauchszähler hinter dem Stromzähler; alternativ `vebus_acin1toacout + vebus_invertertoacout` (bei PV über MPPT/DC) | gesamter Verbrauch am AC-out |
+| **Batterie entladen** | `battery_history_dischargedenergy` (SmartShunt/BMV/BMS) | Energie aus der Batterie (DC-seitig) |
+| **Batterie geladen gesamt** | `battery_history_chargedenergy` (SmartShunt/BMV/BMS) | gesamte Ladung der Batterie (Netz + PV) |
+| **Batterie aus Netz geladen – dyn. ESS** | `vebus_acin1toinverter` | Energie AC-in 1 (Netz) → Wechselrichter = Batterieladung aus dem Netz |
+| PV-Direktverbrauch | leer lassen | wird berechnet: Gesamt − Netz direkt − Batterie entladen |
+
+Netzladeanteil = `vebus_acin1toinverter ÷ battery_history_chargedenergy` (jeweils Verbrauch im Monat).
 
 ## Hinweise
 
-- **Verbraucher an AC-in** (nicht am AC-out des Multi): Batterieenergie für diese Verbraucher läuft als
-  `vebus_invertertoacin1`. Dann *Batterie entladen* als Summe eintragen:
-  `sensor.victronvebus_invertertoacout227 + sensor.victronvebus_invertertoacin1227`.
-  Achtung: Verkauft Dynamic ESS Batteriestrom ins Netz, steckt diese Einspeisung ebenfalls in
-  `invertertoacin1` und würde als Hausverbrauch gezählt.
-- **AC-gekoppelte PV am AC-out** lädt die Batterie über `vebus_outtoinverter` (PV-Ladung) – sie ist in
-  *Batterie geladen gesamt* bereits enthalten.
-- `battery_history_chargedenergy` ist ein 16-Bit-Register (max. 6553,5 kWh) und kann überlaufen;
+- **Warum nicht `vebus_invertertoacout` für „Batterie entladen“?** Bei PV über MPPT-Laderegler (DC)
+  fließt auch der PV-Direktstrom durch den Wechselrichter zum AC-out – der Zähler enthält dann Batterie
+  *und* PV. Der Batteriezähler (DC) misst nur die Batterie und passt für DC- wie AC-gekoppelte PV.
+- **Verluste**: `vebus_acin1toinverter` wird AC-seitig gemessen, die Batterieladung DC-seitig. Der
+  Netzladeanteil fällt dadurch um die Ladeverluste (ca. 5–10 %) etwas höher aus – also eher zugunsten
+  des Graustrom-Anteils.
+- **Dynamic ESS verkauft ins Netz**: Rückspeisung läuft als `vebus_invertertoacin1` und ist hier nicht
+  Teil des Hausverbrauchs – kein Handlungsbedarf, solange alle Verbraucher am AC-out hängen.
+- `battery_history_*energy` sind 16-Bit-Register (max. 6553,5 kWh) und können überlaufen;
   Home Assistant behandelt das bei `total_increasing` wie einen Zählerreset, die Monatswerte bleiben korrekt.
 - Mehrere Zähler je Feld werden im Tool mit `+` addiert.
