@@ -207,3 +207,14 @@ def test_owner_free_can_be_disabled(setup):
     owner = run(bill, parties, values)["parties"][0]
     assert "PV-Strom direkt" in amounts(owner)
     assert not any(l["label"].startswith("Eigenverbrauch") for l in owner["lines"])
+
+
+def test_vat_only_on_supplier_items(setup):
+    """MwSt. nur auf Posten der Lieferantenrechnung; interne Posten ohne MwSt."""
+    bill, parties, values = setup
+    r = run(bill, parties, values, fixed=[FixedCostCfg("IPTV", 9.99)],
+            allocs=[AllocationCfg(2, "Wasser", "amount", amount=30.0, key_type="equal")])
+    vat = {l["label"]: l["vat_included"] for l in r["parties"][1]["lines"]}
+    assert vat["Netzstrom"] and vat["Fixkosten Stromanbieter (Grundpreis/Messstelle) anteilig"]
+    assert not vat["PV-Strom direkt"] and not vat["Batteriestrom aus PV"]
+    assert not vat["IPTV"] and not vat["Wasser"]

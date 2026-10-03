@@ -106,7 +106,7 @@ class Line:
     unit: str = ""
     unit_price: Optional[float] = None
     note: str = ""
-    vat_included: bool = True
+    vat_included: bool = False  # nur Posten der Lieferantenrechnung (Netzstrom, Fixkosten) enthalten MwSt.
 
     def as_dict(self) -> dict:
         return {
@@ -334,7 +334,8 @@ def compute(
         for p, part in zip(parties, _split_equal(fixed_gross, len(parties))):
             lines[p.id].append(
                 Line("Fixkosten Stromanbieter (Grundpreis/Messstelle) anteilig", part,
-                     note=f"{_de(fixed_gross)} € / {len(parties)} Parteien")
+                     note=f"{_de(fixed_gross)} € inkl. MwSt. lt. Rechnung / {len(parties)} Parteien",
+                     vat_included=True)
             )
 
     # --- weitere Fixkosten -------------------------------------------------------
@@ -353,7 +354,7 @@ def compute(
             src_kwh = _sum(values, a.source_entity) or 0.0
             ec = energy_cost(src_kwh)
             pot = sum(eur for _, eur in ec.values())
-            pot_desc = f"{_de(src_kwh, 1)} kWh = {_de(pot)} €"
+            pot_desc = f"{_de(src_kwh, 1)} kWh = {_de(pot)} € (Netzanteil inkl. MwSt. lt. Rechnung)"
             if bill.owner_free_own_energy and owner is not None:
                 pot_owner = ec["grid"][1]
         elif a.source_type == "quantity":

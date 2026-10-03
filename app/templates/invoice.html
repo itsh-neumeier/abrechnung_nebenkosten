@@ -18,6 +18,7 @@
   .r { text-align: right; white-space: nowrap }
   .note { font-size: 8pt; color: #666 }
   tr.total td { border-top: 1pt solid #111; border-bottom: none; font-weight: bold; font-size: 11pt }
+  tr.sub td { border: none; font-size: 8.5pt; color: #444; padding-top: .5mm; padding-bottom: .5mm }
   .box { margin-top: 6mm; padding: 3mm; background: #f3f4f6; font-size: 8.5pt }
   .box table { width: 100%; border-collapse: collapse; margin-top: 1.5mm }
   .box td { padding: .5mm 1mm; border: none }
@@ -46,11 +47,17 @@
   <td>{{ l.label }}{% if l.note %}<div class="note">{{ l.note }}</div>{% endif %}</td>
   <td class="r">{% if l.quantity is not none %}{{ l.quantity|num(2) }} {{ l.unit }}{% endif %}</td>
   <td class="r">{% if l.unit_price is not none %}{{ (l.unit_price*100)|num(2) }} ct{% endif %}</td>
-  <td class="r">{{ l.amount|eur }}</td>
+  <td class="r">{{ l.amount|eur }}{% if l.vat_included %}<sup>1</sup>{% endif %}</td>
 </tr>
 {% endfor %}
 <tr class="total"><td>Gesamtbetrag</td><td></td><td></td><td class="r">{{ p.total|eur }}</td></tr>
+{% set ext = p.lines|selectattr('vat_included')|sum(attribute='amount') %}
+<tr class="sub"><td>davon Weitergabe der Lieferantenrechnung (inkl. {{ (b.vat_rate*100)|num(0) }} % MwSt.)<sup>1</sup></td><td></td><td></td><td class="r">{{ ext|eur }}</td></tr>
+<tr class="sub"><td>davon interne Kosten (ohne MwSt.)</td><td></td><td></td><td class="r">{{ (p.total - ext)|eur }}</td></tr>
 </table>
+<p class="note"><sup>1</sup> Netzstrom und Fixkosten werden aus der Rechnung des Stromlieferanten einschließlich der dort
+berechneten Mehrwertsteuer weitergegeben. PV-, Batterie- und Graustrom, Umlagen und sonstige Positionen sind interne
+Kosten und enthalten keine Mehrwertsteuer (Netzanteile von Strom-Umlagen enthalten die MwSt. der Lieferantenrechnung).</p>
 
 <div class="box">
   <b>Berechnungsgrundlage</b><br>

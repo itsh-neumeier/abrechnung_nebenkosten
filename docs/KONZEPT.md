@@ -6,6 +6,7 @@
 |---|---|
 | Energiemix | anteilig über den Abrechnungszeitraum: Netz direkt, PV direkt, Batterie aus PV, Batterie aus Netz |
 | Netzstrom | Ø Arbeitspreis lt. Rechnung brutto |
+| Mehrwertsteuer | nur auf die Weitergabe der Lieferantenrechnung (Netzstrom, Fixkosten Stromanbieter); alle übrigen Positionen (PV, Batterie, Graustrom, Umlagen, IPTV, Wasser …) sind interne Kosten ohne MwSt. – auf der Rechnung mit Fußnote und Aufteilung ausgewiesen |
 | PV-Direktstrom | Ø Börsenpreis netto lt. Rechnung + PV-Bereitstellungssatz, ohne MwSt. |
 | Graustrom (Batterie aus Netz, dyn. ESS) | Ø Börsenpreis netto + Batterieverschleißsatz, ohne MwSt. |
 | Batteriestrom aus PV | Ø Börsenpreis netto + PV-Bereitstellungssatz + Batterieverschleißsatz (fest) |

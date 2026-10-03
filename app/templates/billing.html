@@ -115,7 +115,7 @@
 <h2>Preise / Beträge für Umlagen</h2>
 <div class="card grid">
 {% for a in amount_allocs %}
-<div><label>{{ a.name }} {% if a.source_type == 'quantity' %}– Preis je {{ a.source_unit }} (brutto €){% else %}(brutto €){% endif %}</label><input type="text" name="amount__{{ a.id }}" value="{{ (b.amounts.get(a.id|string, a.default_amount))|num(4 if a.source_type == 'quantity' else 2) }}" {{ ro }}></div>
+<div><label>{{ a.name }} {% if a.source_type == 'quantity' %}– Preis je {{ a.source_unit }} (€){% else %}(€){% endif %}</label><input type="text" name="amount__{{ a.id }}" value="{{ (b.amounts.get(a.id|string, a.default_amount))|num(4 if a.source_type == 'quantity' else 2) }}" {{ ro }}></div>
 {% endfor %}
 </div>
 {% endif %}

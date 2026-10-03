@@ -4,7 +4,7 @@
 <form method="post" class="card">
   <div class="grid">
     <div><label>Bezeichnung</label><input type="text" name="name" value="{{ c.name }}" required placeholder="IPTV-Bereitstellung"></div>
-    <div><label>Betrag je Abrechnung (brutto, €)</label><input type="text" name="amount_gross" value="{{ c.amount_gross|num(2) }}"></div>
+    <div><label>Betrag je Abrechnung (€, intern – ohne MwSt.)</label><input type="text" name="amount_gross" value="{{ c.amount_gross|num(2) }}"></div>
   </div>
   <label>Verteilen auf (keine Auswahl = alle Parteien, jeweils gleichmäßig)</label>
   {% for p in parties %}

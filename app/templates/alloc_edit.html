@@ -17,7 +17,7 @@
         <option value="water" {% if a.price_source=='water' %}selected{% endif %}>Wasser + Abwasser aus Einstellungen</option>
         <option value="custom" {% if a.price_source!='water' %}selected{% endif %}>Eigener Preis je Einheit</option>
       </select></div>
-    <div data-show="quantity amount" id="amtbox"><label id="amtlabel">Preis je Einheit (brutto €)</label><input type="text" name="default_amount" value="{{ a.default_amount|num(4 if a.source_type == 'quantity' else 2) }}"></div>
+    <div data-show="quantity amount" id="amtbox"><label id="amtlabel">Preis je Einheit (€)</label><input type="text" name="default_amount" value="{{ a.default_amount|num(4 if a.source_type == 'quantity' else 2) }}"></div>
   </div>
   <p class="muted" data-show="energy">Strom-Umlagen werden vom Restverbrauch des Eigentümers abgezogen, damit nichts doppelt berechnet wird.</p>
   <p class="muted" data-show="quantity" id="waterhint">Preis = Trinkwasser + Abwasser je m³ aus den <a href="/settings">Einstellungen</a>.</p>
@@ -65,7 +65,7 @@
     document.querySelectorAll('[data-key]').forEach(el => el.hidden = !el.dataset.key.split(' ').includes(key.value));
     const water = src.value === 'quantity' && document.getElementById('psrc').value === 'water';
     if (src.value === 'quantity') { document.getElementById('amtbox').hidden = water; document.getElementById('waterhint').hidden = !water; }
-    document.getElementById('amtlabel').textContent = src.value === 'quantity' ? 'Preis je Einheit (brutto €)' : 'Standardbetrag (brutto €)';
+    document.getElementById('amtlabel').textContent = src.value === 'quantity' ? 'Preis je Einheit (€)' : 'Standardbetrag (€)';
     sum();
   }
   src.addEventListener('change', update); key.addEventListener('change', update);
