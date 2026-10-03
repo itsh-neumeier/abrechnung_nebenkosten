@@ -69,3 +69,5 @@ p.hint{margin:4px 0 2px;font-size:.84rem}
 .src-chip{font-size:.78rem;padding:1px 8px;border-radius:99px;border:1px solid var(--line);background:var(--bg)}
 .src-chip b{font-weight:600}
 .src-chip.src-ha{border-color:#0ea5e9}.src-chip.src-victron{border-color:#2563eb}.src-chip.src-vrm{border-color:#9333ea}
+
+footer.ver { text-align: center; font-size: 11px; color: #9ca3af; padding: 12px 0 18px }

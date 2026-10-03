@@ -17,6 +17,7 @@
 {% if request.query_params.get('msg') %}<div class="msg">{{ request.query_params.get('msg') }}</div>{% endif %}
 {% block content %}{% endblock %}
 </main>
+<footer class="ver">Version {{ app_version }}</footer>
 <script src="/static/picker.js" defer></script>
 </body>
 </html>

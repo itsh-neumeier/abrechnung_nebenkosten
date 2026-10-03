@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import date, timedelta
 from pathlib import Path
@@ -54,6 +55,7 @@ templates.env.filters["de_date"] = fmt_date
 templates.env.globals["chart_bar"] = charts.bar_chart
 templates.env.globals["chart_stacked"] = charts.stacked_chart
 templates.env.globals["chart_share"] = charts.share_chart
+templates.env.globals["app_version"] = (os.getenv("APP_VERSION") or "dev")[:7]
 
 
 def party_result(b: Billing, pid: int) -> Optional[dict]:
