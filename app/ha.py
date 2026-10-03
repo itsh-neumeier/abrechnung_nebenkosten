@@ -70,7 +70,8 @@ class HAClient:
         r.raise_for_status()
         return r.json()
 
-    async def _ws_call(self, payload: dict) -> dict:
+    async def _ws_calls(self, payloads: list[dict]) -> list:
+        """Mehrere WebSocket-Befehle über eine Verbindung. Ergebnis je Befehl oder HAError."""
         ws_url = self.url.replace("https://", "wss://", 1).replace("http://", "ws://", 1) + "/api/websocket"
         async with websockets.connect(ws_url, max_size=None, open_timeout=self.timeout) as ws:
             msg = json.loads(await ws.recv())
@@ -80,14 +81,51 @@ class HAClient:
             msg = json.loads(await ws.recv())
             if msg.get("type") != "auth_ok":
                 raise HAError("Anmeldung an Home Assistant fehlgeschlagen (Token prüfen).")
-            await ws.send(json.dumps({"id": 1, **payload}))
-            while True:
+            results: dict[int, object] = {}
+            for i, payload in enumerate(payloads, start=1):
+                await ws.send(json.dumps({"id": i, **payload}))
+            while len(results) < len(payloads):
                 msg = json.loads(await ws.recv())
-                if msg.get("id") == 1 and msg.get("type") == "result":
-                    if not msg.get("success"):
-                        raise HAError(f"HA-Fehler: {msg.get('error')}")
-                    return msg.get("result") or {}
+                if msg.get("type") == "result" and msg.get("id") in range(1, len(payloads) + 1):
+                    results[msg["id"]] = (msg.get("result") if msg.get("success")
+                                          else HAError(f"HA-Fehler: {msg.get('error')}"))
+            return [results[i] for i in range(1, len(payloads) + 1)]
 
+    async def _ws_call(self, payload: dict) -> dict:
+        (result,) = await self._ws_calls([payload])
+        if isinstance(result, HAError):
+            raise result
+        return result or {}
+
+    async def entities(self) -> list[dict]:
+        """Sensoren für die Entitäten-Auswahl.
+
+        Nutzt die WebSocket-API (``get_states`` überspringt Entitäten mit fehlerhaften
+        Attributen einzeln, während ``/api/states`` dann komplett mit 500 abbricht)
+        und ergänzt alle Statistik-IDs aus dem Recorder. REST dient nur als Rückfall.
+        """
+        errors = []
+        try:
+            states, stats = await self._ws_calls([
+                {"type": "get_states"},
+                {"type": "recorder/list_statistic_ids", "statistic_type": "sum"},
+            ])
+        except Exception as e:  # noqa: BLE001  (z. B. WebSocket durch Proxy blockiert)
+            errors.append(f"WebSocket: {e}")
+            states, stats = None, None
+            try:
+                states = await self.states()
+            except Exception as e2:  # noqa: BLE001
+                errors.append(f"REST: {e2}")
+        if isinstance(states, HAError):
+            errors.append(f"Zustände: {states}")
+            states = None
+        if isinstance(stats, HAError):
+            errors.append(f"Statistiken: {stats}")
+            stats = None
+        if states is None and stats is None:
+            raise HAError("; ".join(errors))
+        return merge_entities(states or [], stats or [])
     async def consumption(
         self, entity_ids: list[str], start: date, end: date, tz: str
     ) -> dict[str, Optional[float]]:
@@ -108,3 +146,34 @@ class HAClient:
             }
         )
         return {e: sum_changes(result.get(e, [])) for e in ids}
+
+
+def merge_entities(states: list[dict], stats: list[dict]) -> list[dict]:
+    """Führt Zustände (Sensoren) und Recorder-Statistik-IDs zu einer Auswahlliste zusammen."""
+    stat_by_id = {st.get("statistic_id"): st for st in stats if st.get("statistic_id")}
+    out: dict[str, dict] = {}
+    for st in states:
+        eid = st.get("entity_id", "")
+        if not eid.startswith("sensor."):
+            continue
+        attrs = st.get("attributes") or {}
+        out[eid] = {
+            "entity_id": eid,
+            "name": attrs.get("friendly_name", "") or "",
+            "unit": attrs.get("unit_of_measurement", "") or "",
+            "state": st.get("state"),
+            "device_class": attrs.get("device_class", "") or "",
+            "statistics": attrs.get("state_class") in ("total", "total_increasing") or eid in stat_by_id,
+        }
+    for sid, st in stat_by_id.items():
+        if sid in out:
+            continue
+        out[sid] = {  # Statistik ohne aktuellen Zustand, z. B. externe Statistik eines Adapters
+            "entity_id": sid,
+            "name": st.get("name") or "",
+            "unit": st.get("display_unit_of_measurement") or st.get("statistics_unit_of_measurement") or "",
+            "state": "",
+            "device_class": "",
+            "statistics": True,
+        }
+    return sorted(out.values(), key=lambda x: x["entity_id"])

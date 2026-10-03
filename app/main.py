@@ -163,24 +163,10 @@ async def api_entities(refresh: bool = False):
         return JSONResponse({"error": "Home Assistant ist nicht konfiguriert (HA_URL / HA_TOKEN)."}, 503)
     if refresh or _entity_cache["data"] is None or time.time() - _entity_cache["at"] > 60:
         try:
-            states = await HAClient(config.ha_url, config.ha_token).states()
+            out = await HAClient(config.ha_url, config.ha_token).entities()
         except Exception as e:  # noqa: BLE001
             return JSONResponse({"error": f"Home Assistant nicht erreichbar: {e}"}, 502)
-        out = []
-        for st in states:
-            eid = st.get("entity_id", "")
-            if not eid.startswith("sensor."):
-                continue
-            attrs = st.get("attributes", {})
-            out.append({
-                "entity_id": eid,
-                "name": attrs.get("friendly_name", ""),
-                "unit": attrs.get("unit_of_measurement", "") or "",
-                "state": st.get("state"),
-                "device_class": attrs.get("device_class", "") or "",
-                "statistics": attrs.get("state_class") in ("total", "total_increasing"),
-            })
-        _entity_cache.update(at=time.time(), data=sorted(out, key=lambda x: x["entity_id"]))
+        _entity_cache.update(at=time.time(), data=out)
     return _entity_cache["data"]
 
 

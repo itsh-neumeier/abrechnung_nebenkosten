@@ -46,6 +46,10 @@ def test_full_flow(monkeypatch):
         ]
     monkeypatch.setattr(ha.HAClient, "states", fake_states)
 
+    async def no_ws(self, payloads):
+        raise OSError("kein WebSocket im Test")
+    monkeypatch.setattr(ha.HAClient, "_ws_calls", no_ws)
+
     with TestClient(app) as c:
         ents = c.get("/api/entities?refresh=1").json()
         assert [e["entity_id"] for e in ents] == ["sensor.shelly_eg_energy", "sensor.temp"]
