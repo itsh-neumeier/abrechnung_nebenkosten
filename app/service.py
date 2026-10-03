@@ -18,10 +18,10 @@ from .ha import HAClient
 # Einstellungs-Schlüssel der Haus-Entitäten und ihre Rolle
 HOUSE_ENTITIES = [
     ("entity_grid", "Netzbezug (Stromzähler)"),
-    ("entity_total", "Gesamtverbrauch Haus (Victron)"),
-    ("entity_battery", "Batterie entladen (Victron)"),
-    ("entity_battery_charge", "Batterie geladen gesamt (Victron)"),
-    ("entity_battery_charge_grid", "Batterie aus Netz geladen – dyn. ESS (Victron)"),
+    ("entity_total", "Gesamtverbrauch Haus"),
+    ("entity_battery", "Batterie entladen"),
+    ("entity_battery_charge", "Batterie geladen gesamt"),
+    ("entity_battery_charge_grid", "Batterie aus Netz geladen – dyn. ESS"),
     ("entity_pv_direct", "PV-Direktverbrauch (optional)"),
 ]
 

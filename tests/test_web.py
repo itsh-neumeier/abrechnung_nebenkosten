@@ -153,7 +153,7 @@ def test_three_phase_meters():
                                       "energy_cost_net": "25", "vat_rate": "19"}, follow_redirects=False)
         url = r.headers["location"].split("?")[0]
         page = c.get(url).text
-        assert "Gesamtverbrauch Haus (Victron) – L3" in page
+        assert "Gesamtverbrauch Haus – L3" in page
         assert "Zähler 3EM #1 – L2" in page and "Zähler 3EM #2" in page
         vals = {"val__sensor.tot_l1": "100", "val__sensor.tot_l2": "100", "val__sensor.tot_l3": "100",
                 "val__sensor.p_l1": "10", "val__sensor.p_l2": "20", "val__sensor.p_l3": "30", "val__sensor.extra": "5",

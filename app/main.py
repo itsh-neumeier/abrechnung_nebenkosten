@@ -187,6 +187,35 @@ async def api_entities(refresh: bool = False, s: Session = Depends(get_session))
     return virtual + _entity_cache["data"]
 
 
+@app.get("/api/sources")
+async def api_sources(refresh: bool = False, s: Session = Depends(get_session)):
+    """Auswahl-Dialog: Entitäten je Datenquelle mit Status (eingerichtet / erreichbar / Hinweis)."""
+    st_ = get_settings(s)
+    out = {}
+    if not (config.ha_url and config.ha_token):
+        out["ha"] = {"ok": False, "hint": "HA_URL / HA_TOKEN in der .env bzw. in Portainer setzen.", "entities": []}
+    else:
+        try:
+            if refresh or _entity_cache["data"] is None or time.time() - _entity_cache["at"] > 60:
+                _entity_cache.update(at=time.time(), data=await HAClient(config.ha_url, config.ha_token).entities())
+            out["ha"] = {"ok": True, "hint": "", "entities": _entity_cache["data"]}
+        except Exception as e:  # noqa: BLE001
+            out["ha"] = {"ok": False, "hint": f"Home Assistant nicht erreichbar: {e}", "entities": []}
+    if st_["victron_enabled"]:
+        err = victron.logger.status.get("last_error")
+        out["victron"] = {"ok": True, "hint": f"Logger-Fehler: {err}" if err else "",
+                          "entities": victron.virtual_entities()}
+    else:
+        out["victron"] = {"ok": False, "hint": "Unter Einstellungen → „Victron direkt“ den Logger aktivieren.",
+                          "entities": []}
+    if vrm.configured() and st_["vrm_site_id"]:
+        out["vrm"] = {"ok": True, "hint": "", "entities": vrm.virtual_entities()}
+    else:
+        out["vrm"] = {"ok": False, "hint": "VRM_TOKEN setzen und unter Einstellungen → VRM die Anlage suchen.",
+                      "entities": []}
+    return out
+
+
 # --------------------------------------------------------------------------- Victron direkt
 @app.post("/victron/discover")
 async def victron_discover(request: Request, s: Session = Depends(get_session)):

@@ -100,7 +100,8 @@
   <tr><th>Rolle</th><th>Entität</th><th class="r">Verbrauch</th></tr>
   {% for e, role in entities %}
   {% set vm = (b.values_meta or {}).get(e, {}) %}
-  <tr><td>{{ role }}</td><td><code>{{ e }}</code>
+  {% set src = 'victron' if e.startswith('victron:') else ('vrm' if e.startswith('vrm:') else 'ha') %}
+  <tr><td>{{ role }}</td><td><span class="src-chip src-{{ src }}"><b>{{ {'ha': '🏠 HA', 'victron': '🔌 MODBUS', 'vrm': '☁️ VRM'}[src] }}</b></span> <code>{{ e }}</code>
   {% if vm.method == 'power' %}<br><span class="muted">aus Leistung (Ø kW × h) · {{ (vm.coverage*100)|num(1) }} % der Stunden mit Daten</span>{% endif %}
   {% if vm.method == 'victron' %}<br><span class="muted">Victron direkt · {{ (vm.coverage*100)|num(1) }} % des Zeitraums erfasst</span>{% endif %}</td>
   <td class="r" style="width:160px"><input type="text" name="val__{{ e }}" value="{{ b.values.get(e)|num(3) if b.values.get(e) is not none else '' }}" {{ ro }} style="text-align:right"></td></tr>
