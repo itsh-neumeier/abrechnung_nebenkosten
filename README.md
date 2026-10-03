@@ -55,6 +55,38 @@ Webinterface: `http://<host>:8000`. Daten (SQLite) liegen in `./data`.
 Fertige Images werden per GitHub Actions nach `ghcr.io/itsh-neumeier/abrechnung_nebenkosten` gebaut
 (bei Push auf `main`).
 
+### Portainer
+
+Fertiger Stack in [`portainer/docker-compose.yml`](portainer/docker-compose.yml), nutzt das Image
+`ghcr.io/itsh-neumeier/abrechnung_nebenkosten` (amd64 + arm64).
+
+1. Portainer → **Stacks → Add stack**, Name `stromabrechnung`.
+2. **Repository**: `https://github.com/itsh-neumeier/abrechnung_nebenkosten`,
+   Reference `refs/heads/claude/stromabrechnung-hausparteien-qif4vp` (bzw. Standard-Branch),
+   Compose path `portainer/docker-compose.yml` – *oder* **Web editor** und den Dateiinhalt einfügen.
+3. **Environment variables → Load variables from .env file**: [`portainer/stack.env.example`](portainer/stack.env.example)
+   laden und ausfüllen (`HA_URL`, `HA_TOKEN`, `APP_PASSWORD`, `SMTP_*`, `IMAP_*` …).
+   Portainer speichert sie als `stack.env`, der Container liest sie per `env_file`.
+4. **Deploy the stack** → Webinterface unter `http://<host>:8000` (Port über `APP_PORT`).
+
+Daten (SQLite + Original-Rechnungen) liegen im Volume `stromabrechnung-data`. Updates:
+Stack → **Pull and redeploy** (oder Watchtower, Label ist gesetzt).
+
+### Container-Image (GHCR)
+
+GitHub Actions testet bei jedem Push und baut danach das Image für `linux/amd64` und `linux/arm64`:
+
+| Tag | Wann |
+|---|---|
+| `latest` | Push auf den Standard-Branch |
+| `<branch>` | jeder Branch, z. B. `claude-stromabrechnung-hausparteien-qif4vp` |
+| `sha-<commit>` | jeder Build, für feste Versionen |
+| `1.2.3` | Git-Tag `v1.2.3` |
+
+Manuell starten: *Actions → CI → Run workflow*. Sollte Portainer das Image nicht ziehen dürfen, unter
+*GitHub → Profil → Packages → abrechnung_nebenkosten → Package settings* die Sichtbarkeit auf **Public** stellen
+(oder in Portainer die Registry `ghcr.io` mit einem Token mit `read:packages` hinterlegen).
+
 ### Home-Assistant-Token
 
 HA → Profil → Sicherheit → *Langlebige Zugriffstoken* → erstellen → in `.env` als `HA_TOKEN`.

@@ -1,0 +1,35 @@
+# Portainer-Stack „stromabrechnung“
+#
+# Portainer -> Stacks -> Add stack
+#   Variante A „Repository“: URL dieses Repos, Compose path: portainer/docker-compose.yml
+#   Variante B „Web editor“: Inhalt dieser Datei einfügen
+# Unter „Environment variables“ die Datei portainer/stack.env.example per
+# „Load variables from .env file“ laden und die Werte ausfüllen.
+# Portainer legt sie als stack.env ab – der Container bekommt alle Variablen über env_file.
+
+services:
+  stromabrechnung:
+    image: ghcr.io/itsh-neumeier/abrechnung_nebenkosten:${IMAGE_TAG:-latest}
+    container_name: stromabrechnung
+    restart: unless-stopped
+    env_file:
+      - stack.env
+    environment:
+      DATABASE_URL: sqlite:////data/abrechnung.db
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      - stromabrechnung-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    labels:
+      # optional für Traefik / Watchtower – bei Bedarf anpassen oder entfernen
+      com.centurylinklabs.watchtower.enable: "true"
+
+volumes:
+  stromabrechnung-data:
+    name: stromabrechnung-data

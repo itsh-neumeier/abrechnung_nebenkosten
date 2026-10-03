@@ -56,14 +56,14 @@ def test_full_flow(monkeypatch):
             "entity_battery_charge": "sensor.chg", "entity_battery_charge_grid": "sensor.chg_grid",
             "battery_rate_ct": "8", "pv_rate_ct": "5", "vat_rate": "19",
             "building_title": "Nebenkostenabrechnung",
-            "building_address": "Köttmannsdorfer Hauptstraße 56, 96114 Hirschaid", "building_id": "GID-01",
+            "building_address": "Musterstraße 1, 12345 Musterstadt", "building_id": "GID-01",
             "landlord_name": "Max Vermieter", "landlord_iban": "DE00 1234",
             "mail_auto_send": "1", "water_price_m3": "2,15", "sewage_price_m3": "2,60", "mail_subject": "Abrechnung {zeitraum} – {wohneinheit}",
             "mail_body": "Hallo {name}, Betrag {betrag}", "mail_bcc": "ich@test.de"})
         assert "data-entity" in c.get("/settings").text
 
         c.post("/parties/0", data={"name": "Eigentümer", "is_owner": "1", "active": "1"})
-        c.post("/parties/0", data={"name": "Familie Zweig", "unit_id": "WE-001", "meters": "sensor.eg",
+        c.post("/parties/0", data={"name": "Familie Muster", "unit_id": "WE-001", "meters": "sensor.eg",
                                    "active": "1", "email": "zweig@test.de"})
         c.post("/costs/fixed/0", data={"name": "IPTV", "amount_gross": "9,99", "party_ids": ["2"], "active": "1"})
         c.post("/costs/alloc/0", data={"name": "Warmwasser", "source_type": "energy", "source_entity": "sensor.ww",
@@ -87,7 +87,7 @@ def test_full_flow(monkeypatch):
 
         inv = c.get(f"{url}/invoice/2").text
         assert "Nebenkostenabrechnung" in inv
-        assert "(Köttmannsdorfer Hauptstraße 56, 96114 Hirschaid)" in inv
+        assert "(Musterstraße 1, 12345 Musterstadt)" in inv
         assert "Gebäude ID: GID-01 – Wohneinheiten ID: WE-001" in inv
         assert "PV-Strom direkt" in inv and "IPTV" in inv and "Warmwasser" in inv
         assert "(Wasser 2,15 € + Abwasser 2,60 €)/m³ = 47,50 €" in inv
@@ -102,7 +102,7 @@ def test_full_flow(monkeypatch):
         assert len(SENT) == 1
         msg, rcpt = SENT[0]
         assert rcpt == ["zweig@test.de", "ich@test.de"]
-        assert msg["Subject"] == "Abrechnung 01.09.2026 – 30.09.2026 – Familie Zweig"
+        assert msg["Subject"] == "Abrechnung 01.09.2026 – 30.09.2026 – Familie Muster"
         att = [p for p in msg.iter_attachments()]
         assert att[0].get_filename() == "Nebenkostenabrechnung_Strom_2026-09_WE-001.pdf"
         assert "versendet" in c.get(url).text

@@ -3,7 +3,7 @@
 <h1>{{ "Neue Partei" if pid == 0 else p.name }}</h1>
 <form method="post" class="card">
   <div class="grid">
-    <div><label>Name / Wohneinheit</label><input type="text" name="name" value="{{ p.name }}" required placeholder="Familie Zweig"></div>
+    <div><label>Name / Wohneinheit</label><input type="text" name="name" value="{{ p.name }}" required placeholder="Familie Muster"></div>
     <div><label>Wohneinheiten-ID</label><input type="text" name="unit_id" value="{{ p.unit_id or '' }}" placeholder="WE-001"></div>
     <div><label>Lage (intern)</label><input type="text" name="unit" value="{{ p.unit or '' }}" placeholder="EG links"></div>
     <div><label>Sortierung</label><input type="number" name="sort" value="{{ p.sort or 0 }}"></div>

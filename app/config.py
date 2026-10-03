@@ -28,7 +28,7 @@ class Config:
     imap_sender: str = os.getenv("IMAP_SENDER", "awattar.de").strip()
     imap_interval_min: int = int(os.getenv("IMAP_INTERVAL_MIN", "60") or 60)
     imap_since_days: int = int(os.getenv("IMAP_SINCE_DAYS", "40") or 40)
-    # Basis-URL für Links in Hinweis-Mails, z. B. https://abrechnung.neumeier.cloud
+    # Basis-URL für Links in Hinweis-Mails, z. B. https://abrechnung.example.de
     app_base_url: str = os.getenv("APP_BASE_URL", "").strip().rstrip("/")
     data_dir: str = os.getenv("DATA_DIR", "")
 
