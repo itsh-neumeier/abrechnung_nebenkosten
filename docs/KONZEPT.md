@@ -20,6 +20,7 @@
 | Warmwasserbereitung | kWh des Shelly × Hausstrom-Mix, nach festen Prozenten |
 | Fixkosten | gleichmäßig pro Partei (weitere Fixkosten optional nur für ausgewählte Parteien) |
 | Restverbrauch (Allgemeinstrom usw.) | an Eigentümer/Hauptpartei |
+| Eigentümer (eigene Anlage) | zahlt nur Netzstrom; PV direkt, Batterie- und Graustrom nur als Infozeile ohne Kosten; bei Strom-Umlagen nur der Netzanteil (abschaltbar) |
 | Ausgabe | PDF je Partei (+ ZIP), Web-Vorschau, E-Mail |
 | Betrieb | Docker, Webinterface, SQLite-Volume |
 | HA-Daten | Langzeitstatistik per WebSocket (`recorder/statistics_during_period`), nicht History (10-Tage-Purge) |

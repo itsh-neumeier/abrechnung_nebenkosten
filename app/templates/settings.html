@@ -157,6 +157,7 @@
     <div><label>MwSt.-Satz Stromrechnung (%)</label><input type="text" name="vat_rate" value="{{ st.vat_rate }}"></div>
     <div><label>Zahlungsziel (Tage)</label><input type="text" name="payment_days" value="{{ st.payment_days }}"></div>
   </div>
+  <div class="check"><input type="checkbox" name="owner_free_own_energy" id="ofe" {% if st.owner_free_own_energy %}checked{% endif %}><label for="ofe" style="margin:0">Eigentümer zahlt keinen PV-, Batterie- und Graustrom (eigene Anlage) – nur Netzstrom, auch bei Strom-Umlagen</label></div>
   <p class="muted">PV-Strom direkt = Börsenpreis + PV-Satz · Batteriestrom aus PV = Börsenpreis + PV-Satz + Batteriesatz ·
   Graustrom (Batterie aus Netz) = Börsenpreis + Batteriesatz · Netzstrom = Ø Arbeitspreis brutto.</p>
 </div>

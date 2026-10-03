@@ -76,6 +76,7 @@ class BillCfg:
     wear_rate_ct: float = 0.0  # Batterieverschleißsatz ct/kWh (ohne MwSt.)
     spot_price_ct: float = 0.0  # Ø Börsenpreis netto ct/kWh lt. Rechnung
     pv_rate_ct: float = 0.0  # PV-Bereitstellungssatz ct/kWh (ohne MwSt.)
+    owner_free_own_energy: bool = True  # Eigentümer zahlt keinen PV-/Batterie-/Graustrom (eigene Anlage)
 
 
 @dataclass
@@ -308,14 +309,24 @@ def compute(
     for p in parties:
         cost = energy_cost(party_kwh[p.id])
         is_rest = owner is not None and p.id == owner.id and rest_kwh is not None
+        own_free = bill.owner_free_own_energy and owner is not None and p.id == owner.id
         for k, label in SOURCES:
             q, eur = cost[k]
             if k != "grid" and share[k] <= 0:
                 continue
+            if own_free and k != "grid":
+                continue  # Eigentümer: eigene Anlage, wird unten als Infozeile ohne Berechnung ausgewiesen
             lines[p.id].append(
                 Line(label + (" (Restverbrauch Haus)" if is_rest and k == "grid" else ""), _r(eur), _r(q, 3),
                      "kWh", prices[k], note=price_notes[k], vat_included=(k == "grid"))
             )
+
+        if own_free:
+            own_kwh = sum(cost[k][0] for k, _ in SOURCES if k != "grid")
+            if own_kwh > 0:
+                lines[p.id].append(Line(
+                    "Eigenverbrauch aus eigener Anlage (PV direkt, Batterie, Graustrom)", 0.0, _r(own_kwh, 3), "kWh",
+                    None, note="Eigentümer – ohne Berechnung", vat_included=False))
 
     # --- Fixkosten Stromanbieter (Rechnung) --------------------------------------
     if parties and bill.fixed_cost_net:
@@ -337,10 +348,14 @@ def compute(
 
     # --- Umlagen -----------------------------------------------------------------
     for a in allocations:
+        pot_owner = None  # Strom-Umlage: Eigentümer zahlt nur den Netzanteil
         if a.source_type == "energy":
             src_kwh = _sum(values, a.source_entity) or 0.0
-            pot = sum(eur for _, eur in energy_cost(src_kwh).values())
+            ec = energy_cost(src_kwh)
+            pot = sum(eur for _, eur in ec.values())
             pot_desc = f"{_de(src_kwh, 1)} kWh = {_de(pot)} €"
+            if bill.owner_free_own_energy and owner is not None:
+                pot_owner = ec["grid"][1]
         elif a.source_type == "quantity":
             qty = _sum(values, a.source_entity) or 0.0
             price = sum(p for _, p in a.price_parts) if a.price_parts else a.amount
@@ -385,7 +400,11 @@ def compute(
                 note = f"{qty} ({_pct(frac)}) von {pot_desc}"
             else:
                 note = f"{_pct(frac)} von {pot_desc}"
-            lines[p.id].append(Line(a.name, _r(pot * frac), note=note))
+            amount = pot * frac
+            if pot_owner is not None and p.id == owner.id:
+                amount = pot_owner * frac
+                note += f" – Eigentümer: nur Netzanteil {_de(pot_owner)} €"
+            lines[p.id].append(Line(a.name, _r(amount), note=note))
 
     # --- Ergebnis ----------------------------------------------------------------
     result_parties = []

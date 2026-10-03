@@ -179,3 +179,31 @@ def test_meter_used_when_bill_has_no_kwh(setup):
     bill.grid_kwh = 0
     src = {s["key"]: s for s in run(bill, parties, values)["sources"]}
     assert src["grid"]["kwh"] == pytest.approx(500 - 100)  # Zähler 500 kWh
+
+
+def test_owner_pays_only_grid(setup):
+    """Eigentümer (eigene Anlage): nur Netzstrom, PV/Batterie/Graustrom als Infozeile ohne Kosten."""
+    bill, parties, values = setup
+    values.update({"sensor.ww": 100.0})
+    alloc = AllocationCfg(1, "Warmwasser", "energy", source_entity="sensor.ww", key_type="percent",
+                          key={1: 50, 2: 50})
+    r = run(bill, parties, values, allocs=[alloc])
+    owner, eg, og = r["parties"]
+    a = amounts(owner)
+    assert "PV-Strom direkt" not in a and "Batteriestrom aus PV" not in a
+    assert a["Netzstrom (Restverbrauch Haus)"] == pytest.approx(round(500 * 0.4 * 0.2975, 2))
+    info = next(l for l in owner["lines"] if l["label"].startswith("Eigenverbrauch"))
+    assert info["amount"] == 0 and info["quantity"] == pytest.approx(500 * 0.6)
+    # Umlage: Eigentümer zahlt nur den Netzanteil (40 kWh × 29,75 ct), Mieter den vollen Mix
+    assert a["Warmwasser"] == pytest.approx(round(40 * 0.2975 * 0.5, 2))
+    pot = 40 * 0.2975 + 35 * 0.15 + 12.5 * 0.23 + 12.5 * 0.18
+    assert amounts(eg)["Warmwasser"] == pytest.approx(round(pot * 0.5, 2))
+    assert "PV-Strom direkt" in amounts(eg)  # Mieter zahlt weiterhin den Mix
+
+
+def test_owner_free_can_be_disabled(setup):
+    bill, parties, values = setup
+    bill.owner_free_own_energy = False
+    owner = run(bill, parties, values)["parties"][0]
+    assert "PV-Strom direkt" in amounts(owner)
+    assert not any(l["label"].startswith("Eigenverbrauch") for l in owner["lines"])

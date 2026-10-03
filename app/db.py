@@ -173,6 +173,7 @@ SETTING_DEFAULTS = {
     "water_price_m3": "",  # Trinkwasser €/m³ brutto
     "sewage_price_m3": "",  # Abwasser €/m³ brutto
     "vat_rate": "19",
+    "owner_free_own_energy": "1",  # Eigentümer zahlt keinen PV-/Batterie-/Graustrom
     # Objekt
     "building_title": "Nebenkostenabrechnung",
     "building_address": "",

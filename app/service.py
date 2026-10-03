@@ -252,6 +252,7 @@ def recompute(s: Session, b: Billing) -> dict:
         vat_rate=b.vat_rate,
         wear_rate_ct=b.battery_rate_ct,
         spot_price_ct=b.spot_price_ct or 0.0,
+        owner_free_own_energy=bool(st["owner_free_own_energy"]),
         pv_rate_ct=b.pv_rate_ct or 0.0,
     )
     result = calc.compute(bill, parties, fixed, allocs, b.values or {}, energy_entities(st))
