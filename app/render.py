@@ -9,6 +9,7 @@ from typing import Optional
 
 from fastapi.templating import Jinja2Templates
 
+from . import charts
 from .db import Billing
 
 BASE = Path(__file__).parent
@@ -50,6 +51,8 @@ def fmt_date(d) -> str:
 templates.env.filters["num"] = fmt_num
 templates.env.filters["eur"] = fmt_eur
 templates.env.filters["de_date"] = fmt_date
+templates.env.globals["chart_bar"] = charts.bar_chart
+templates.env.globals["chart_stacked"] = charts.stacked_chart
 
 
 def party_result(b: Billing, pid: int) -> Optional[dict]:

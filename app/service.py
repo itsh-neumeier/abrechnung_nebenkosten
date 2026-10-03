@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from datetime import datetime
+from typing import Optional
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -282,6 +283,7 @@ def recompute(s: Session, b: Billing) -> dict:
     extra = {p.id: p for p in db_parties}
     for rp in result["parties"]:
         rp["unit_id"] = extra[rp["id"]].unit_id or ""
+    result["daily"] = daily_report(s, b, st, db_parties, allocs)
     result["landlord"] = {
         k: st[k] for k in ("landlord_name", "landlord_address", "landlord_contact", "landlord_iban",
                            "payment_days", "invoice_text")
@@ -518,3 +520,64 @@ async def _vrm_rows(st: dict, ha_specs: dict, ha_vals: dict, bounds, ha_error: s
                          "deviation": (v / ha_value - 1) if (v is not None and ha_value) else None,
                          "ha_error": ha_error})
     return rows
+
+
+def daily_report(s: Session, b: Billing, st: dict, db_parties: list, allocs: list) -> dict:
+    """Tageswerte für Seite 2 der Abrechnung: Verbrauch je Partei und Energiemix des Hauses."""
+    from datetime import timedelta as _td
+
+    vm = b.values_meta or {}
+    days = []
+    d = b.period_start
+    while d <= b.period_end:
+        days.append(d.isoformat())
+        d += _td(days=1)
+
+    def daily_of(spec: str) -> Optional[dict[str, float]]:
+        ids = calc.split_ids(spec)
+        if not ids or any("daily" not in (vm.get(e) or {}) for e in ids):
+            return None
+        out: dict[str, float] = {}
+        for e in ids:
+            for day, v in vm[e]["daily"].items():
+                out[day] = out.get(day, 0.0) + v
+        return out
+
+    owner = next((p for p in db_parties if p.is_owner), None)
+    parties: dict[int, list] = {}
+    for p in db_parties:
+        if owner is not None and p.id == owner.id:
+            continue
+        series = [daily_of(m) for m in (p.meters or [])]
+        if p.meters and all(x is not None for x in series):
+            parties[p.id] = [round(sum(x.get(day, 0.0) for x in series), 3) for day in days]
+    total = daily_of(st["entity_total"]) if st["entity_total"] else None
+    if owner is not None and total is not None and all(
+            (p.id in parties) for p in db_parties if p.id != owner.id and p.meters):
+        alloc_daily = [daily_of(a.source_entity) for a in allocs if a.source_type == "energy" and a.source_entity]
+        if all(x is not None for x in alloc_daily):
+            parties[owner.id] = [round(max(0.0, total.get(day, 0.0)
+                                           - sum(parties[pid][i] for pid in parties)
+                                           - sum(x.get(day, 0.0) for x in alloc_daily)), 3)
+                                 for i, day in enumerate(days)]
+
+    mix = None
+    ent = energy_entities(st)
+    needed = [x for x in (ent.total, ent.grid, ent.battery_discharge) if x]
+    if ent.total and ent.grid and all(daily_of(x) is not None for x in needed):
+        specs = [x for x in (ent.total, ent.grid, ent.battery_discharge, ent.battery_charge_total,
+                             ent.battery_charge_grid, ent.pv_direct) if x]
+        per_spec = {x: daily_of(x) or {} for x in specs}
+        mix = {k: [] for k, _ in calc.SOURCES}
+        for day in days:
+            vals = {}
+            for spec, series in per_spec.items():
+                ids = calc.split_ids(spec)
+                vals[ids[0]] = series.get(day, 0.0)  # Summe einer Angabe auf die erste ID legen
+                for extra in ids[1:]:
+                    vals[extra] = 0.0
+            day_bill = calc.BillCfg(grid_kwh=0, energy_cost_net=0, fixed_cost_net=0, vat_rate=0)
+            m = calc.energy_mix(day_bill, ent, vals, [])
+            for k, _ in calc.SOURCES:
+                mix[k].append(round(m["kwh"][k], 3))
+    return {"days": days, "parties": {str(k): v for k, v in parties.items()}, "mix": mix}

@@ -78,6 +78,28 @@ def glitch_corrected_changes(rows: list[dict]) -> tuple[list[float], int]:
     return out, fixed
 
 
+def daily_values(rows: list[dict], tz: str) -> dict[str, float]:
+    """Tageswerte (lokales Datum, ISO) aus stündlichen Statistikzeilen – gleiche Logik wie evaluate_rows."""
+    zone = ZoneInfo(tz)
+    out: dict[str, float] = {}
+    if any(r.get("change") is not None for r in rows):
+        with_change = [r for r in rows if r.get("change") is not None]
+        changes, _ = glitch_corrected_changes(with_change)
+        pairs = zip(with_change, changes)
+    elif any(r.get("mean") is not None for r in rows):
+        pairs = ((r, max(0.0, float(r["mean"]))) for r in rows if r.get("mean") is not None)
+    else:
+        return out
+    for r, v in pairs:
+        start = r.get("start")
+        if start is None:
+            continue
+        ts = start / 1000 if isinstance(start, (int, float)) else datetime.fromisoformat(start).timestamp()
+        d = datetime.fromtimestamp(ts, zone).date().isoformat()
+        out[d] = out.get(d, 0.0) + v
+    return {d: round(v, 4) for d, v in sorted(out.items())}
+
+
 def evaluate_rows(rows: list[dict], expected_hours: float) -> tuple[Optional[float], dict]:
     """Verbrauch aus stündlichen Statistikzeilen.
 
@@ -223,7 +245,10 @@ class HAClient:
         )
         values, meta = {}, {}
         for e in ids:
-            values[e], meta[e] = evaluate_rows(result.get(e, []), expected)
+            rows = result.get(e, [])
+            values[e], meta[e] = evaluate_rows(rows, expected)
+            if values[e] is not None:
+                meta[e]["daily"] = daily_values(rows, tz)
         return values, meta
 
 

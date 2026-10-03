@@ -99,7 +99,7 @@ def test_consumption_detail_mixed(monkeypatch):
     assert seen["units"]["power"] == "kW" and "mean" in seen["types"]
     assert vals == {"sensor.leistung": 186.0, "sensor.zaehler": 15.0}
     assert meta["sensor.leistung"]["expected_hours"] == 745  # Oktober mit Zeitumstellung
-    assert meta["sensor.zaehler"] == {"method": "counter"}
+    assert meta["sensor.zaehler"]["method"] == "counter"
 
 
 def test_counter_glitch_correction():
@@ -126,3 +126,17 @@ def test_real_meter_exchange_kept():
     rows = [{"change": 1.0, "state": 500.0}, {"change": 0.5, "state": 0.5}, {"change": 1.0, "state": 1.5}]
     kwh, meta = evaluate_rows(rows, 3)
     assert kwh == pytest.approx(2.5) and "glitches" not in meta
+
+
+def test_daily_values_local_days_and_glitches():
+    from app.ha import daily_values
+
+    # 31.08. 22:00 UTC = 01.09. 00:00 Ortszeit
+    rows = [
+        {"start": 1788213600000 - 3600_000, "change": 1.0, "state": 100.0},   # 31.08. 23:00 lokal
+        {"start": 1788213600000, "change": 2.0, "state": 102.0},              # 01.09. 00:00 lokal
+        {"start": 1788213600000 + 3600_000, "change": 102.5, "state": 102.5},  # Fehlsprung -> 0,5
+    ]
+    assert daily_values(rows, "Europe/Berlin") == {"2026-08-31": 1.0, "2026-09-01": 2.5}
+    assert daily_values([{"start": 1788213600000, "mean": 0.5}, {"start": 1788213600000 + 3600_000, "mean": -1}],
+                        "Europe/Berlin") == {"2026-09-01": 0.5}

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -103,13 +104,19 @@ class VRMClient:
         data = await self._get(f"/users/{uid}/installations")
         return [{"id": i.get("idSite"), "name": i.get("name", "")} for i in data.get("records", [])]
 
-    async def totals(self, site: int, t0: datetime, t1: datetime) -> dict[str, float]:
+    async def stats(self, site: int, t0: datetime, t1: datetime) -> tuple[dict[str, float], dict[str, list]]:
         data = await self._get(f"/installations/{site}/stats", {
             "type": "kwh", "interval": "hours",
             "start": int(t0.timestamp()), "end": int(t1.timestamp()),
         })
         tot = data.get("totals") or {}
-        return {k: float(v) for k, v in tot.items() if isinstance(v, (int, float)) and k in CODES}
+        recs = data.get("records") or {}
+        totals = {k: float(v) for k, v in tot.items() if isinstance(v, (int, float)) and k in CODES}
+        records = {k: v for k, v in recs.items() if k in CODES and isinstance(v, list)}
+        return totals, records
+
+    async def totals(self, site: int, t0: datetime, t1: datetime) -> dict[str, float]:
+        return (await self.stats(site, t0, t1))[0]
 
 
 def resolve(totals: dict[str, float], key: str) -> Optional[float]:
@@ -130,9 +137,28 @@ async def consumption(site: str, entity_ids: list[str], start: Optional[date], e
     if not site:
         raise VRMError("VRM-Anlagen-ID fehlt (Einstellungen → VRM).")
     t0, t1 = bounds or period_bounds(start, end, tz)
-    totals = await VRMClient(config.vrm_token).totals(int(site), t0, t1)
+    totals, records = await VRMClient(config.vrm_token).stats(int(site), t0, t1)
+    zone = ZoneInfo(tz)
+    per_code_day: dict[str, dict[str, float]] = {}
+    for code, rows in records.items():
+        days = per_code_day.setdefault(code, {})
+        for row in rows:
+            if not isinstance(row, (list, tuple)) or len(row) < 2 or row[1] is None:
+                continue
+            d = datetime.fromtimestamp(row[0] / 1000, zone).date().isoformat()
+            days[d] = days.get(d, 0.0) + float(row[1])
     values = {e: resolve(totals, e[len(PREFIX):]) for e in entity_ids}
-    meta = {e: {"method": "vrm"} for e in entity_ids if values[e] is not None}
+    meta = {}
+    for e in entity_ids:
+        if values[e] is None:
+            continue
+        key = e[len(PREFIX):]
+        codes = [key] if key in CODES else DERIVED.get(key, ([], ""))[0]
+        daily: dict[str, float] = {}
+        for c in codes:
+            for d, v in per_code_day.get(c, {}).items():
+                daily[d] = daily.get(d, 0.0) + v
+        meta[e] = {"method": "vrm", "daily": {d: round(v, 4) for d, v in sorted(daily.items())}}
     return values, meta
 
 

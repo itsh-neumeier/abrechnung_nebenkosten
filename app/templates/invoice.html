@@ -24,6 +24,13 @@
   .box td { padding: .5mm 1mm; border: none }
   .foot { margin-top: 8mm; font-size: 9pt; white-space: pre-line }
   .small { font-size: 8pt; color: #555; white-space: pre-line; margin-top: 6mm }
+  .page2 { {{ 'page-break-before: always;' if pdf else 'margin-top: 14mm; border-top: 1px dashed #bbb; padding-top: 6mm;' }} }
+  .page2 h2 { font-size: 13pt; margin: 0 0 1mm } .page2 h3 { font-size: 10.5pt; margin: 6mm 0 1mm }
+  .chart { margin: 2mm 0 1mm } .kpis { font-size: 8.5pt; color: #333; margin-bottom: 2mm }
+  table.days { width: 100%; border-collapse: collapse; font-size: 7.5pt; margin-top: 3mm }
+  table.days td, table.days th { padding: .6mm 1.5mm; border-bottom: .3pt solid #ddd; text-align: right }
+  table.days th { color: #555; font-weight: normal; border-bottom: .6pt solid #999 }
+  table.days td.d, table.days th.d { text-align: left; color: #555 }
 </style>
 </head>
 <body>
@@ -77,5 +84,36 @@ Kosten und enthalten keine Mehrwertsteuer (Netzanteile von Strom-Umlagen enthalt
 {{ ll.landlord_iban }}{% else %}.{% endif %}
 Verwendungszweck: Strom {{ b.period_start.strftime('%m/%Y') }} {{ p.unit_id or p.name }}</div>
 {% if ll.landlord_name %}<div class="small">{{ ll.landlord_name }}{% if ll.landlord_address %}, {{ ll.landlord_address|replace('\n', ', ') }}{% endif %}{% if ll.landlord_contact %} · {{ ll.landlord_contact }}{% endif %}</div>{% endif %}
+{% set dly = r.daily or {} %}
+{% set mine = (dly.parties or {}).get(p.id|string) %}
+{% if mine or dly.mix %}
+<div class="page2">
+  <h2>Detailaufstellung – Verbrauch je Tag</h2>
+  <div class="kpis">{{ p.name }}{% if p.unit_id %} ({{ p.unit_id }}){% endif %} · {{ b.period_start.strftime('%d.%m.%Y') }} – {{ b.period_end.strftime('%d.%m.%Y') }}</div>
+  {% if mine %}
+  {% set total = mine|sum %}
+  <h3>Ihr Stromverbrauch je Tag{% if p.is_owner %} (Restverbrauch Haus){% endif %}</h3>
+  <div class="kpis">Summe {{ total|num(2) }} kWh · Ø {{ (total / mine|length)|num(2) }} kWh/Tag · höchster Tag {{ mine|max|num(2) }} kWh</div>
+  <div class="chart">{{ chart_bar(dly.days, mine)|safe }}</div>
+  {% endif %}
+  {% if dly.mix %}
+  <h3>Energiemix des Hauses je Tag</h3>
+  <div class="kpis">Herkunft des im Haus verbrauchten Stroms laut Messwerten (Netz, PV direkt, Batterie). Ihr Verbrauch
+  wird mit dem Mix des gesamten Abrechnungszeitraums berechnet (siehe Seite 1).</div>
+  <div class="chart">{{ chart_stacked(dly.days, dly.mix)|safe }}</div>
+  {% endif %}
+  {% if mine %}
+  {% set n = dly.days|length %}{% set rows = ((n + 3) // 4) %}
+  <table class="days">
+    <tr>{% for c in range(4) %}<th class="d">Tag</th><th>kWh</th>{% endfor %}</tr>
+    {% for r_ in range(rows) %}
+    <tr>{% for c in range(4) %}{% set i = c * rows + r_ %}
+      {% if i < n %}<td class="d">{{ dly.days[i][8:10] }}.{{ dly.days[i][5:7] }}.</td><td>{{ mine[i]|num(2) }}</td>{% else %}<td></td><td></td>{% endif %}
+    {% endfor %}</tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</div>
+{% endif %}
 </body>
 </html>

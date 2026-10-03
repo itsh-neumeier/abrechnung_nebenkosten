@@ -28,7 +28,7 @@ def test_totals_and_derived(monkeypatch):
     assert vals["vrm:grid_import"] == pytest.approx(30.9)
     assert vals["vrm:consumption"] == pytest.approx(1315.1)
     assert vals["vrm:Gb"] == 6.5 and vals["vrm:battery_discharged"] == pytest.approx(549.7)
-    assert vals["vrm:unbekannt"] is None and meta["vrm:Gb"] == {"method": "vrm"}
+    assert vals["vrm:unbekannt"] is None and meta["vrm:Gb"]["method"] == "vrm"
 
 
 def test_installations(monkeypatch):

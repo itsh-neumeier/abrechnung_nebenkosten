@@ -334,8 +334,14 @@ def consumption(s: Session, entity_ids: list[str], start: Optional[date], end: O
         secs = sum(r.seconds for r in rows)
         first = min(r.start for r in rows)
         values[e] = sum(r.kwh for r in rows)
+        zone = t0.tzinfo
+        daily: dict[str, float] = {}
+        for r in rows:
+            d = r.start.replace(tzinfo=timezone.utc).astimezone(zone).date().isoformat()
+            daily[d] = daily.get(d, 0.0) + r.kwh
         meta[e] = {"method": "victron", "coverage": min(1.0, secs / total_s) if total_s else 1.0,
-                   "since": first.isoformat(timespec="minutes")}
+                   "since": first.isoformat(timespec="minutes"),
+                   "daily": {d: round(v, 4) for d, v in sorted(daily.items())}}
     return values, meta
 
 
