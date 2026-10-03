@@ -205,6 +205,11 @@ def recompute(s: Session, b: Billing) -> dict:
     )
     result = calc.compute(bill, parties, fixed, allocs, b.values or {}, energy_entities(st))
     for e, m in (b.values_meta or {}).items():
+        if m.get("glitches") and e in (b.values or {}):
+            result["warnings"].append(
+                f"{e}: {m['glitches']} Fehlsprung/-sprünge in der HA-Statistik erkannt und herausgerechnet "
+                "(Sensor fiel kurz auf 0 / nicht verfügbar). Ggf. einen stabileren Sensor wählen."
+            )
         if m.get("method") == "victron" and m.get("coverage", 1) < 0.98 and e in (b.values or {}):
             result["warnings"].append(
                 f"{e}: Victron-Logger hat nur {m['coverage']:.0%} des Zeitraums erfasst (Daten ab {m.get('since', '?')}) "

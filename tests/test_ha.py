@@ -1,3 +1,5 @@
+import pytest
+
 from datetime import date
 
 from app.ha import period_bounds, sum_changes
@@ -96,3 +98,29 @@ def test_consumption_detail_mixed(monkeypatch):
     assert vals == {"sensor.leistung": 186.0, "sensor.zaehler": 15.0}
     assert meta["sensor.leistung"]["expected_hours"] == 745  # Oktober mit Zeitumstellung
     assert meta["sensor.zaehler"] == {"method": "counter"}
+
+
+def test_counter_glitch_correction():
+    """JUDO-Wasserzähler August 2026: Sensor fiel kurz auf 0, HA verbuchte den vollen Zählerstand."""
+    from app.ha import evaluate_rows
+
+    rows = [
+        {"change": 0.10, "state": 301.60},
+        {"change": 0.04, "state": 301.64},
+        {"change": 301.74, "state": 301.735},   # Fehlsprung: echte Änderung 0,095
+        {"change": 0.20, "state": 301.935},
+        {"change": 0.0, "state": 0.0},          # Einbruch auf 0 am Stundenende
+        {"change": 303.70, "state": 303.699},   # zurück: echte Änderung 1,764
+        {"change": 2.18, "state": 305.879},     # großer, aber echter Verbrauch
+    ]
+    kwh, meta = evaluate_rows(rows, 7)
+    assert kwh == pytest.approx(0.10 + 0.04 + 0.095 + 0.20 + 0.0 + 1.764 + 2.18, abs=1e-3)
+    assert meta == {"method": "counter", "glitches": 2}
+
+
+def test_real_meter_exchange_kept():
+    from app.ha import evaluate_rows
+
+    rows = [{"change": 1.0, "state": 500.0}, {"change": 0.5, "state": 0.5}, {"change": 1.0, "state": 1.5}]
+    kwh, meta = evaluate_rows(rows, 3)
+    assert kwh == pytest.approx(2.5) and "glitches" not in meta

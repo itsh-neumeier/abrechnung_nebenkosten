@@ -44,6 +44,40 @@ def sum_changes(rows: list[dict]) -> Optional[float]:
     return sums[-1] - sums[0]
 
 
+def glitch_corrected_changes(rows: list[dict]) -> tuple[list[float], int]:
+    """Stündliche Änderungen eines Zählers, bereinigt um Fehlsprünge der HA-Statistik.
+
+    Fällt ein Zählersensor kurz auf 0 bzw. „nicht verfügbar“ und kehrt dann zum alten Stand
+    zurück, wertet Home Assistant das als Zählertausch und verbucht den kompletten Zählerstand
+    als Verbrauch. Erkennung: die Änderung einer Stunde entspricht (fast) dem ganzen Zählerstand,
+    der Stand liegt aber praktisch auf dem Stand vor dem Einbruch -> echte Änderung = Differenz.
+    Ein echter Zählertausch (Zähler läuft danach von 0 weiter) bleibt unverändert.
+    """
+    out, fixed = [], 0
+    ref = None  # letzter plausibler Zählerstand vor einem Einbruch
+    low_hours = 0
+    for r in rows:
+        ch, st = r.get("change"), r.get("state")
+        if ch is None:
+            continue
+        ch = float(ch)
+        if st is not None and ref is not None and ch > 0 and ch >= 0.8 * float(st):
+            diff = float(st) - ref
+            if abs(diff) <= max(0.05 * ref, 0.1 * ch) and ch > 5 * max(abs(diff), 1e-9):
+                ch = max(0.0, diff)
+                fixed += 1
+        out.append(ch)
+        if st is not None:
+            st = float(st)
+            if ref is None or st >= 0.5 * ref:
+                ref, low_hours = st, 0
+            else:  # Einbruch – nach 48 h dauerhaft niedrig gilt er als echter Zählertausch
+                low_hours += 1
+                if low_hours > 48:
+                    ref, low_hours = st, 0
+    return out, fixed
+
+
 def evaluate_rows(rows: list[dict], expected_hours: float) -> tuple[Optional[float], dict]:
     """Verbrauch aus stündlichen Statistikzeilen.
 
@@ -55,7 +89,13 @@ def evaluate_rows(rows: list[dict], expected_hours: float) -> tuple[Optional[flo
     """
     if not rows:
         return None, {}
-    if any(r.get("change") is not None or r.get("sum") is not None for r in rows):
+    if any(r.get("change") is not None for r in rows):
+        changes, fixed = glitch_corrected_changes(rows)
+        meta = {"method": "counter"}
+        if fixed:
+            meta["glitches"] = fixed
+        return sum(changes), meta
+    if any(r.get("sum") is not None for r in rows):
         return sum_changes(rows), {"method": "counter"}
     means = [float(r["mean"]) for r in rows if r.get("mean") is not None]
     if not means:
@@ -177,7 +217,7 @@ class HAClient:
                 "end_time": t1.isoformat(),
                 "statistic_ids": ids,
                 "period": "hour",
-                "types": ["change", "sum", "mean"],
+                "types": ["change", "sum", "mean", "state"],
                 "units": {"energy": "kWh", "volume": "m³", "power": "kW"},
             }
         )
