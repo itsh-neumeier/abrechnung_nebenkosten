@@ -248,6 +248,8 @@ def merge_entities(states: list[dict], stats: list[dict]) -> list[dict]:
     for sid, st in stat_by_id.items():
         if sid in out:
             continue
+        if states and "." in sid and ":" not in sid:
+            continue  # verwaiste Statistik einer gelöschten/umbenannten Entität – nicht anbieten
         out[sid] = {  # Statistik ohne aktuellen Zustand, z. B. externe Statistik eines Adapters
             "entity_id": sid,
             "name": st.get("name") or "",

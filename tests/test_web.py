@@ -191,3 +191,43 @@ def test_power_sensor_coverage_warning(monkeypatch):
             r = service.recompute(s, b)
             assert b.values["sensor.p_power"] == 50.0
             assert any("600 von 720 Stunden" in w for w in r["warnings"])
+
+
+def test_fetch_values_reasons_and_no_overwrite(monkeypatch):
+    """VRM- und HA-Werte gemeinsam: VRM darf nicht überschrieben werden; fehlende Werte mit Grund."""
+    import asyncio
+    from datetime import date
+
+    from app import service, vrm
+    from app.db import Billing, Party, SessionLocal, save_settings
+
+    async def ha_detail(self, ids, start, end, tz, bounds=None):
+        return ({i: (5.0 if i == "sensor.da" else None) for i in ids}, {i: {"method": "counter"} for i in ids})
+
+    async def ha_entities(self):
+        return [{"entity_id": "sensor.da", "state": "1"},
+                {"entity_id": "sensor.kg_bad_dryer_energie", "state": "unavailable"}]
+
+    async def vrm_cons(site, ids, start, end, tz, bounds=None):
+        return {i: 42.0 for i in ids}, {i: {"method": "vrm"} for i in ids}
+
+    monkeypatch.setattr(ha.HAClient, "consumption_detail", ha_detail)
+    monkeypatch.setattr(ha.HAClient, "entities", ha_entities)
+    monkeypatch.setattr(vrm, "consumption", vrm_cons)
+    monkeypatch.setattr(vrm, "configured", lambda: True)
+    with TestClient(app):
+        with SessionLocal() as s:
+            save_settings(s, {"entity_total": "vrm:consumption", "vrm_site_id": "1"})
+            s.add(Party(name="P", meters=["sensor.da", "sensor.dryer_energie", "sensor.leer"], active=True,
+                        is_owner=False, sort=0))
+            b = Billing(period_start=date(2026, 8, 1), period_end=date(2026, 8, 31), grid_kwh=10,
+                        energy_cost_net=3, values={}, amounts={}, result={}, sent={})
+            s.add(b)
+            s.commit()
+            missing = asyncio.run(service.fetch_values(s, b))
+            assert b.values["vrm:consumption"] == 42.0 and b.values["sensor.da"] == 5.0
+            assert "umbenannt" in missing["sensor.dryer_energie"]
+            assert "sensor.kg_bad_dryer_energie" in missing["sensor.dryer_energie"]
+            assert "umbenannt" in missing["sensor.leer"]
+            r = service.recompute(s, b)
+            assert any("umbenannt" in w for w in r["warnings"])

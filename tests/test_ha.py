@@ -31,7 +31,8 @@ def test_entities_ws_skips_rest_500(monkeypatch):
                              "state_class": "total_increasing"}},
              {"entity_id": "light.x", "state": "on", "attributes": {}}],
             [{"statistic_id": "sensor.shelly_energy", "name": "Shelly"},
-             {"statistic_id": "sensor.wasser_m3", "name": "Wasserzähler", "display_unit_of_measurement": "m³"}],
+             {"statistic_id": "judo:wasser_m3", "name": "Wasserzähler", "display_unit_of_measurement": "m³"},
+             {"statistic_id": "sensor.alt_umbenannt", "name": "verwaist"}],
         ]
 
     async def rest_states(self):
@@ -40,8 +41,9 @@ def test_entities_ws_skips_rest_500(monkeypatch):
     monkeypatch.setattr(HAClient, "_ws_calls", ws_calls)
     monkeypatch.setattr(HAClient, "states", rest_states)
     ents = asyncio.run(HAClient("http://ha", "t").entities())
-    assert [e["entity_id"] for e in ents] == ["sensor.shelly_energy", "sensor.wasser_m3"]
-    assert ents[1]["unit"] == "m³" and ents[1]["statistics"]
+    # externe Statistik (mit „:“) bleibt, verwaiste sensor.*-Statistik ohne Entität wird nicht angeboten
+    assert [e["entity_id"] for e in ents] == ["judo:wasser_m3", "sensor.shelly_energy"]
+    assert ents[0]["unit"] == "m³" and ents[0]["statistics"]
 
 
 def test_entities_falls_back_to_rest(monkeypatch):

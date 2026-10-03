@@ -446,8 +446,7 @@ async def billing_create(request: Request, s: Session = Depends(get_session)):
     msg = "Angelegt"
     if form.get("fetch") and ((config.ha_url and config.ha_token) or st["victron_enabled"]):
         try:
-            missing = await service.fetch_values(s, b)
-            msg = "Werte aus Home Assistant geladen" + (f" (ohne Statistik: {', '.join(missing)})" if missing else "")
+            msg = service.fetch_message(await service.fetch_values(s, b))
         except Exception as e:  # noqa: BLE001
             msg = f"Home Assistant nicht erreichbar: {e}"
     service.recompute(s, b)
@@ -518,8 +517,7 @@ async def billing_save(request: Request, bid: int, s: Session = Depends(get_sess
     msg = "Gespeichert"
     if action == "fetch":
         try:
-            missing = await service.fetch_values(s, b)
-            msg = "Werte aus Home Assistant geladen" + (f" (ohne Statistik: {', '.join(missing)})" if missing else "")
+            msg = service.fetch_message(await service.fetch_values(s, b))
         except Exception as e:  # noqa: BLE001
             msg = f"Home Assistant: {e}"
     service.recompute(s, b)

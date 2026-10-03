@@ -11,9 +11,14 @@
   <label>E-Mail für den Versand (mehrere mit Komma trennen)</label>
   <input type="text" name="email" value="{{ p.email or '' }}" placeholder="familie@example.de">
   <label>Anschrift (optional, intern)</label><textarea name="address">{{ p.address or '' }}</textarea>
+  <div id="owner-note" class="hint-box" {% if not p.is_owner %}hidden{% endif %}>
+    <b>Restverbrauch:</b> Diese Partei bekommt alles, was nicht anderen Parteien oder Umlagen zugeordnet ist
+    (Gesamtverbrauch − alle anderen Parteien − Strom-Umlagen). <b>Kein Zähler nötig.</b>
+  </div>
+  <div id="meter-section" {% if p.is_owner %}hidden{% endif %}>
   <label>Shelly-Zähler (werden addiert)</label>
   <div id="meters">
-    {% for m in (p.meters or ['']) %}
+    {% for m in (p.meters or ([] if p.is_owner else [''])) %}
     <div class="meter-row">
       <div class="meter-head"><span>Zähler {{ loop.index }}</span><button type="button" class="sec pick-btn" data-remove>entfernen</button></div>
       <input type="text" name="meters" value="{{ m }}" data-phases placeholder="sensor.shelly_wohnung_energy">
@@ -21,6 +26,7 @@
     {% endfor %}
   </div>
   <button type="button" class="sec pick-btn" id="addmeter">+ weiteren Zähler</button>
+  </div>
   <template id="metertpl">
     <div class="meter-row">
       <div class="meter-head"><span>Zähler</span><button type="button" class="sec pick-btn" data-remove>entfernen</button></div>
@@ -32,6 +38,13 @@
     const row = document.getElementById('metertpl').content.firstElementChild.cloneNode(true);
     document.getElementById('meters').appendChild(row);
     window.EntityFields && window.EntityFields.init(row);
+  });
+  document.addEventListener('DOMContentLoaded', () => {
+    const ownerBox = document.getElementById('o');
+    ownerBox.addEventListener('change', () => {
+      document.getElementById('meter-section').hidden = ownerBox.checked;
+      document.getElementById('owner-note').hidden = !ownerBox.checked;
+    });
   });
   document.getElementById('meters').addEventListener('click', ev => {
     if (ev.target.matches('[data-remove]')) ev.target.closest('.meter-row').remove();

@@ -151,7 +151,7 @@ def test_fetch_values_uses_logger_for_victron_entities():
         s.add(b)
         s.commit()
         missing = asyncio.run(service.fetch_values(s, b))
-        assert missing == []
+        assert missing == {}
         assert b.values["victron:consumption"] == pytest.approx(1440.0)
         assert b.grid_kwh == pytest.approx(28.8)  # Netzbezug ohne Rechnungswert aus dem Logger übernommen
         assert b.values_meta["victron:consumption"]["coverage"] == pytest.approx(1.0)

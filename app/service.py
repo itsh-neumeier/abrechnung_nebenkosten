@@ -13,7 +13,7 @@ from . import billing as calc
 from . import invoice_import, mailer, render, victron, vrm
 from .config import config
 from .db import Allocation, Billing, FixedCost, Party, get_settings
-from .ha import HAClient
+from .ha import HAClient, HAError
 
 # Einstellungs-Schlüssel der Haus-Entitäten und ihre Rolle
 HOUSE_ENTITIES = [
@@ -107,6 +107,8 @@ def required_entities(s: Session) -> list[tuple[str, str]]:
     parties = active_parties(s)
     names = {p.id: p.name for p in parties}
     for p in parties:
+        if p.is_owner:
+            continue  # Eigentümer trägt den Restverbrauch – seine Zähler werden nicht gebraucht
         meters = p.meters or []
         for i, m in enumerate(meters, start=1):
             out += _roles(m, f"Zähler {p.name}" + (f" #{i}" if len(meters) > 1 else ""))
@@ -126,46 +128,95 @@ def required_entities(s: Session) -> list[tuple[str, str]]:
     return uniq
 
 
-async def fetch_values(s: Session, b: Billing) -> list[str]:
-    """Holt Verbrauchswerte aus HA bzw. dem Victron-Logger („victron:…“).
-    Gibt Entitäten ohne Daten zurück."""
+async def fetch_values(s: Session, b: Billing) -> dict[str, str]:
+    """Holt Verbrauchswerte aus HA, dem Victron-Logger („victron:…“) und VRM („vrm:…“).
+
+    Jede Quelle wird für sich abgefragt – fällt eine aus, werden die übrigen trotzdem geladen.
+    Rückgabe: Entitäten ohne Wert mit Grund.
+    """
     ents = [e for e, _ in required_entities(s)]
     ha_ids = [e for e in ents if not victron.is_victron(e) and not vrm.is_vrm(e)]
     vic_ids = [e for e in ents if victron.is_victron(e)]
     vrm_ids = [e for e in ents if vrm.is_vrm(e)]
-    fetched, meta = {}, {}
+    st = get_settings(s)
+    fetched: dict = {}
+    meta: dict = {}
+    reasons: dict[str, str] = {}
+
     if vrm_ids:
         try:
-            r_vals, r_meta = await vrm.consumption(get_settings(s)["vrm_site_id"], vrm_ids,
+            if not vrm.configured():
+                raise vrm.VRMError("VRM_TOKEN ist nicht gesetzt (Portainer / .env)")
+            r_vals, r_meta = await vrm.consumption(st["vrm_site_id"], vrm_ids,
                                                    b.period_start, b.period_end, config.timezone)
-        except Exception:  # noqa: BLE001  – VRM nicht erreichbar: übrige Quellen trotzdem laden
-            r_vals, r_meta = {e: None for e in vrm_ids}, {}
-        fetched.update(r_vals)
-        meta.update(r_meta)
+            fetched.update(r_vals)
+            meta.update(r_meta)
+            reasons.update({e: "VRM liefert für den Zeitraum keinen Wert" for e in vrm_ids if r_vals.get(e) is None})
+        except Exception as e:  # noqa: BLE001
+            reasons.update({i: f"VRM: {e}" for i in vrm_ids})
     if ha_ids:
-        client = HAClient(config.ha_url, config.ha_token)
-        fetched, meta = await client.consumption_detail(ha_ids, b.period_start, b.period_end, config.timezone)
+        try:
+            if not (config.ha_url and config.ha_token):
+                raise HAError("HA_URL / HA_TOKEN nicht gesetzt")
+            client = HAClient(config.ha_url, config.ha_token)
+            h_vals, h_meta = await client.consumption_detail(ha_ids, b.period_start, b.period_end, config.timezone)
+            fetched.update(h_vals)
+            meta.update(h_meta)
+            no_data = [e for e in ha_ids if h_vals.get(e) is None]
+            if no_data:
+                try:
+                    known = {x["entity_id"]: x for x in await client.entities()}
+                except Exception:  # noqa: BLE001
+                    known = {}
+                for e in no_data:
+                    x = known.get(e)
+                    if known and (x is None or (x.get("state") in ("", None) and e.startswith("sensor."))):
+                        hint = similar_entity(e, known)
+                        reasons[e] = ("Entität existiert in HA nicht (mehr) – umbenannt?"
+                                      + (f" Vorschlag: {hint}" if hint else ""))
+                    else:
+                        reasons[e] = "HA-Statistik hat für den Zeitraum keine Daten"
+        except Exception as e:  # noqa: BLE001
+            reasons.update({i: f"Home Assistant: {e}" for i in ha_ids})
     if vic_ids:
         v_vals, v_meta = victron.consumption(s, vic_ids, b.period_start, b.period_end, config.timezone)
         fetched.update(v_vals)
         meta.update(v_meta)
+        reasons.update({e: "Victron-Logger hat für den Zeitraum keine Daten" for e in vic_ids if v_vals.get(e) is None})
+
     values = dict(b.values or {})
     values_meta = dict(b.values_meta or {})
-    missing = []
     for e, v in fetched.items():
-        if v is None:
-            missing.append(e)
-        else:
+        if v is not None:
             values[e] = round(v, 4)
             values_meta[e] = meta.get(e) or {}
+    for e, why in reasons.items():
+        values_meta[e] = {**(values_meta.get(e) or {}), "missing": why} if values.get(e) is None else values_meta.get(e, {})
     b.values = values
     b.values_meta = values_meta
-    st = get_settings(s)
     grid_val = calc._sum(values, st["entity_grid"]) if st["entity_grid"] else None
     if not b.grid_kwh and grid_val is not None:
         b.grid_kwh = round(grid_val, 3)
     b.fetched_at = datetime.now()
-    return missing
+    return {e: why for e, why in reasons.items() if values.get(e) is None}
+
+
+def similar_entity(old: str, known: dict) -> str:
+    """Findet zu einer verschwundenen ID die wahrscheinliche neue (gleiches Ende, aktive Entität)."""
+    tail = old.split(".", 1)[-1]
+    parts = tail.split("_")
+    for n in range(len(parts), 1, -1):
+        suffix = "_".join(parts[-n:])
+        hits = [k for k, x in known.items() if k != old and k.endswith(suffix) and x.get("state") not in ("", None)]
+        if len(hits) == 1:
+            return hits[0]
+    return ""
+
+
+def fetch_message(missing: dict[str, str]) -> str:
+    if not missing:
+        return "Werte geladen"
+    return "Werte geladen – fehlend: " + "; ".join(f"{e} ({why})" for e, why in missing.items())
 
 
 def recompute(s: Session, b: Billing) -> dict:
@@ -222,7 +273,10 @@ def recompute(s: Session, b: Billing) -> dict:
             )
     missing = calc.missing_entities([e for e, _ in required_entities(s)], b.values or {})
     if missing:
-        result["warnings"].insert(0, f"Fehlende Messwerte (als 0 gerechnet): {', '.join(missing)}")
+        vm = b.values_meta or {}
+        detail = [f"{e} ({vm[e]['missing']})" if vm.get(e, {}).get("missing") else e for e in missing]
+        result["warnings"].insert(0, "Fehlende Messwerte (als 0 gerechnet – „Werte laden“ klicken oder manuell "
+                                     f"eintragen): {'; '.join(detail)}")
     extra = {p.id: p for p in db_parties}
     for rp in result["parties"]:
         rp["unit_id"] = extra[rp["id"]].unit_id or ""
@@ -351,8 +405,7 @@ async def import_invoice(s: Session, pdf: bytes, filename: str, message_id: str 
     msgs = [f"Rechnung {inv.invoice_no} ({inv.period_start:%d.%m.%Y} – {inv.period_end:%d.%m.%Y}) importiert"]
     if (config.ha_url and config.ha_token) or get_settings(s)["victron_enabled"]:
         try:
-            missing = await fetch_values(s, b)
-            msgs.append("Werte aus Home Assistant geladen" + (f" (ohne Statistik: {', '.join(missing)})" if missing else ""))
+            msgs.append(fetch_message(await fetch_values(s, b)))
         except Exception as e:  # noqa: BLE001
             msgs.append(f"Home Assistant nicht erreichbar: {e}")
     result = recompute(s, b)
