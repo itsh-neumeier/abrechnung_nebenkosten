@@ -43,3 +43,11 @@ dialog.picker::backdrop{background:rgba(0,0,0,.45)}
 .picker-list tr{cursor:pointer}.picker-list tr:hover{background:var(--bg)}
 .pick-btn{font-size:.82rem;padding:4px 10px;margin-top:4px}
 h3{font-size:.95rem;margin:1.2em 0 .2em;color:var(--muted)}
+.phase-box{display:grid;gap:6px}
+.phase-box .phase-mode{width:auto;max-width:260px;font-size:.88rem;padding:5px 8px}
+.phase-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+@media (max-width:640px){.phase-grid{grid-template-columns:1fr}}
+.phase-label{font-size:.78rem;color:var(--muted);display:block}
+.meter-row{border:1px dashed var(--line);border-radius:8px;padding:8px 10px;margin:6px 0;display:grid;gap:4px}
+.meter-row .meter-head{display:flex;justify-content:space-between;align-items:center;font-size:.85rem;color:var(--muted)}
+[hidden]{display:none !important}

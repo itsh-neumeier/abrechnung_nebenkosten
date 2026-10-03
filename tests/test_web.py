@@ -64,7 +64,7 @@ def test_full_flow(monkeypatch):
             "landlord_name": "Max Vermieter", "landlord_iban": "DE00 1234",
             "mail_auto_send": "1", "water_price_m3": "2,15", "sewage_price_m3": "2,60", "mail_subject": "Abrechnung {zeitraum} – {wohneinheit}",
             "mail_body": "Hallo {name}, Betrag {betrag}", "mail_bcc": "ich@test.de"})
-        assert "data-entity" in c.get("/settings").text
+        assert "data-phases" in c.get("/settings").text
 
         c.post("/parties/0", data={"name": "Eigentümer", "is_owner": "1", "active": "1"})
         c.post("/parties/0", data={"name": "Familie Muster", "unit_id": "WE-001", "meters": "sensor.eg",
@@ -135,3 +135,34 @@ def test_migration_adds_columns(tmp_path):
     assert {"unit_id", "email", "meters", "is_owner"} <= cols
     with eng.connect() as conn:
         assert conn.execute(sa.text("SELECT unit_id, is_owner FROM parties")).one() == ("", 0)
+
+
+
+def test_three_phase_meters():
+    """Shelly 3EM o. Ä.: Zähler je Phase L1/L2/L3 werden addiert, Haus-Entitäten ebenso."""
+    with TestClient(app) as c:
+        c.post("/settings", data={"entity_total": "sensor.tot_l1+sensor.tot_l2 , sensor.tot_l3", "vat_rate": "19"})
+        c.post("/parties/0", data={"name": "Eigentümer", "is_owner": "1", "active": "1"})
+        c.post("/parties/0", data={"name": "3EM", "active": "1",
+                                   "meters": ["sensor.p_l1 + sensor.p_l2 + sensor.p_l3", "sensor.extra", ""]})
+        page = c.get("/parties/2").text
+        assert 'value="sensor.p_l1 + sensor.p_l2 + sensor.p_l3"' in page and 'value="sensor.extra"' in page
+        c.post("/costs/alloc/0", data={"name": "WW", "source_type": "energy", "source_entity": "sensor.ww_l1 sensor.ww_l2 sensor.ww_l3",
+                                       "key_type": "entity", "keyent_2": "sensor.k1+sensor.k2+sensor.k3", "active": "1"})
+        r = c.post("/billings", data={"period_start": "2026-09-01", "period_end": "2026-09-30", "grid_kwh": "100",
+                                      "energy_cost_net": "25", "vat_rate": "19"}, follow_redirects=False)
+        url = r.headers["location"].split("?")[0]
+        page = c.get(url).text
+        assert "Gesamtverbrauch Haus (Victron) – L3" in page
+        assert "Zähler 3EM #1 – L2" in page and "Zähler 3EM #2" in page
+        vals = {"val__sensor.tot_l1": "100", "val__sensor.tot_l2": "100", "val__sensor.tot_l3": "100",
+                "val__sensor.p_l1": "10", "val__sensor.p_l2": "20", "val__sensor.p_l3": "30", "val__sensor.extra": "5",
+                "val__sensor.ww_l1": "1", "val__sensor.ww_l2": "1", "val__sensor.ww_l3": "1",
+                "val__sensor.k1": "1", "val__sensor.k2": "1", "val__sensor.k3": "1"}
+        c.post(url, data={"action": "save", "period_start": "2026-09-01", "period_end": "2026-09-30",
+                          "grid_kwh": "100", "energy_cost_net": "25", "vat_rate": "19", **vals})
+        from app.db import Billing, SessionLocal
+        with SessionLocal() as s:
+            r = s.get(Billing, int(url.rsplit("/", 1)[1])).result
+        kwh = {p["name"]: p["kwh"] for p in r["parties"]}
+        assert kwh["3EM"] == 65 and kwh["Eigentümer"] == 300 - 65 - 3

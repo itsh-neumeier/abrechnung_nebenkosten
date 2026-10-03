@@ -50,22 +50,33 @@ def energy_entities(st: dict[str, str]) -> calc.EnergyEntities:
     )
 
 
+def _roles(spec: str, role: str) -> list[tuple[str, str]]:
+    """Entitäten einer Angabe mit Rolle; bei 3 Teilen als Phasen L1–L3 beschriftet."""
+    ids = calc.split_ids(spec)
+    if len(ids) == 3:
+        return [(e, f"{role} – L{i}") for i, e in enumerate(ids, start=1)]
+    if len(ids) > 1:
+        return [(e, f"{role} – Teil {i}") for i, e in enumerate(ids, start=1)]
+    return [(e, role) for e in ids]
+
+
 def required_entities(s: Session) -> list[tuple[str, str]]:
     """Alle Entitäten, deren Verbrauch für eine Abrechnung gebraucht wird: (entity_id, Rolle)."""
     st = get_settings(s)
-    out: list[tuple[str, str]] = [(e, role) for k, role in HOUSE_ENTITIES for e in calc.split_ids(st[k])]
+    out: list[tuple[str, str]] = [x for k, role in HOUSE_ENTITIES for x in _roles(st[k], role)]
     parties = active_parties(s)
     names = {p.id: p.name for p in parties}
     for p in parties:
-        for m in p.meters or []:
-            out.append((m, f"Zähler {p.name}"))
+        meters = p.meters or []
+        for i, m in enumerate(meters, start=1):
+            out += _roles(m, f"Zähler {p.name}" + (f" #{i}" if len(meters) > 1 else ""))
     for a in s.query(Allocation).filter(Allocation.active.is_(True)).all():
         if a.source_type in ("energy", "quantity") and a.source_entity:
-            out.append((a.source_entity, f"Umlage {a.name} (Quelle)"))
+            out += _roles(a.source_entity, f"Umlage {a.name} (Quelle)")
         if a.key_type == "entity":
             for pid, ent in (a.key or {}).items():
                 if ent and int(pid) in names:
-                    out.append((str(ent), f"Umlage {a.name}: {names[int(pid)]}"))
+                    out += _roles(str(ent), f"Umlage {a.name}: {names[int(pid)]}")
     seen: set[str] = set()
     uniq = []
     for e, role in out:

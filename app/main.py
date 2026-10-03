@@ -40,8 +40,9 @@ app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 
 
 # --------------------------------------------------------------------------- Helfer
-def split_entities(text: str) -> list[str]:
-    return [e for e in re.split(r"[\s,;]+", text or "") if e]
+def normalize_spec(text: str) -> str:
+    """Entitäten-Angabe vereinheitlichen: „a+b , c“ -> „a + b + c“."""
+    return " + ".join(e for e in re.split(r"[\s,;+]+", text or "") if e)
 
 
 def render(request: Request, name: str, **ctx) -> HTMLResponse:
@@ -126,7 +127,7 @@ def settings_page(request: Request, s: Session = Depends(get_session)):
 @app.post("/settings")
 async def settings_save(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
-    data = {k: str(v).strip() for k, v in form.items()}
+    data = {k: (normalize_spec(str(v)) if k.startswith("entity_") else str(v).strip()) for k, v in form.items()}
     for flag in ("mail_auto_send",):  # Checkboxen
         data[flag] = "1" if form.get(flag) else ""
     save_settings(s, data)
@@ -202,7 +203,7 @@ async def party_save(request: Request, pid: int, s: Session = Depends(get_sessio
     p.unit_id = str(form.get("unit_id", "")).strip()
     p.address = str(form.get("address", "")).strip()
     p.email = str(form.get("email", "")).strip()
-    p.meters = split_entities(str(form.get("meters", "")))
+    p.meters = [m for m in (normalize_spec(str(v)) for v in form.getlist("meters")) if m]
     p.is_owner = bool(form.get("is_owner"))
     p.active = bool(form.get("active"))
     p.sort = int(parse_float(form.get("sort"), 0) or 0)
@@ -281,7 +282,7 @@ async def alloc_save(request: Request, aid: int, s: Session = Depends(get_sessio
         raise HTTPException(404)
     a.name = str(form.get("name", "")).strip()
     a.source_type = str(form.get("source_type", "energy"))
-    a.source_entity = str(form.get("source_entity", "")).strip()
+    a.source_entity = normalize_spec(str(form.get("source_entity", "")))
     a.source_unit = str(form.get("source_unit", "")).strip() or "m³"
     a.price_source = str(form.get("price_source", "custom"))
     a.default_amount = parse_float(form.get("default_amount")) or 0.0
@@ -289,10 +290,14 @@ async def alloc_save(request: Request, aid: int, s: Session = Depends(get_sessio
     a.key_unit = str(form.get("key_unit", "")).strip()
     key = {}
     for p in service.active_parties(s):
-        raw = str(form.get(f"key_{p.id}", "")).strip()
-        if not raw:
-            continue
-        key[str(p.id)] = parse_float(raw) if a.key_type == "percent" else raw
+        if a.key_type == "percent":
+            raw = str(form.get(f"keypct_{p.id}", form.get(f"key_{p.id}", ""))).strip()
+            if raw:
+                key[str(p.id)] = parse_float(raw)
+        else:
+            raw = normalize_spec(str(form.get(f"keyent_{p.id}", form.get(f"key_{p.id}", ""))))
+            if raw:
+                key[str(p.id)] = raw
     a.key = key
     a.active = bool(form.get("active"))
     if aid == 0:

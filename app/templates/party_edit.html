@@ -11,8 +11,32 @@
   <label>E-Mail für den Versand (mehrere mit Komma trennen)</label>
   <input type="text" name="email" value="{{ p.email or '' }}" placeholder="familie@example.de">
   <label>Anschrift (optional, intern)</label><textarea name="address">{{ p.address or '' }}</textarea>
-  <label>Shelly-Energie-Entitäten (eine pro Zeile, werden addiert)</label>
-  <textarea name="meters" data-entity="multi" placeholder="sensor.shelly_wohnung_eg_energy">{{ (p.meters or [])|join("\n") }}</textarea>
+  <label>Shelly-Zähler (werden addiert)</label>
+  <div id="meters">
+    {% for m in (p.meters or ['']) %}
+    <div class="meter-row">
+      <div class="meter-head"><span>Zähler {{ loop.index }}</span><button type="button" class="sec pick-btn" data-remove>entfernen</button></div>
+      <input type="text" name="meters" value="{{ m }}" data-phases placeholder="sensor.shelly_wohnung_energy">
+    </div>
+    {% endfor %}
+  </div>
+  <button type="button" class="sec pick-btn" id="addmeter">+ weiteren Zähler</button>
+  <template id="metertpl">
+    <div class="meter-row">
+      <div class="meter-head"><span>Zähler</span><button type="button" class="sec pick-btn" data-remove>entfernen</button></div>
+      <input type="text" name="meters" value="" data-phases placeholder="sensor.shelly_wohnung_energy">
+    </div>
+  </template>
+  <script>
+  document.getElementById('addmeter').addEventListener('click', () => {
+    const row = document.getElementById('metertpl').content.firstElementChild.cloneNode(true);
+    document.getElementById('meters').appendChild(row);
+    window.EntityFields && window.EntityFields.init(row);
+  });
+  document.getElementById('meters').addEventListener('click', ev => {
+    if (ev.target.matches('[data-remove]')) ev.target.closest('.meter-row').remove();
+  });
+  </script>
   <div class="check"><input type="checkbox" name="is_owner" id="o" {% if p.is_owner %}checked{% endif %}><label for="o" style="margin:0">Eigentümer / Hauptpartei – bekommt den Restverbrauch</label></div>
   <div class="check"><input type="checkbox" name="active" id="a" {% if p.active %}checked{% endif %}><label for="a" style="margin:0">aktiv (wird abgerechnet)</label></div>
   <button>Speichern</button>

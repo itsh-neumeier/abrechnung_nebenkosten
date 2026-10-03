@@ -102,7 +102,8 @@ abgefragt (HA rechnet um).
 
 ## Einrichtung im Webinterface
 
-Alle Entitätsfelder haben einen Knopf **„Aus HA wählen“**: Er lädt die Sensoren live über die
+Jedes Zählerfeld lässt sich als **1 Entität (gesamt)** oder **3 Phasen (L1/L2/L3)** hinterlegen
+(z. B. Shelly 3EM je Phase) – die Phasen werden addiert. Alle Entitätsfelder haben einen Knopf **„Aus HA wählen“**: Er lädt die Sensoren live über die
 HA-API (Suche, Filter Energie/Wasser, nur mit Langzeitstatistik, aktueller Zählerstand).
 
 1. **Einstellungen**: Entitäten für Netzbezug, Gesamtverbrauch, Batterie entladen/geladen,

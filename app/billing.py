@@ -273,10 +273,10 @@ def compute(
     # --- Verbrauch je Partei -----------------------------------------------------
     party_kwh: dict[int, float] = {}
     for p in parties:
-        party_kwh[p.id] = sum(_val(values, m) for m in p.meters)
+        party_kwh[p.id] = sum(_sum(values, m) or 0.0 for m in p.meters)
 
     energy_alloc_kwh = sum(
-        _val(values, a.source_entity) for a in allocations if a.source_type == "energy"
+        _sum(values, a.source_entity) or 0.0 for a in allocations if a.source_type == "energy"
     )
 
     owners = [p for p in parties if p.is_owner]
@@ -336,11 +336,11 @@ def compute(
     # --- Umlagen -----------------------------------------------------------------
     for a in allocations:
         if a.source_type == "energy":
-            src_kwh = _val(values, a.source_entity)
+            src_kwh = _sum(values, a.source_entity) or 0.0
             pot = sum(eur for _, eur in energy_cost(src_kwh).values())
             pot_desc = f"{_de(src_kwh, 1)} kWh = {_de(pot)} €"
         elif a.source_type == "quantity":
-            qty = _val(values, a.source_entity)
+            qty = _sum(values, a.source_entity) or 0.0
             price = sum(p for _, p in a.price_parts) if a.price_parts else a.amount
             pot = qty * price
             if a.price_parts:
@@ -360,7 +360,7 @@ def compute(
         weights: dict[int, float] = {}
         if a.key_type == "entity":
             targets = [p for p in parties if a.key.get(p.id)]
-            weights = {p.id: _val(values, str(a.key[p.id])) for p in targets}
+            weights = {p.id: _sum(values, str(a.key[p.id])) or 0.0 for p in targets}
         elif a.key_type == "percent":
             targets = [p for p in parties if a.key.get(p.id)]
             weights = {p.id: float(a.key[p.id]) for p in targets}
