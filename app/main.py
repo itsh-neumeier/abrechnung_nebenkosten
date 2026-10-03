@@ -551,7 +551,8 @@ def invoice_pdf_view(bid: int, pid: int, s: Session = Depends(get_session)):
     b = _get_billing(s, bid)
     p = _party_or_404(b, pid)
     return Response(invoice_pdf(b, p), media_type="application/pdf",
-                    headers={"Content-Disposition": f'inline; filename="{pdf_name(b, p)}"'})
+                    headers={"Content-Disposition": f'inline; filename="{pdf_name(b, p)}"',
+                             "Cache-Control": "no-store"})
 
 
 @app.get("/billings/{bid}/invoice/{pid}", response_class=HTMLResponse)
