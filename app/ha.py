@@ -159,13 +159,15 @@ class HAClient:
         return values
 
     async def consumption_detail(
-        self, entity_ids: list[str], start: date, end: date, tz: str
+        self, entity_ids: list[str], start: date, end: date, tz: str,
+        bounds: Optional[tuple[datetime, datetime]] = None,
     ) -> tuple[dict[str, Optional[float]], dict[str, dict]]:
-        """Wie consumption(), zusätzlich je Entität die Methode (Zähler/Leistung) und Abdeckung."""
+        """Wie consumption(), zusätzlich je Entität die Methode (Zähler/Leistung) und Abdeckung.
+        ``bounds`` (zeitzonenbewusst) ersetzt optional den Zeitraum aus start/end."""
         ids = sorted({e for e in entity_ids if e})
         if not ids:
             return {}, {}
-        t0, t1 = period_bounds(start, end, tz)
+        t0, t1 = bounds or period_bounds(start, end, tz)
         # über UTC rechnen: bei gleicher tzinfo ignoriert Python sonst die Zeitumstellung
         expected = (t1.astimezone(timezone.utc) - t0.astimezone(timezone.utc)).total_seconds() / 3600
         result = await self._ws_call(

@@ -389,3 +389,34 @@ def victron_comparison(s: Session, b: Billing) -> list[dict]:
                          "victron_label": victron.KEY_BY_NAME[vid[len(victron.PREFIX):]].label,
                          "victron_value": v, "coverage": meta[vid]["coverage"], "deviation": dev})
     return rows
+
+
+async def compare_period(s: Session, t0: datetime, t1: datetime) -> list[dict]:
+    """Abgleich für einen frei wählbaren Zeitraum: Haus-Felder (HA) ↔ Victron-Logger."""
+    st = get_settings(s)
+    rows = []
+    ha_specs = {f: [e for e in calc.split_ids(st[f]) if not victron.is_victron(e)] for f, _, _ in victron.COMPARE}
+    ha_ids = sorted({e for ids in ha_specs.values() for e in ids})
+    ha_vals, ha_meta, ha_error = {}, {}, ""
+    if ha_ids and config.ha_url and config.ha_token:
+        try:
+            ha_vals, ha_meta = await HAClient(config.ha_url, config.ha_token).consumption_detail(
+                ha_ids, None, None, config.timezone, bounds=(t0, t1))
+        except Exception as e:  # noqa: BLE001
+            ha_error = str(e)
+    for field, label, keys in victron.COMPARE:
+        ids = ha_specs[field]
+        ha_value = calc._sum(ha_vals, " + ".join(ids)) if ids else None
+        vids = [victron.PREFIX + k for k in keys]
+        v_vals, v_meta = victron.consumption(s, vids, None, None, config.timezone, bounds=(t0, t1))
+        for vid in vids:
+            v = v_vals.get(vid)
+            rows.append({
+                "label": label, "ha_spec": " + ".join(ids), "ha_value": ha_value,
+                "ha_coverage": min((ha_meta.get(e, {}).get("coverage", 1.0) for e in ids), default=None),
+                "victron_key": vid, "victron_label": victron.KEY_BY_NAME[vid[len(victron.PREFIX):]].label,
+                "victron_value": v, "coverage": (v_meta.get(vid) or {}).get("coverage"),
+                "deviation": (v / ha_value - 1) if (v is not None and ha_value) else None,
+                "ha_error": ha_error,
+            })
+    return rows

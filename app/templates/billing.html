@@ -82,7 +82,7 @@
   <tr><td>{{ c.label }}</td><td class="r">{{ c.field_value|num(1) if c.field_value is not none else '–' }}</td>
   <td><span class="muted">{{ c.victron_label }}</span><br><code>{{ c.victron_key }}</code></td>
   <td class="r">{{ c.victron_value|num(1) }}</td><td class="r">{{ (c.coverage*100)|num(0) }} %</td>
-  <td class="r">{% if c.deviation is not none %}<span {% if c.deviation|abs > 0.05 and c.coverage > 0.98 %}style="color:var(--danger)"{% endif %}>{{ '%+.1f'|format(c.deviation*100) }} %</span>{% else %}–{% endif %}</td></tr>
+  <td class="r">{% if c.deviation is not none %}<span {% if c.deviation|abs > 0.05 and c.coverage > 0.98 %}style="color:var(--danger)"{% endif %}>{{ ('%+.1f'|format(c.deviation*100))|replace('.', ',') }} %</span>{% else %}–{% endif %}</td></tr>
   {% endfor %}
   </table>
 </div>

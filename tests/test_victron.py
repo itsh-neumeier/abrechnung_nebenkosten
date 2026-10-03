@@ -156,3 +156,26 @@ def test_fetch_values_uses_logger_for_victron_entities():
         assert b.values_meta["victron:consumption"]["coverage"] == pytest.approx(1.0)
         rows = service.victron_comparison(s, b)
         assert any(r["label"] == "Gesamtverbrauch" and r["deviation"] == pytest.approx(0) for r in rows)
+
+
+def test_compare_page(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app import ha
+    from app.main import app
+
+    async def detail(self, ids, start, end, tz, bounds=None):
+        assert bounds is not None
+        return {i: 10.0 for i in ids}, {i: {"method": "counter"} for i in ids}
+
+    monkeypatch.setattr(ha.HAClient, "consumption_detail", detail)
+    with SessionLocal() as s:
+        save_settings(s, {"victron_enabled": "1", "entity_grid": "sensor.easymeter_bezug"})
+        now = datetime.now(timezone.utc).replace(tzinfo=None, minute=0, second=0, microsecond=0)
+        for i in range(1, 9):
+            s.add(VictronBucket(start=now - timedelta(minutes=15 * i), key="grid_import", kwh=1.25, seconds=900))
+        s.commit()
+    with TestClient(app) as c:
+        page = c.get("/victron/compare?hours=2").text
+    assert "sensor.easymeter_bezug" in page
+    assert "+0,0 %" in page or "+0.0 %" in page  # 8 × 1,25 = 10 kWh = HA-Wert

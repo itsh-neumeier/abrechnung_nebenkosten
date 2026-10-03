@@ -12,7 +12,7 @@ import secrets
 import time
 import zipfile
 from contextlib import asynccontextmanager
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -207,6 +207,18 @@ async def victron_discover(request: Request, s: Session = Depends(get_session)):
     found = ", ".join(f"{names[k]} = Unit {v}" for k, v in units.items() if v is not None) or "nichts"
     missing = ", ".join(names[k] for k, v in units.items() if v is None)
     return redirect("/settings", f"Victron gefunden: {found}" + (f" · nicht gefunden: {missing}" if missing else ""))
+
+
+@app.get("/victron/compare", response_class=HTMLResponse)
+async def victron_compare(request: Request, hours: int = 24, s: Session = Depends(get_session)):
+    """Abgleich HA ↔ Victron-Logger für die letzten N vollen Stunden."""
+    from zoneinfo import ZoneInfo
+
+    hours = max(1, min(hours, 24 * 62))
+    t1 = datetime.now(ZoneInfo(config.timezone)).replace(minute=0, second=0, microsecond=0)
+    t0 = t1 - timedelta(hours=hours)
+    rows = await service.compare_period(s, t0, t1)
+    return render(request, "victron_compare.html", rows=rows, hours=hours, t0=t0, t1=t1, st=get_settings(s))
 
 
 @app.get("/api/victron/status")

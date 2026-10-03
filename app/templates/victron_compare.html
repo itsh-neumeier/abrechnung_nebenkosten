@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Abgleich Home Assistant ↔ Victron direkt</h1>
+<div class="card">
+  <p>Zeitraum: <b>{{ t0.strftime('%d.%m.%Y %H:%M') }} – {{ t1.strftime('%d.%m.%Y %H:%M') }}</b> (volle Stunden)</p>
+  <p>
+  {% for h, label in [(6, '6 h'), (24, '24 h'), (72, '3 Tage'), (168, '7 Tage'), (720, '30 Tage')] %}
+    <a class="btn {{ '' if h == hours else 'sec' }} pick-btn" href="?hours={{ h }}">{{ label }}</a>
+  {% endfor %}
+  </p>
+  <p class="muted">Links die Entitäten aus <a href="/settings">Einstellungen → Haus-Entitäten</a> (aus HA), rechts die Werte
+  des eigenen Victron-Loggers. „Erfasst“ = Anteil des Zeitraums, für den der Logger Daten hat – liegt er unter 100 %,
+  ist der Logger-Wert entsprechend kleiner und die Abweichung nicht aussagekräftig.</p>
+  {% if rows and rows[0].ha_error %}<div class="warn">Home Assistant: {{ rows[0].ha_error }}</div>{% endif %}
+</div>
+<div class="card scroll">
+<table>
+<tr><th>Feld</th><th>Home Assistant</th><th class="r">kWh</th><th>Victron direkt</th><th class="r">kWh</th><th class="r">erfasst</th><th class="r">Abweichung</th></tr>
+{% for r in rows %}
+<tr>
+  <td>{{ r.label }}</td>
+  <td>{% if r.ha_spec %}<code style="font-size:.75rem">{{ r.ha_spec }}</code>{% else %}<span class="muted">nicht belegt</span>{% endif %}</td>
+  <td class="r">{{ r.ha_value|num(2) if r.ha_value is not none else '–' }}</td>
+  <td><span class="muted">{{ r.victron_label }}</span></td>
+  <td class="r">{{ r.victron_value|num(2) if r.victron_value is not none else '–' }}</td>
+  <td class="r">{{ (r.coverage*100)|num(0) ~ ' %' if r.coverage is not none else '–' }}</td>
+  <td class="r">{% if r.deviation is not none %}<b {% if r.deviation|abs > 0.05 %}style="color:var(--danger)"{% endif %}>{{ ('%+.1f'|format(r.deviation*100))|replace('.', ',') }} %</b>{% else %}–{% endif %}</td>
+</tr>
+{% endfor %}
+</table>
+</div>
+{% endblock %}

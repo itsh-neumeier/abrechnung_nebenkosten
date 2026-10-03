@@ -310,10 +310,11 @@ def is_victron(entity: str) -> bool:
     return entity.startswith(PREFIX)
 
 
-def consumption(s: Session, entity_ids: list[str], start: date, end: date, tz: str
+def consumption(s: Session, entity_ids: list[str], start: Optional[date], end: Optional[date], tz: str,
+                bounds: Optional[tuple[datetime, datetime]] = None,
                 ) -> tuple[dict[str, Optional[float]], dict[str, dict]]:
     """Verbrauch je virtueller Entität im Zeitraum + Abdeckung (Anteil der Zeit mit Daten)."""
-    t0, t1 = period_bounds(start, end, tz)
+    t0, t1 = bounds or period_bounds(start, end, tz)
     u0 = t0.astimezone(timezone.utc).replace(tzinfo=None)
     u1 = t1.astimezone(timezone.utc).replace(tzinfo=None)
     total_s = (u1 - u0).total_seconds()
