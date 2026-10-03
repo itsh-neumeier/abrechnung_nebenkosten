@@ -59,13 +59,6 @@ def test_party_prices_per_source(setup):
     assert vat["Netzstrom"] and not vat["PV-Strom direkt"]
 
 
-def test_pv_rate_on_battery_optional(setup):
-    bill, parties, values = setup
-    bill.pv_rate_on_battery = False
-    a = amounts(run(bill, parties, values)["parties"][1])
-    assert a["Batteriestrom aus PV"] == pytest.approx(25 * 0.18)
-
-
 def test_pv_direct_entity_and_normalisation(setup):
     bill, parties, values = setup
     values["sensor.pv"] = 700.0  # passt nicht zum Gesamtverbrauch -> Warnung + Normierung
@@ -145,3 +138,17 @@ def test_drinking_water_and_hot_water_by_percent(setup):
     assert amounts(eg)["Warmwasserbereitung"] == pytest.approx(round(pot * 0.6, 2))
     assert "Warmwasserbereitung" not in amounts(owner)
     assert owner["kwh"] == pytest.approx(500)  # Warmwasser-Strom nicht doppelt beim Eigentümer
+
+
+def test_water_price_from_settings_parts(setup):
+    bill, parties, values = setup
+    values["sensor.wasser"] = 10.0
+    water = AllocationCfg(1, "Trinkwasser", "quantity", source_entity="sensor.wasser", source_unit="m³",
+                          price_parts=[("Wasser", 2.15), ("Abwasser", 2.60)], key_type="percent", key={2: 60, 3: 40})
+    r = run(bill, parties, values, allocs=[water])
+    eg = r["parties"][1]
+    assert amounts(eg)["Trinkwasser"] == pytest.approx(28.50)  # 10 m³ x 4,75 € x 60 %
+    note = next(l["note"] for l in eg["lines"] if l["label"] == "Trinkwasser")
+    assert "10,00 m³ × (Wasser 2,15 € + Abwasser 2,60 €)/m³ = 47,50 €" in note
+    water.price_parts = [("Wasser", 0.0), ("Abwasser", 0.0)]
+    assert any("kein Preis" in w for w in run(bill, parties, values, allocs=[water])["warnings"])

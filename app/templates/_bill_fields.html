@@ -18,5 +18,4 @@
   <div><label>PV-Bereitstellungssatz (ct/kWh netto)</label><input type="text" name="pv_rate_ct" value="{{ b.pv_rate_ct|num(2) if b else st.pv_rate_ct }}" {{ ro }}></div>
   <div><label>Batterieverschleißsatz (ct/kWh netto)</label><input type="text" name="battery_rate_ct" value="{{ b.battery_rate_ct|num(2) if b else st.battery_rate_ct }}" {{ ro }}></div>
 </div>
-{% set prb = b.pv_rate_on_battery if b else st.pv_rate_on_battery %}
-<div class="check"><input type="checkbox" name="pv_rate_on_battery" id="prb" value="1" {% if prb %}checked{% endif %} {% if ro %}disabled{% endif %}><label for="prb" style="margin:0">PV-Bereitstellungssatz auch auf Batteriestrom aus PV</label></div>
+<p class="muted">Batteriestrom aus PV = Börsenpreis + PV-Bereitstellungssatz + Batterieverschleißsatz · Graustrom = Börsenpreis + Batterieverschleißsatz.</p>

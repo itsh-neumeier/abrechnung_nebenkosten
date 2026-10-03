@@ -1,18 +1,9 @@
-import os
-import tempfile
+import smtplib
 
-os.environ["DATABASE_URL"] = f"sqlite:///{tempfile.mkdtemp()}/test.db"
-os.environ["HA_URL"] = "http://ha.test"
-os.environ["HA_TOKEN"] = "dummy"
-os.environ["SMTP_HOST"] = "smtp.test"
-os.environ["SMTP_FROM"] = "abrechnung@test.de"
+from fastapi.testclient import TestClient
 
-import smtplib  # noqa: E402
-
-from fastapi.testclient import TestClient  # noqa: E402
-
-from app import ha  # noqa: E402
-from app.main import app  # noqa: E402
+from app import ha
+from app.main import app
 
 SENT = []
 
@@ -38,10 +29,9 @@ class FakeSMTP:
 
 
 BILL = {"period_start": "2026-09-01", "period_end": "2026-09-30", "grid_kwh": "500", "energy_cost_net": "125,00",
-        "fixed_cost_net": "20", "spot_price_ct": "10", "vat_rate": "19", "battery_rate_ct": "8", "pv_rate_ct": "5",
-        "pv_rate_on_battery": "1"}
+        "fixed_cost_net": "20", "spot_price_ct": "10", "vat_rate": "19", "battery_rate_ct": "8", "pv_rate_ct": "5"}
 VALUES = {"val__sensor.grid": "500", "val__sensor.total": "1000", "val__sensor.dis": "250", "val__sensor.chg": "200",
-          "val__sensor.chg_grid": "100", "val__sensor.eg": "200", "val__sensor.ww": "100", "val__sensor.w_eg": "4"}
+          "val__sensor.chg_grid": "100", "val__sensor.eg": "200", "val__sensor.ww": "100", "val__sensor.w_eg": "4", "val__sensor.wasser": "10"}
 
 
 def test_full_flow(monkeypatch):
@@ -64,11 +54,11 @@ def test_full_flow(monkeypatch):
         c.post("/settings", data={
             "entity_grid": "sensor.grid", "entity_total": "sensor.total", "entity_battery": "sensor.dis",
             "entity_battery_charge": "sensor.chg", "entity_battery_charge_grid": "sensor.chg_grid",
-            "battery_rate_ct": "8", "pv_rate_ct": "5", "pv_rate_on_battery": "1", "vat_rate": "19",
+            "battery_rate_ct": "8", "pv_rate_ct": "5", "vat_rate": "19",
             "building_title": "Nebenkostenabrechnung",
             "building_address": "Köttmannsdorfer Hauptstraße 56, 96114 Hirschaid", "building_id": "GID-01",
             "landlord_name": "Max Vermieter", "landlord_iban": "DE00 1234",
-            "mail_auto_send": "1", "mail_subject": "Abrechnung {zeitraum} – {wohneinheit}",
+            "mail_auto_send": "1", "water_price_m3": "2,15", "sewage_price_m3": "2,60", "mail_subject": "Abrechnung {zeitraum} – {wohneinheit}",
             "mail_body": "Hallo {name}, Betrag {betrag}", "mail_bcc": "ich@test.de"})
         assert "data-entity" in c.get("/settings").text
 
@@ -79,6 +69,9 @@ def test_full_flow(monkeypatch):
         c.post("/costs/alloc/0", data={"name": "Warmwasser", "source_type": "energy", "source_entity": "sensor.ww",
                                        "key_type": "entity", "key_unit": "m³", "key_2": "sensor.w_eg", "active": "1"})
 
+        c.post("/costs/alloc/0", data={"name": "Trinkwasser", "source_type": "quantity", "source_entity": "sensor.wasser",
+                                       "source_unit": "m³", "price_source": "water", "key_type": "percent",
+                                       "key_1": "50", "key_2": "50", "active": "1"})
         r = c.post("/billings", data=BILL, follow_redirects=False)
         assert r.status_code == 303
         url = r.headers["location"].split("?")[0]
@@ -97,6 +90,7 @@ def test_full_flow(monkeypatch):
         assert "(Köttmannsdorfer Hauptstraße 56, 96114 Hirschaid)" in inv
         assert "Gebäude ID: GID-01 – Wohneinheiten ID: WE-001" in inv
         assert "PV-Strom direkt" in inv and "IPTV" in inv and "Warmwasser" in inv
+        assert "(Wasser 2,15 € + Abwasser 2,60 €)/m³ = 47,50 €" in inv
 
         pdf = c.get(f"{url}/invoice/2.pdf")
         assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"

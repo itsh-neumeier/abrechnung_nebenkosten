@@ -27,7 +27,16 @@
     <div><label>MwSt.-Satz Stromrechnung (%)</label><input type="text" name="vat_rate" value="{{ st.vat_rate }}"></div>
     <div><label>Zahlungsziel (Tage)</label><input type="text" name="payment_days" value="{{ st.payment_days }}"></div>
   </div>
-  <div class="check"><input type="checkbox" name="pv_rate_on_battery" id="prb" {% if st.pv_rate_on_battery %}checked{% endif %}><label for="prb" style="margin:0">PV-Bereitstellungssatz auch auf Batteriestrom aus PV berechnen</label></div>
+  <p class="muted">PV-Strom direkt = Börsenpreis + PV-Satz · Batteriestrom aus PV = Börsenpreis + PV-Satz + Batteriesatz ·
+  Graustrom (Batterie aus Netz) = Börsenpreis + Batteriesatz · Netzstrom = Ø Arbeitspreis brutto.</p>
+</div>
+<div class="card">
+  <h2 style="margin-top:0">Wasserpreise</h2>
+  <p class="muted">Gilt für Umlagen mit Preisquelle „Wasser + Abwasser aus Einstellungen“ (z. B. Trinkwasser). Bei Preisänderung hier anpassen – abgeschlossene Abrechnungen bleiben unverändert.</p>
+  <div class="grid">
+    <div><label>Trinkwasser (€/m³, brutto)</label><input type="text" name="water_price_m3" value="{{ st.water_price_m3 }}" placeholder="z. B. 2,15"></div>
+    <div><label>Abwasser (€/m³, brutto)</label><input type="text" name="sewage_price_m3" value="{{ st.sewage_price_m3 }}" placeholder="z. B. 2,60"></div>
+  </div>
 </div>
 <div class="card">
   <h2 style="margin-top:0">Objekt / Kopf der Abrechnung</h2>
@@ -68,7 +77,13 @@
   {% else %}
   <div class="warn">Automatischer Abruf aus: <code>IMAP_HOST</code>, <code>IMAP_USER</code>, <code>IMAP_PASSWORD</code> in der <code>.env</code> setzen. Upload im Webinterface geht immer.</div>
   {% endif %}
-  <div class="check"><input type="checkbox" name="import_auto_finalize" id="iaf" {% if st.import_auto_finalize %}checked{% endif %}><label for="iaf" style="margin:0">Importierte Rechnung ohne Hinweise automatisch abschließen (und bei aktivem Auto-Versand verschicken)</label></div>
+  <label>Nach dem Import</label>
+  <select name="import_mode">
+    <option value="review" {% if st.import_mode == 'review' %}selected{% endif %}>Erst prüfen – Entwurf anlegen, Abschließen und Versand manuell</option>
+    <option value="auto_if_clean" {% if st.import_mode == 'auto_if_clean' %}selected{% endif %}>Automatisch abschließen und versenden, wenn keine Hinweise</option>
+    <option value="auto_always" {% if st.import_mode == 'auto_always' %}selected{% endif %}>Immer automatisch abschließen und versenden (ohne Validierung)</option>
+  </select>
+  <p class="muted">Bei den automatischen Varianten gehen die Abrechnungen an alle Parteien mit E-Mail-Adresse. Die Hinweis-Mail unten listet dann trotzdem alle Hinweise auf.</p>
   <label>Hinweis-Mail bei neuer Rechnung an</label><input type="text" name="notify_email" value="{{ st.notify_email }}" placeholder="ich@example.de">
 </div>
 <button>Speichern</button>

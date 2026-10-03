@@ -21,7 +21,7 @@
 {% for a in allocations %}
 <tr><td><a href="/costs/alloc/{{ a.id }}">{{ a.name }}</a></td>
 <td>{% if a.source_type == 'energy' %}Strom von <code>{{ a.source_entity }}</code>
-{% elif a.source_type == 'quantity' %}<code>{{ a.source_entity }}</code> × {{ a.default_amount|num(4) }} €/{{ a.source_unit }}
+{% elif a.source_type == 'quantity' %}<code>{{ a.source_entity }}</code> × {% if a.price_source == 'water' %}Wasser + Abwasser (Einstellungen){% else %}{{ a.default_amount|num(4) }} €/{{ a.source_unit }}{% endif %}
 {% else %}Betrag (Standard {{ a.default_amount|eur }}){% endif %}</td>
 <td>{{ {'entity':'Verbrauch je Partei (HA)','percent':'feste Prozente','equal':'gleichmäßig'}[a.key_type] }}
 {% if a.key_type == 'percent' %}<span class="muted">({% for pid, v in (a.key or {}).items() %}{{ parties.get(pid|int, '?') }} {{ v|num(1) }} %{% if not loop.last %}, {% endif %}{% endfor %})</span>{% endif %}</td>

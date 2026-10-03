@@ -12,10 +12,15 @@
   <div class="grid">
     <div data-show="energy quantity"><label>Quell-Entität</label><input type="text" name="source_entity" data-entity value="{{ a.source_entity }}" placeholder="sensor.shelly_warmwasser_energy / sensor.wasserzaehler"></div>
     <div data-show="quantity"><label>Einheit</label><input type="text" name="source_unit" value="{{ a.source_unit or 'm³' }}"></div>
-    <div data-show="quantity amount"><label id="amtlabel">Preis je Einheit (brutto €)</label><input type="text" name="default_amount" value="{{ a.default_amount|num(4 if a.source_type == 'quantity' else 2) }}"></div>
+    <div data-show="quantity"><label>Preisquelle</label>
+      <select name="price_source" id="psrc">
+        <option value="water" {% if a.price_source=='water' %}selected{% endif %}>Wasser + Abwasser aus Einstellungen</option>
+        <option value="custom" {% if a.price_source!='water' %}selected{% endif %}>Eigener Preis je Einheit</option>
+      </select></div>
+    <div data-show="quantity amount" id="amtbox"><label id="amtlabel">Preis je Einheit (brutto €)</label><input type="text" name="default_amount" value="{{ a.default_amount|num(4 if a.source_type == 'quantity' else 2) }}"></div>
   </div>
   <p class="muted" data-show="energy">Strom-Umlagen werden vom Restverbrauch des Eigentümers abgezogen, damit nichts doppelt berechnet wird.</p>
-  <p class="muted" data-show="quantity">Der Preis je Einheit (z. B. Wasser + Abwasser je m³) kann in jeder Abrechnung angepasst werden.</p>
+  <p class="muted" data-show="quantity" id="waterhint">Preis = Trinkwasser + Abwasser je m³ aus den <a href="/settings">Einstellungen</a>.</p>
 
   <h2>Verteilung</h2>
   <div class="grid">
@@ -55,11 +60,14 @@
   function update() {
     document.querySelectorAll('[data-show]').forEach(el => el.hidden = !el.dataset.show.split(' ').includes(src.value));
     document.querySelectorAll('[data-key]').forEach(el => el.hidden = !el.dataset.key.split(' ').includes(key.value));
+    const water = src.value === 'quantity' && document.getElementById('psrc').value === 'water';
+    if (src.value === 'quantity') { document.getElementById('amtbox').hidden = water; document.getElementById('waterhint').hidden = !water; }
     document.getElementById('amtlabel').textContent = src.value === 'quantity' ? 'Preis je Einheit (brutto €)' : 'Standardbetrag (brutto €)';
     keyFields.forEach(f => f.placeholder = key.value === 'percent' ? 'z. B. 40' : 'sensor.wasser_we001');
     sum();
   }
   src.addEventListener('change', update); key.addEventListener('change', update);
+  document.getElementById('psrc').addEventListener('change', update);
   keyFields.forEach(f => f.addEventListener('input', sum));
   update();
 })();

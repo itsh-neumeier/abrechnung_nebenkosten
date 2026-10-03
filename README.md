@@ -11,6 +11,8 @@ mit Messwerten aus **Home Assistant** (Shelly, Victron, Stromzähler), **Batteri
    Fixkosten netto (Grundpreis, Grundentgelt), Ø Börsenpreis (Position „Stromverbrauch (HOURLY)“), MwSt.
    Alternativ PDF oder `.eml` im Webinterface hochladen oder Werte manuell erfassen.
 2. Plausibilitätsprüfung: Summe der Positionen = Rechnungssumme, Ø Arbeitspreis = ausgewiesener Arbeitspreis.
+   Je nach Einstellung „Nach dem Import“: **erst prüfen** (Entwurf, Standard), **automatisch, wenn keine
+   Hinweise** oder **immer automatisch ohne Validierung** abschließen und per E-Mail versenden.
 3. Verbrauchswerte werden aus Home Assistant geladen (Langzeitstatistik, auch Monate rückwirkend).
 4. Prüfen, ggf. Werte korrigieren → **Abschließen** → PDFs je Partei bzw. alle als ZIP.
 5. Versand per E-Mail an alle Parteien mit hinterlegter Adresse – automatisch beim Abschließen
@@ -24,11 +26,10 @@ mit Messwerten aus **Home Assistant** (Shelly, Victron, Stromzähler), **Batteri
 |---|---|---|
 | Netzstrom direkt | Netzbezug − Netz→Batterie | Ø Arbeitspreis lt. Rechnung **brutto** |
 | PV-Strom direkt | Gesamtverbrauch − Netz direkt − Batterie-Entladung | Ø Börsenpreis netto + PV-Bereitstellungssatz |
-| Batteriestrom aus PV | Entladung × (1 − Netzladeanteil) | Ø Börsenpreis netto + PV-Bereitstellungssatz¹ + Batterieverschleißsatz |
+| Batteriestrom aus PV | Entladung × (1 − Netzladeanteil) | Ø Börsenpreis netto + PV-Bereitstellungssatz + Batterieverschleißsatz |
 | Batteriestrom aus Netz (Graustrom, dyn. ESS) | Entladung × Netzladeanteil | Ø Börsenpreis netto + Batterieverschleißsatz |
 
 Netzladeanteil = Batterie aus Netz geladen ÷ Batterie geladen gesamt. Alles außer Netzstrom ohne MwSt.
-¹ abschaltbar („PV-Bereitstellungssatz auch auf Batteriestrom aus PV“).
 
 **Je Partei**: Verbrauch (Summe der Shelly-Zähler) × Mix-Anteile × Preis. Der Eigentümer bekommt den
 Restverbrauch (Gesamt − andere Parteien − Strom-Umlagen).
@@ -38,7 +39,7 @@ Restverbrauch (Gesamt − andere Parteien − Strom-Umlagen).
 | Fixkosten Anbieter (Grundpreis, Messstelle) | brutto ÷ Anzahl Parteien (centgenau) |
 | Weitere Fixkosten (z. B. IPTV) | Betrag ÷ ausgewählte Parteien |
 | Warmwasserbereitung | kWh des Shelly (HA) × Hausstrom-Mix, verteilt nach festen Prozenten; wird vom Restverbrauch des Eigentümers abgezogen |
-| Trinkwasser | m³ des Wasserzählers (HA-Adapter) × Preis je m³, verteilt nach festen Prozenten |
+| Trinkwasser | m³ des Wasserzählers (HA-Adapter) × (Wasser- + Abwasserpreis je m³ aus den Einstellungen), verteilt nach festen Prozenten |
 | Sonstige Umlagen | fester Betrag; Verteilung auch nach Verbrauch je Partei (HA-Entität) oder gleichmäßig |
 
 ## Installation (Docker)

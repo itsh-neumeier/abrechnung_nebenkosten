@@ -127,7 +127,7 @@ def settings_page(request: Request, s: Session = Depends(get_session)):
 async def settings_save(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
     data = {k: str(v).strip() for k, v in form.items()}
-    for flag in ("pv_rate_on_battery", "mail_auto_send", "import_auto_finalize"):  # Checkboxen
+    for flag in ("mail_auto_send",):  # Checkboxen
         data[flag] = "1" if form.get(flag) else ""
     save_settings(s, data)
     return redirect("/settings", "Gespeichert")
@@ -273,7 +273,7 @@ async def fixed_save(request: Request, cid: int, s: Session = Depends(get_sessio
 
 @app.get("/costs/alloc/{aid}", response_class=HTMLResponse)
 def alloc_edit(request: Request, aid: int, s: Session = Depends(get_session)):
-    a = (Allocation(name="", source_type="energy", source_entity="", source_unit="m³", default_amount=0.0,
+    a = (Allocation(name="", source_type="energy", source_entity="", source_unit="m³", price_source="custom", default_amount=0.0,
                     key_type="percent", key_unit="", key={}, active=True)
          if aid == 0 else s.get(Allocation, aid))
     if a is None:
@@ -297,6 +297,7 @@ async def alloc_save(request: Request, aid: int, s: Session = Depends(get_sessio
     a.source_type = str(form.get("source_type", "energy"))
     a.source_entity = str(form.get("source_entity", "")).strip()
     a.source_unit = str(form.get("source_unit", "")).strip() or "m³"
+    a.price_source = str(form.get("price_source", "custom"))
     a.default_amount = parse_float(form.get("default_amount")) or 0.0
     a.key_type = str(form.get("key_type", "entity"))
     a.key_unit = str(form.get("key_unit", "")).strip()
@@ -328,7 +329,6 @@ def _apply_bill_form(b: Billing, form, st: dict) -> None:
     b.vat_rate = (parse_float(form.get("vat_rate"), parse_float(st["vat_rate"])) or 0.0) / 100
     b.battery_rate_ct = parse_float(form.get("battery_rate_ct"), parse_float(st["battery_rate_ct"])) or 0.0
     b.pv_rate_ct = parse_float(form.get("pv_rate_ct"), parse_float(st["pv_rate_ct"])) or 0.0
-    b.pv_rate_on_battery = bool(form.get("pv_rate_on_battery"))
 
 
 @app.get("/billings/new", response_class=HTMLResponse)
@@ -370,7 +370,8 @@ def _get_billing(s: Session, bid: int) -> Billing:
 @app.get("/billings/{bid}", response_class=HTMLResponse)
 def billing_view(request: Request, bid: int, s: Session = Depends(get_session)):
     b = _get_billing(s, bid)
-    allocs = s.query(Allocation).filter(Allocation.active.is_(True), Allocation.source_type.in_(("amount", "quantity"))).all()
+    allocs = [a for a in s.query(Allocation).filter(Allocation.active.is_(True)).all()
+              if a.source_type == "amount" or (a.source_type == "quantity" and a.price_source != "water")]
     emails = {p.id: p.email for p in s.query(Party).all()}
     return render(request, "billing.html", b=b, r=b.result or {}, entities=service.required_entities(s),
                   amount_allocs=allocs, st=get_settings(s), emails=emails, mail_ok=mailer.configured())

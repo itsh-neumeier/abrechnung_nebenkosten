@@ -26,6 +26,18 @@ HOUSE_ENTITIES = [
 ]
 
 
+def _num(v: str) -> float:
+    try:
+        return float(str(v).replace(",", ".")) if str(v).strip() else 0.0
+    except ValueError:
+        return 0.0
+
+
+def water_price_parts(st: dict[str, str]) -> list[tuple[str, float]]:
+    """Wasser- und Abwasserpreis je m³ aus den Einstellungen."""
+    return [("Wasser", _num(st["water_price_m3"])), ("Abwasser", _num(st["sewage_price_m3"]))]
+
+
 def active_parties(s: Session) -> list[Party]:
     return s.query(Party).filter(Party.active.is_(True)).order_by(Party.sort, Party.id).all()
 
@@ -96,12 +108,15 @@ def recompute(s: Session, b: Billing) -> dict:
         for f in s.query(FixedCost).filter(FixedCost.active.is_(True)).order_by(FixedCost.id).all()
     ]
     allocs = []
+    water_parts = water_price_parts(st)
     for a in s.query(Allocation).filter(Allocation.active.is_(True)).order_by(Allocation.id).all():
         amount = (b.amounts or {}).get(str(a.id), a.default_amount)
+        parts = water_parts if a.source_type == "quantity" and a.price_source == "water" else []
         allocs.append(
             calc.AllocationCfg(
                 id=a.id, name=a.name, source_type=a.source_type, source_entity=a.source_entity,
-                amount=float(amount or 0), source_unit=a.source_unit or "", key_type=a.key_type,
+                amount=float(amount or 0), source_unit=a.source_unit or "", price_parts=parts,
+                key_type=a.key_type,
                 key_unit=a.key_unit,
                 key={int(k): v for k, v in (a.key or {}).items() if v not in ("", None)},
             )
@@ -114,7 +129,6 @@ def recompute(s: Session, b: Billing) -> dict:
         wear_rate_ct=b.battery_rate_ct,
         spot_price_ct=b.spot_price_ct or 0.0,
         pv_rate_ct=b.pv_rate_ct or 0.0,
-        pv_rate_on_battery=bool(b.pv_rate_on_battery),
     )
     result = calc.compute(bill, parties, fixed, allocs, b.values or {}, energy_entities(st))
     missing = calc.missing_entities([e for e, _ in required_entities(s)], b.values or {})
@@ -220,7 +234,6 @@ def create_from_invoice(s: Session, inv: invoice_import.ParsedInvoice, pdf: byte
         vat_rate=inv.vat_rate if inv.vat_rate is not None else (float(st["vat_rate"] or 19) / 100),
         battery_rate_ct=float(st["battery_rate_ct"].replace(",", ".") or 0),
         pv_rate_ct=float(st["pv_rate_ct"].replace(",", ".") or 0),
-        pv_rate_on_battery=bool(st["pv_rate_on_battery"]),
         values={}, amounts={}, result={}, sent={},
         import_info={**inv.info(), "filename": filename},
         mail_message_id=message_id,
@@ -238,7 +251,8 @@ def create_from_invoice(s: Session, inv: invoice_import.ParsedInvoice, pdf: byte
 async def import_invoice(s: Session, pdf: bytes, filename: str, message_id: str = "",
                          source: str = "Upload") -> tuple[Billing | None, str]:
     """Kompletter Ablauf: PDF lesen, Entwurf anlegen, HA-Werte laden, berechnen,
-    ggf. automatisch abschließen/versenden und benachrichtigen."""
+    je nach Einstellung „import_mode“ als Entwurf belassen oder automatisch abschließen
+    und versenden, anschließend benachrichtigen."""
     inv = invoice_import.parse_pdf(pdf)
     dup = find_duplicate(s, inv, message_id)
     if dup:
@@ -255,15 +269,20 @@ async def import_invoice(s: Session, pdf: bytes, filename: str, message_id: str 
     result = recompute(s, b)
     warnings = list(inv.warnings) + list(result.get("warnings", []))
     st = get_settings(s)
-    if st["import_auto_finalize"] and not warnings:
+    mode = st["import_mode"]
+    if mode == "auto_always" or (mode == "auto_if_clean" and not warnings):
+        # Vollautomatisch: ohne manuelle Prüfung abschließen und an alle Parteien mit Adresse senden
         b.status = "final"
-        msgs.append("automatisch abgeschlossen")
-        if st["mail_auto_send"] and mailer.configured():
+        msgs.append("automatisch abgeschlossen" + (f" trotz {len(warnings)} Hinweis(en)" if warnings else ""))
+        if mailer.configured():
             s.commit()
             report = send_invoices(s, b, only_unsent=True)
-            msgs.append(f"{sum(1 for _, ok, _ in report if ok)} Abrechnung(en) versendet")
-    elif warnings:
-        msgs.append(f"{len(warnings)} Hinweis(e) – bitte prüfen")
+            ok = sum(1 for _, good, _ in report if good)
+            msgs.append(f"{ok} Abrechnung(en) versendet" + (f", {len(report) - ok} fehlgeschlagen" if len(report) > ok else ""))
+        else:
+            msgs.append("nicht versendet: SMTP nicht konfiguriert")
+    else:
+        msgs.append(f"Entwurf – bitte prüfen ({len(warnings)} Hinweis(e))" if warnings else "Entwurf – bitte prüfen")
     s.commit()
     text_msg = " · ".join(msgs)
     if st["notify_email"] and mailer.configured():

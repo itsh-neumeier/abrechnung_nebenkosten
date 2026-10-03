@@ -17,8 +17,8 @@ Preise je kWh
 * Netzstrom: Ø Arbeitspreis lt. Rechnung **brutto**
 * PV direkt: Ø Börsenpreis netto lt. Rechnung + PV-Bereitstellungssatz (ohne MwSt.)
 * Batterie aus Netz: Ø Börsenpreis netto + Batterieverschleißsatz (ohne MwSt.)
-* Batterie aus PV: Ø Börsenpreis netto + PV-Bereitstellungssatz (optional)
-  + Batterieverschleißsatz (ohne MwSt.)
+* Batterie aus PV: Ø Börsenpreis netto + PV-Bereitstellungssatz + Batterieverschleißsatz
+  (ohne MwSt.)
 
 Jede Partei (Summe ihrer Shelly-Zähler) bekommt denselben Mix. Der Eigentümer
 bekommt den Restverbrauch. Fixkosten des Anbieters werden gleichmäßig verteilt,
@@ -60,6 +60,7 @@ class AllocationCfg:
     source_entity: str = ""
     amount: float = 0.0  # bei "amount": Betrag; bei "quantity": Preis je Einheit (brutto)
     source_unit: str = ""  # Einheit der Menge bei "quantity", z. B. m³
+    price_parts: list[tuple[str, float]] = field(default_factory=list)  # z. B. [("Wasser", 2.1), ("Abwasser", 2.7)]
     key_type: str = "equal"  # "entity" | "percent" | "equal"
     key: dict[int, str | float] = field(default_factory=dict)
     key_unit: str = ""
@@ -74,7 +75,6 @@ class BillCfg:
     wear_rate_ct: float = 0.0  # Batterieverschleißsatz ct/kWh (ohne MwSt.)
     spot_price_ct: float = 0.0  # Ø Börsenpreis netto ct/kWh lt. Rechnung
     pv_rate_ct: float = 0.0  # PV-Bereitstellungssatz ct/kWh (ohne MwSt.)
-    pv_rate_on_battery: bool = True  # PV-Satz auch auf Batteriestrom aus PV
 
 
 @dataclass
@@ -229,15 +229,14 @@ def compute(
         "grid": price_gross,
         "pv": spot + pv_rate,
         "bat_grid": spot + wear,
-        "bat_pv": spot + (pv_rate if bill.pv_rate_on_battery else 0.0) + wear,
+        "bat_pv": spot + pv_rate + wear,
     }
     price_notes = {
         "grid": "Ø Arbeitspreis lt. Rechnung inkl. MwSt.",
         "pv": f"Ø Börsenpreis {_de(spot*100)} ct + PV-Bereitstellung {_de(pv_rate*100)} ct, ohne MwSt.",
         "bat_grid": f"Ø Börsenpreis {_de(spot*100)} ct + Batterieverschleiß {_de(wear*100)} ct, ohne MwSt.",
-        "bat_pv": (f"Ø Börsenpreis {_de(spot*100)} ct"
-                   + (f" + PV-Bereitstellung {_de(pv_rate*100)} ct" if bill.pv_rate_on_battery else "")
-                   + f" + Batterieverschleiß {_de(wear*100)} ct, ohne MwSt."),
+        "bat_pv": (f"Ø Börsenpreis {_de(spot*100)} ct + PV-Bereitstellung {_de(pv_rate*100)} ct"
+                   f" + Batterieverschleiß {_de(wear*100)} ct, ohne MwSt."),
     }
 
     # --- Messwerte ---------------------------------------------------------------
@@ -329,8 +328,15 @@ def compute(
             pot_desc = f"{_de(src_kwh, 1)} kWh = {_de(pot)} €"
         elif a.source_type == "quantity":
             qty = _val(values, a.source_entity)
-            pot = qty * a.amount
-            pot_desc = f"{_de(qty, 2)} {a.source_unit} × {_de(a.amount)} €/{a.source_unit} = {_de(pot)} €"
+            price = sum(p for _, p in a.price_parts) if a.price_parts else a.amount
+            pot = qty * price
+            if a.price_parts:
+                parts = " + ".join(f"{label} {_de(p)} €" for label, p in a.price_parts)
+                pot_desc = f"{_de(qty, 2)} {a.source_unit} × ({parts})/{a.source_unit} = {_de(pot)} €"
+            else:
+                pot_desc = f"{_de(qty, 2)} {a.source_unit} × {_de(price)} €/{a.source_unit} = {_de(pot)} €"
+            if not price:
+                warnings.append(f"Umlage „{a.name}“: kein Preis je {a.source_unit} hinterlegt.")
         else:
             pot = a.amount
             pot_desc = f"{_de(pot)} €"

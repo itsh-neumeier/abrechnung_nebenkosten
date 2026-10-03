@@ -112,8 +112,9 @@ def test_upload_and_imap(tmp_path, monkeypatch):
 
     pdf = make_pdf()
     with TestClient(app) as c:
+        c.post("/settings", data={"import_mode": "review"})
         r = c.post("/billings/import", files={"file": ("rechnung.pdf", pdf, "application/pdf")})
-        assert "Rechnung 2026000001" in r.text and "importiert" in r.text
+        assert "Rechnung 2026000001" in r.text and "importiert" in r.text and "Entwurf" in r.text
         assert "Importierte Rechnung" in r.text and "Original-PDF" in r.text
         bid = int(str(r.url).split("/billings/")[1].split("?")[0])
         assert c.get(f"/billings/{bid}/source.pdf").content[:4] == b"%PDF"
@@ -161,3 +162,42 @@ def test_upload_and_imap(tmp_path, monkeypatch):
         assert str(b.period_start) == "2026-09-01"
         assert b.spot_price_ct == 14.09
     assert config.imap_sender == "awattar.de"
+
+
+def test_auto_send_without_validation(monkeypatch):
+    """Modus „immer automatisch“: abschließen und versenden, auch wenn Hinweise vorliegen."""
+    import asyncio
+    import smtplib
+
+    from fastapi.testclient import TestClient
+
+    from app import service
+    from app.db import Party, SessionLocal
+    from app.main import app
+
+    sent = []
+
+    class FakeSMTP:
+        def __init__(self, *a, **kw): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def starttls(self, **kw): pass
+        def login(self, *a): pass
+        def send_message(self, msg, to_addrs=None): sent.append(to_addrs)
+
+    monkeypatch.setattr(smtplib, "SMTP", FakeSMTP)
+    text = AWATTAR_TEXT.replace("2026000001", "2026000099").replace("Summe 30,93 € 36,81 €", "Summe 31,93 € 37,99 €")
+    with TestClient(app) as c:
+        c.post("/settings", data={"import_mode": "auto_always"})
+        with SessionLocal() as s:
+            s.add(Party(name="Auto Mieter", email="auto@test.de", meters=[], active=True, is_owner=False, sort=0))
+            s.commit()
+            b, msg = asyncio.run(service.import_invoice(s, make_pdf(text), "r.pdf"))
+            assert b.status == "final"
+            assert "trotz" in msg and "versendet" in msg
+        assert ["auto@test.de"] in sent
+        c.post("/settings", data={"import_mode": "auto_if_clean"})
+        with SessionLocal() as s:
+            b, msg = asyncio.run(service.import_invoice(s, make_pdf(text.replace("2026000099", "2026000098")), "r.pdf"))
+            assert b.status == "draft" and "bitte prüfen" in msg  # Hinweis vorhanden -> Entwurf
+        c.post("/settings", data={"import_mode": "review"})

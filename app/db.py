@@ -58,6 +58,7 @@ class Allocation(Base):
     source_type: Mapped[str] = mapped_column(String(20), default="energy")  # energy | quantity | amount
     source_entity: Mapped[str] = mapped_column(String(255), default="")
     source_unit: Mapped[str] = mapped_column(String(20), default="m³")  # Einheit bei quantity
+    price_source: Mapped[str] = mapped_column(String(20), default="custom")  # custom | water (Einstellungen)
     default_amount: Mapped[float] = mapped_column(Float, default=0.0)  # Betrag bzw. Preis je Einheit
     key_type: Mapped[str] = mapped_column(String(20), default="percent")  # entity | percent | equal
     key_unit: Mapped[str] = mapped_column(String(20), default="")
@@ -81,7 +82,6 @@ class Billing(Base):
     battery_rate_ct: Mapped[float] = mapped_column(Float, default=0.0)  # Batterieverschleißsatz
     spot_price_ct: Mapped[float] = mapped_column(Float, default=0.0)  # Ø Börsenpreis netto lt. Rechnung
     pv_rate_ct: Mapped[float] = mapped_column(Float, default=0.0)  # PV-Bereitstellungssatz
-    pv_rate_on_battery: Mapped[bool] = mapped_column(Boolean, default=True)
     sent: Mapped[dict] = mapped_column(JSON, default=dict)  # party_id -> Versandzeitpunkt / Fehler
     source_file: Mapped[str] = mapped_column(String(255), default="")  # importierte Original-Rechnung (PDF)
     import_info: Mapped[dict] = mapped_column(JSON, default=dict)  # Positionen / Prüfungen des Imports
@@ -147,7 +147,8 @@ SETTING_DEFAULTS = {
     # Sätze
     "battery_rate_ct": "8",  # Batterieverschleißsatz
     "pv_rate_ct": "5",  # PV-Bereitstellungssatz
-    "pv_rate_on_battery": "1",
+    "water_price_m3": "",  # Trinkwasser €/m³ brutto
+    "sewage_price_m3": "",  # Abwasser €/m³ brutto
     "vat_rate": "19",
     # Objekt
     "building_title": "Nebenkostenabrechnung",
@@ -160,7 +161,7 @@ SETTING_DEFAULTS = {
                  "Betrag: {betrag}\n\nViele Grüße\n{absender}",
     "mail_bcc": "",
     # Rechnungsimport
-    "import_auto_finalize": "",  # importierte Rechnung ohne Warnungen direkt abschließen (+ ggf. versenden)
+    "import_mode": "review",  # review | auto_if_clean | auto_always
     "notify_email": "",  # Hinweis-Mail bei neu importierter Rechnung
     "landlord_name": "",
     "landlord_address": "",
