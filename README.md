@@ -62,11 +62,12 @@ Fertiger Stack in [`portainer/docker-compose.yml`](portainer/docker-compose.yml)
 
 1. Portainer → **Stacks → Add stack**, Name `stromabrechnung`.
 2. **Repository**: `https://github.com/itsh-neumeier/abrechnung_nebenkosten`,
-   Reference `refs/heads/claude/stromabrechnung-hausparteien-qif4vp` (bzw. Standard-Branch),
-   Compose path `portainer/docker-compose.yml` – *oder* **Web editor** und den Dateiinhalt einfügen.
-3. **Environment variables → Load variables from .env file**: [`portainer/stack.env.example`](portainer/stack.env.example)
-   laden und ausfüllen (`HA_URL`, `HA_TOKEN`, `APP_PASSWORD`, `SMTP_*`, `IMAP_*` …).
-   Portainer speichert sie als `stack.env`, der Container liest sie per `env_file`.
+   Reference leer lassen (= Standard-Branch), Compose path `portainer/docker-compose.yml`
+   – *oder* **Web editor** und den Dateiinhalt einfügen.
+3. **Environment variables**: einzeln eintragen oder per *Load variables from .env file* die Vorlage
+   [`portainer/stack.env.example`](portainer/stack.env.example) laden und ausfüllen
+   (`HA_URL`, `HA_TOKEN`, `APP_PASSWORD`, `SMTP_*`, `IMAP_*` …). Die Compose-Datei setzt sie per
+   `${VARIABLE}` ein – eine `stack.env`-Datei wird nicht benötigt.
 4. **Deploy the stack** → Webinterface unter `http://<host>:8000` (Port über `APP_PORT`).
 
 Daten (SQLite + Original-Rechnungen) liegen im Volume `stromabrechnung-data`. Updates:
