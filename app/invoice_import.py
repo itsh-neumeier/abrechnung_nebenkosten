@@ -28,10 +28,12 @@ class ImportError_(Exception):
 
 NUM = r"-?\d{1,3}(?:\.\d{3})*,\d+|-?\d+,\d+"
 DATE = r"\d{2}\.\d{2}\.\d{4}"
+EUR = r"(?:€|EUR|Euro)"
 POSITION = re.compile(
     rf"(?P<desc>.*?)\s*(?P<von>{DATE})\s*[–-]\s*(?P<bis>{DATE})\s+(?P<price>{NUM})\s+(?P<punit>\S+/\S+)\s+"
-    rf"(?P<qty>{NUM})\s+(?P<qunit>\S+)\s+(?P<net>{NUM})\s*€\s*$"
+    rf"(?P<qty>{NUM})\s+(?P<qunit>\S+)\s+(?P<net>{NUM})\s*{EUR}\s*$"
 )
+HOURLY = re.compile(r"HOURLY", re.I)
 SPOT_DESC = re.compile(r"HOURLY|Stromverbrauch|Börse|Spot|Energiepreis", re.I)
 
 
@@ -123,9 +125,9 @@ def parse_text(text: str) -> ParsedInvoice:
         inv.period_start, inv.period_end = de_date(m.group(1)), de_date(m.group(2))
     if m := re.search(rf"Bezug\s+({NUM})\s*kWh", text):
         inv.grid_kwh = de_float(m.group(1))
-    if m := re.search(r"MWSt\.?\s*(\d+(?:,\d+)?)\s*%", text, re.I):
+    if m := re.search(r"(?:MW?St|USt|Mehrwertsteuer|Umsatzsteuer)\.?\s*(\d+(?:,\d+)?)\s*%", text, re.I):
         inv.vat_rate = de_float(m.group(1) if "," in m.group(1) else m.group(1) + ",0") / 100
-    if m := re.search(rf"Summe\s+({NUM})\s*€\s+({NUM})\s*€", text):
+    if m := re.search(rf"Summe\s+({NUM})\s*{EUR}\s+({NUM})\s*{EUR}", text):
         inv.total_net, inv.total_gross = de_float(m.group(1)), de_float(m.group(2))
     if m := re.search(rf"Arbeitspreis:?\s*({NUM})\s*Cent/kWh", text):
         inv.stated_work_price_ct = de_float(m.group(1))
@@ -162,21 +164,53 @@ def parse_text(text: str) -> ParsedInvoice:
         if p.kind == "other":
             inv.warnings.append(f"Position „{p.description}“ ({p.price_unit}) nicht zugeordnet – bitte prüfen.")
 
-    spot = [p for p in inv.positions if p.kind == "energy" and SPOT_DESC.search(p.description)]
+    energy = [p for p in inv.positions if p.kind == "energy"]
+    # Börsenpreis: bevorzugt die HOURLY-Position; nur notfalls über allgemeinere Begriffe
+    spot = [p for p in energy if HOURLY.search(p.description)]
+    if not spot:
+        spot = [p for p in energy if SPOT_DESC.search(p.description)]
+        if spot:
+            inv.warnings.append(
+                "Keine Position „HOURLY“ gefunden – Börsenpreis aus "
+                + ", ".join(f"„{p.description}“" for p in spot) + " abgeleitet, bitte prüfen.")
     if spot:
         qty = sum(p.quantity for p in spot)
         inv.spot_price_ct = (sum(p.net for p in spot) / qty * 100) if len(spot) > 1 and qty else spot[0].price
         if inv.grid_kwh is None:
             inv.grid_kwh = qty
+            inv.warnings.append(f"Netzbezug („Bezug … kWh“) nicht gefunden – {qty:.2f} kWh aus der Börsenpreis-Position übernommen.")
+        if inv.spot_price_ct is not None and not 0 <= inv.spot_price_ct <= 100:
+            inv.warnings.append(f"Börsenpreis {inv.spot_price_ct:.2f} ct/kWh unplausibel – bitte prüfen.")
     else:
         inv.warnings.append("Kein Börsenpreis (Stromverbrauch HOURLY) gefunden – bitte manuell eintragen.")
+    if inv.grid_kwh is None:
+        inv.warnings.append("Netzbezug (kWh) nicht gefunden – bitte manuell eintragen.")
 
     if inv.period_start is None:
         froms = [de_date(p.period_from) for p in inv.positions]
         tos = [de_date(p.period_to) for p in inv.positions]
         inv.period_start, inv.period_end = min(froms), max(tos)
 
-    # Plausibilitätsprüfungen
+    # Plausibilitätsprüfungen – fehlt ein Prüfwert, ist das selbst ein Hinweis (kein stilles Durchrutschen)
+    if inv.total_net is None:
+        inv.warnings.append("Rechnungssumme („Summe … € … €“) nicht gefunden – Positionen konnten nicht gegen die "
+                            "Summe geprüft werden. Bitte mit dem Original vergleichen.")
+    if inv.vat_rate is None:
+        inv.warnings.append("MwSt.-Satz nicht gefunden – Satz aus den Einstellungen verwendet.")
+    if not inv.invoice_no:
+        inv.warnings.append("Rechnungsnummer nicht gefunden.")
+    if inv.total_net is not None and inv.total_gross is not None and inv.vat_rate is not None:
+        if abs(inv.total_net * (1 + inv.vat_rate) - inv.total_gross) > 0.05:
+            inv.warnings.append(f"Rechnungssumme netto {inv.total_net:.2f} € × MwSt. ergibt nicht brutto "
+                                f"{inv.total_gross:.2f} € – bitte prüfen.")
+    per_desc: dict[str, float] = {}  # Preiswechsel im Monat = mehrere Zeilen je Position → summieren
+    for p in energy:
+        if p.quantity_unit.lower() == "kwh":
+            per_desc[p.description] = per_desc.get(p.description, 0.0) + p.quantity
+    energy_qty = {round(q, 2) for q in per_desc.values()}
+    if inv.grid_kwh and energy_qty and any(abs(q - inv.grid_kwh) > 0.05 for q in energy_qty):
+        inv.warnings.append(f"Mengen der kWh-Positionen ({', '.join(f'{q:.2f}' for q in sorted(energy_qty))}) passen "
+                            f"nicht zum Netzbezug {inv.grid_kwh:.2f} kWh – bitte prüfen.")
     if inv.total_net is not None:
         diff = inv.total_net - inv.energy_cost_net - inv.fixed_cost_net
         if abs(diff) > 0.05:

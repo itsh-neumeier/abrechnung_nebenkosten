@@ -3,6 +3,8 @@
 import imaplib
 from email.message import EmailMessage
 
+import re
+
 import pytest
 
 from app import invoice_import as ii
@@ -83,6 +85,26 @@ def test_parse_awattar_text():
 def test_parse_detects_mismatch():
     inv = ii.parse_text(AWATTAR_TEXT.replace("Summe 30,93 € 36,81 €", "Summe 40,00 € 47,60 €"))
     assert any("weicht" in w for w in inv.warnings)
+
+
+@pytest.mark.parametrize("change, expect", [
+    (lambda t: t.replace("Summe", "Gesamt"), "Rechnungssumme"),
+    (lambda t: re.sub(r"Bezug(\s+[\d.,]+\s*kWh)", r"Verbrauch\1", t), "Netzbezug"),
+    (lambda t: t.replace("HOURLY", "dynamisch"), "HOURLY"),
+    (lambda t: re.sub("MWSt", "Steuer", t, flags=re.I), "MwSt.-Satz"),
+])
+def test_layout_changes_warn_instead_of_silent(change, expect):
+    """Leicht geändertes Rechnungsdesign: Werte bleiben richtig, aber es gibt einen Hinweis (→ Prüfung)."""
+    inv = ii.parse_text(change(AWATTAR_TEXT))
+    assert inv.spot_price_ct == 14.09 and inv.grid_kwh == 74.79
+    assert any(expect in w for w in inv.warnings)
+
+
+def test_label_variants_are_accepted():
+    text = AWATTAR_TEXT.replace(" €", " EUR").replace("MWSt.", "USt.")
+    inv = ii.parse_text(text)
+    assert len(inv.positions) == 10 and inv.total_net == 30.93 and inv.vat_rate == pytest.approx(0.19)
+    assert inv.warnings == []
 
 
 def test_unknown_format():
