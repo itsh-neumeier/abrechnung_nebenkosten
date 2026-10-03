@@ -61,6 +61,16 @@
   <label>Text</label><textarea name="mail_body" rows="7">{{ st.mail_body }}</textarea>
   <p class="muted">Platzhalter: {name}, {wohneinheit}, {we_id}, {zeitraum}, {betrag}, {absender}, {gebaeude}</p>
 </div>
+<div class="card">
+  <h2 style="margin-top:0">Rechnungseingang</h2>
+  {% if imap_ok %}
+  <p>Postfach <code>{{ smtp.imap_user }}@{{ smtp.imap_host }}</code> / <code>{{ smtp.imap_folder }}</code>, Absender <code>{{ smtp.imap_sender }}</code>, alle {{ smtp.imap_interval_min }} Min.</p>
+  {% else %}
+  <div class="warn">Automatischer Abruf aus: <code>IMAP_HOST</code>, <code>IMAP_USER</code>, <code>IMAP_PASSWORD</code> in der <code>.env</code> setzen. Upload im Webinterface geht immer.</div>
+  {% endif %}
+  <div class="check"><input type="checkbox" name="import_auto_finalize" id="iaf" {% if st.import_auto_finalize %}checked{% endif %}><label for="iaf" style="margin:0">Importierte Rechnung ohne Hinweise automatisch abschließen (und bei aktivem Auto-Versand verschicken)</label></div>
+  <label>Hinweis-Mail bei neuer Rechnung an</label><input type="text" name="notify_email" value="{{ st.notify_email }}" placeholder="ich@example.de">
+</div>
 <button>Speichern</button>
 </form>
 {% if mail_ok %}

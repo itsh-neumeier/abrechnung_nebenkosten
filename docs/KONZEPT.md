@@ -12,6 +12,9 @@
 | E-Mail-Versand | SMTP, Adresse je Partei, automatisch beim Abschließen oder manuell |
 | Layout | ohne Logo: „Nebenkostenabrechnung“, Objektanschrift, Wohneinheit, Gebäude-ID + Wohneinheiten-ID |
 | Entitäten | Auswahl live über die HA-API im Webinterface |
+| Rechnungseingang | aWATTar-PDF aus E-Mail (IMAP, nur lesend) oder Upload; Positionen in Cent/kWh → Arbeitspreis, Euro/Monat/Jahr → Fixkosten, „HOURLY“ → Börsenpreis |
+| Trinkwasser | m³ aus HA × Preis je m³, nach festen Prozenten |
+| Warmwasserbereitung | kWh des Shelly × Hausstrom-Mix, nach festen Prozenten |
 | Fixkosten | gleichmäßig pro Partei (weitere Fixkosten optional nur für ausgewählte Parteien) |
 | Restverbrauch (Allgemeinstrom usw.) | an Eigentümer/Hauptpartei |
 | Ausgabe | PDF je Partei (+ ZIP), Web-Vorschau, E-Mail |
@@ -26,4 +29,7 @@
    bestimmt; Energie, die Ende des Vormonats geladen und im neuen Monat entladen wird, wird nicht
    gesondert verfolgt (stündliche Berechnung wäre möglich).
 3. **Einspeisung**: Einspeisevergütung wird nicht berücksichtigt.
-4. **Automatik**: Monatlich automatisch einen Entwurf anlegen oder die Rechnung per PDF-Upload auslesen?
+4. **Automatisch abschließen**: Importierte Rechnungen ohne Hinweise können direkt abgeschlossen und
+   versendet werden (Einstellung, standardmäßig aus) – oder lieber immer erst prüfen?
+5. **Wasserpreis**: Preis je m³ (Wasser + Abwasser) bleibt fest hinterlegt und ist je Abrechnung änderbar.
+   Soll die Wasserrechnung (jährlich) später ebenfalls importiert werden?

@@ -120,14 +120,14 @@ async def billing_import(request: Request, s: Session = Depends(get_session)):
 def settings_page(request: Request, s: Session = Depends(get_session)):
     return render(request, "settings.html", st=get_settings(s), ha_url=config.ha_url,
                   ha_token_set=bool(config.ha_token), house_entities=service.HOUSE_ENTITIES,
-                  smtp=config, mail_ok=mailer.configured())
+                  smtp=config, mail_ok=mailer.configured(), imap_ok=mailbox.configured())
 
 
 @app.post("/settings")
 async def settings_save(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
     data = {k: str(v).strip() for k, v in form.items()}
-    for flag in ("pv_rate_on_battery", "mail_auto_send"):  # Checkboxen
+    for flag in ("pv_rate_on_battery", "mail_auto_send", "import_auto_finalize"):  # Checkboxen
         data[flag] = "1" if form.get(flag) else ""
     save_settings(s, data)
     return redirect("/settings", "Gespeichert")

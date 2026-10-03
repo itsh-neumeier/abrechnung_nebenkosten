@@ -6,8 +6,11 @@ mit Messwerten aus **Home Assistant** (Shelly, Victron, Stromzähler), **Batteri
 
 ## Ablauf pro Monat
 
-1. Rechnung vom Stromanbieter kommt → im Webinterface **„Neue Stromrechnung erfassen“**.
-2. Zeitraum, Netzbezug (kWh), Arbeitspreis netto, Ø Börsenpreis netto, Fixkosten netto, MwSt. eintragen.
+1. Rechnung des Stromanbieters (aWATTar) kommt per E-Mail → das Tool prüft das Postfach per IMAP
+   (nur lesend) und liest das PDF aus: Zeitraum, Bezug kWh, Arbeitspreis netto (alle Cent/kWh-Positionen),
+   Fixkosten netto (Grundpreis, Grundentgelt), Ø Börsenpreis (Position „Stromverbrauch (HOURLY)“), MwSt.
+   Alternativ PDF oder `.eml` im Webinterface hochladen oder Werte manuell erfassen.
+2. Plausibilitätsprüfung: Summe der Positionen = Rechnungssumme, Ø Arbeitspreis = ausgewiesener Arbeitspreis.
 3. Verbrauchswerte werden aus Home Assistant geladen (Langzeitstatistik, auch Monate rückwirkend).
 4. Prüfen, ggf. Werte korrigieren → **Abschließen** → PDFs je Partei bzw. alle als ZIP.
 5. Versand per E-Mail an alle Parteien mit hinterlegter Adresse – automatisch beim Abschließen
@@ -34,14 +37,16 @@ Restverbrauch (Gesamt − andere Parteien − Strom-Umlagen).
 |---|---|
 | Fixkosten Anbieter (Grundpreis, Messstelle) | brutto ÷ Anzahl Parteien (centgenau) |
 | Weitere Fixkosten (z. B. IPTV) | Betrag ÷ ausgewählte Parteien |
-| Umlagen (z. B. Warmwasser, Wasser) | Energie aus HA-Entität (Preis wie Hausstrom-Mix) oder Betrag, verteilt nach Verbrauch je Partei (HA-Entität), Prozent oder gleichmäßig |
+| Warmwasserbereitung | kWh des Shelly (HA) × Hausstrom-Mix, verteilt nach festen Prozenten; wird vom Restverbrauch des Eigentümers abgezogen |
+| Trinkwasser | m³ des Wasserzählers (HA-Adapter) × Preis je m³, verteilt nach festen Prozenten |
+| Sonstige Umlagen | fester Betrag; Verteilung auch nach Verbrauch je Partei (HA-Entität) oder gleichmäßig |
 
 ## Installation (Docker)
 
 ```bash
 git clone https://github.com/itsh-neumeier/abrechnung_nebenkosten.git
 cd abrechnung_nebenkosten
-cp .env.example .env      # HA_TOKEN, APP_PASSWORD und SMTP_* eintragen
+cp .env.example .env      # HA_TOKEN, APP_PASSWORD, SMTP_* und IMAP_* eintragen
 docker compose up -d --build
 ```
 
@@ -71,8 +76,8 @@ HA-API (Suche, Filter Energie/Wasser, nur mit Langzeitstatistik, aktueller Zähl
    Batterieverschleißsatz; Objektanschrift und Gebäude-ID; Absender/IBAN; E-Mail-Vorlage.
 2. **Parteien**: Wohneinheit (Name), Wohneinheiten-ID, E-Mail, Shelly-Entitäten; eine Partei als
    *Eigentümer* markieren (bekommt den Restverbrauch).
-3. **Fixkosten & Umlagen**: z. B. „IPTV-Bereitstellung“ (Betrag, Parteien) und „Warmwasserbereitung“
-   (Quell-Entität kWh, Verteilung nach Warmwasserzählern je Partei).
+3. **Fixkosten & Umlagen**: „IPTV-Bereitstellung“ (Betrag, Parteien), „Trinkwasser“ (Menge × Preis,
+   Wasserzähler-Entität, €/m³, Prozente) und „Warmwasserbereitung“ (Strom, Shelly-Entität, Prozente).
 
 ## Entwicklung
 
