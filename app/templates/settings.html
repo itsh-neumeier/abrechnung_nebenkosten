@@ -13,10 +13,68 @@
   <p class="muted">Zählersensoren (kWh) mit Langzeitstatistik. Über „Aus HA wählen“ direkt aus Home Assistant auswählen.
   Je Feld wahlweise <b>1 Entität (gesamt)</b> oder <b>3 Phasen (L1/L2/L3)</b> – Phasen werden addiert.
   Weitere Zähler lassen sich im Einzelfeld mit <code>+</code> verbinden.</p>
+  <div class="hint-box">
+    <b>Victron (hass-victron):</b> Unter jedem Feld steht, welcher Sensor gemeint ist.
+    „Victron-Vorschlag“ sucht ihn in deinem Home Assistant und trägt ihn ein.
+    <div><button type="button" class="sec pick-btn" id="victron-all">Alle Victron-Vorschläge in leere Felder übernehmen</button>
+    <span class="muted" id="victron-status"></span></div>
+  </div>
   {% for key, label in house_entities %}
+  {% set vh = victron.get(key, {}) %}
   <label>{{ label }}</label>
-  <input type="text" name="{{ key }}" value="{{ st[key] }}" data-phases>
+  <input type="text" name="{{ key }}" value="{{ st[key] }}" data-phases data-suggest="{{ vh.suggest|join('|') if vh.suggest else '' }}">
+  {% if vh.hint %}<p class="muted hint">💡 {{ vh.hint }}
+    {% if vh.suggest %}<button type="button" class="sec pick-btn" data-victron="{{ key }}">Victron-Vorschlag</button>{% endif %}</p>{% endif %}
   {% endfor %}
+  <script>
+  (function () {
+    let cache = null;
+    const status = document.getElementById('victron-status');
+    async function entities() {
+      if (cache) return cache;
+      const r = await fetch('/api/entities');
+      const d = await r.json();
+      if (!Array.isArray(d)) throw new Error(d.error || 'Home Assistant nicht erreichbar');
+      return (cache = d);
+    }
+    // Zu jedem Schlüssel die passende Entität: Victron-Entitäten bevorzugt, sonst erste Übereinstimmung
+    function find(list, part) {
+      const hits = list.filter(e => e.entity_id.toLowerCase().includes(part.toLowerCase()));
+      hits.sort((a, b) => (b.entity_id.includes('victron') - a.entity_id.includes('victron')));
+      return hits;
+    }
+    async function suggest(key, onlyEmpty) {
+      const input = document.querySelector(`input[name="${key}"]`);
+      const parts = (input.dataset.suggest || '').split('|').filter(Boolean);
+      if (!parts.length || (onlyEmpty && input.value.trim())) return null;
+      const list = await entities();
+      const found = parts.map(p => find(list, p));
+      if (found.some(h => !h.length)) return `${key}: nicht gefunden (${parts.filter((p, i) => !found[i].length).join(', ')})`;
+      const box = input.closest('.phase-box');
+      const mode = box && box.querySelector('.phase-mode');
+      if (mode && mode.value !== '1') { mode.value = '1'; mode.dispatchEvent(new Event('change')); }
+      input.value = found.map(h => h[0].entity_id).join(' + ');
+      input.dispatchEvent(new Event('input', {bubbles: true}));
+      const multi = found.some(h => h.length > 1) ? ' (mehrere Treffer – bitte prüfen)' : '';
+      return `${key}: ${input.value}${multi}`;
+    }
+    document.querySelectorAll('[data-victron]').forEach(b => b.addEventListener('click', async () => {
+      try { status.textContent = (await suggest(b.dataset.victron, false)) || ''; }
+      catch (e) { status.textContent = e.message; }
+    }));
+    document.getElementById('victron-all').addEventListener('click', async () => {
+      status.textContent = 'Suche …';
+      try {
+        const res = [];
+        for (const b of document.querySelectorAll('[data-victron]')) {
+          const r = await suggest(b.dataset.victron, true);
+          if (r) res.push(r);
+        }
+        status.textContent = res.length ? res.join(' · ') + ' – bitte prüfen und speichern.' : 'Keine leeren Felder mit Vorschlag.';
+      } catch (e) { status.textContent = e.message; }
+    });
+  })();
+  </script>
   <p class="muted">Aus diesen Werten wird der Mix berechnet:
     Netz direkt = Netzbezug − Netz→Batterie · Batterie aus Netz = Entladung × (Netz→Batterie ÷ Batterie geladen) ·
     Batterie aus PV = restliche Entladung · PV direkt = Gesamtverbrauch − Netz direkt − Entladung (oder eigene Entität).</p>

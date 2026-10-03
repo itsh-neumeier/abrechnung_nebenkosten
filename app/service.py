@@ -38,6 +38,37 @@ def water_price_parts(st: dict[str, str]) -> list[tuple[str, float]]:
     return [("Wasser", _num(st["water_price_m3"])), ("Abwasser", _num(st["sewage_price_m3"]))]
 
 
+# Vorschläge für die Victron-Integration hass-victron (Modbus TCP), Verbraucher am AC-out.
+# "suggest": Teile der Entity-ID; mehrere Teile werden als Summe eingetragen.
+VICTRON_HINTS = {
+    "entity_grid": {
+        "hint": "Dein Stromzähler in HA. Alternativ Victron-Netzzähler: grid_energy_forward_total.",
+        "suggest": ["grid_energy_forward_total"],
+    },
+    "entity_total": {
+        "hint": "Dein Victron-Verbrauchszähler. Alternativ (PV über MPPT): vebus_acin1toacout + vebus_invertertoacout.",
+        "suggest": ["vebus_acin1toacout", "vebus_invertertoacout"],
+    },
+    "entity_battery": {
+        "hint": "battery_history_dischargedenergy (SmartShunt/BMV/BMS, misst nur die Batterie).",
+        "suggest": ["battery_history_dischargedenergy"],
+    },
+    "entity_battery_charge": {
+        "hint": "battery_history_chargedenergy (SmartShunt/BMV/BMS, Ladung aus Netz + PV).",
+        "suggest": ["battery_history_chargedenergy"],
+    },
+    "entity_battery_charge_grid": {
+        "hint": "vebus_acin1toinverter (MultiPlus: Netz → Wechselrichter = Ladung aus dem Netz). "
+                "Fehlt er: Victron-Integration → Konfigurieren → „Rescan available devices“.",
+        "suggest": ["vebus_acin1toinverter"],
+    },
+    "entity_pv_direct": {
+        "hint": "Leer lassen – wird berechnet: Gesamtverbrauch − Netz direkt − Batterie entladen.",
+        "suggest": [],
+    },
+}
+
+
 def active_parties(s: Session) -> list[Party]:
     return s.query(Party).filter(Party.active.is_(True)).order_by(Party.sort, Party.id).all()
 

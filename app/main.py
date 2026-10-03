@@ -121,6 +121,7 @@ async def billing_import(request: Request, s: Session = Depends(get_session)):
 def settings_page(request: Request, s: Session = Depends(get_session)):
     return render(request, "settings.html", st=get_settings(s), ha_url=config.ha_url,
                   ha_token_set=bool(config.ha_token), house_entities=service.HOUSE_ENTITIES,
+                  victron=service.VICTRON_HINTS,
                   smtp=config, mail_ok=mailer.configured(), imap_ok=mailbox.configured())
 
 

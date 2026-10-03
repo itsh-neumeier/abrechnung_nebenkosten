@@ -51,3 +51,5 @@ h3{font-size:.95rem;margin:1.2em 0 .2em;color:var(--muted)}
 .meter-row{border:1px dashed var(--line);border-radius:8px;padding:8px 10px;margin:6px 0;display:grid;gap:4px}
 .meter-row .meter-head{display:flex;justify-content:space-between;align-items:center;font-size:.85rem;color:var(--muted)}
 [hidden]{display:none !important}
+.hint-box{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0;font-size:.9rem}
+p.hint{margin:4px 0 2px;font-size:.84rem}
