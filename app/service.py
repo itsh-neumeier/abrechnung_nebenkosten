@@ -49,9 +49,10 @@ VICTRON_HINTS = {
         "suggest": ["grid_energy_forward_total"],
     },
     "entity_total": {
-        "hint": "vebus_acin1toacout + vebus_invertertoacout = alles, was am AC-out des MultiPlus ankommt "
-                "(Netz durchgereicht + Wechselrichter). Alternativ 3 Phasen Leistung: system_consumption_l1/l2/l3.",
-        "suggest": ["vebus_acin1toacout", "vebus_invertertoacout"],
+        "hint": "3 Phasen Leistung: system_consumption_l1 / _l2 / _l3 (W). Robuster als die VE.Bus-Zähler "
+                "vebus_acin1toacout + vebus_invertertoacout, die bei Neustarts von GX/MultiPlus zurückgesetzt "
+                "werden und dabei Verbrauch verlieren (Praxistest: bis zu 16 % pro Monat).",
+        "suggest": ["system_consumption_l1", "system_consumption_l2", "system_consumption_l3"],
     },
     "entity_battery": {
         "hint": "battery_history_dischargedenergy (SmartShunt/BMV/BMS, misst nur die Batterie).",
@@ -63,7 +64,8 @@ VICTRON_HINTS = {
     },
     "entity_battery_charge_grid": {
         "hint": "vebus_acin1toinverter (MultiPlus: Netz → Wechselrichter = Ladung aus dem Netz). "
-                "Fehlt er: Victron-Integration → Konfigurieren → „Rescan available devices“.",
+                "Fehlt er: Victron-Integration → Konfigurieren → „Rescan available devices“. "
+                "Hinweis: VE.Bus-Zähler werden bei Neustarts zurückgesetzt – Werte nach Updates prüfen.",
         "suggest": ["vebus_acin1toinverter"],
     },
     "entity_pv_direct": {

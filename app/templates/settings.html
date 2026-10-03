@@ -41,9 +41,16 @@
     // Zu jedem Schlüssel die passende Entität: Victron-Entitäten bevorzugt, sonst erste Übereinstimmung
     function find(list, part) {
       // nur lokale hass-victron-Sensoren, nie die Cloud-Integration „Victron Remote Monitoring“ (VRM)
-      const hits = list.filter(e => e.entity_id.toLowerCase().includes(part.toLowerCase())
+      const p = part.toLowerCase();
+      const hits = list.filter(e => e.entity_id.toLowerCase().includes(p)
                                  && !e.entity_id.includes('remote_monitoring'));
-      hits.sort((a, b) => (b.entity_id.includes('victron') - a.entity_id.includes('victron')));
+      // Bewertung: Victron vor anderen, exaktes Ende (ggf. mit Unit-ID) vor längeren Namen wie „…_l1_power“
+      const score = e => {
+        const id = e.entity_id.toLowerCase();
+        const exact = new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '_?\\d*$').test(id);
+        return (id.includes('victron') ? 2 : 0) + (exact ? 1 : 0);
+      };
+      hits.sort((a, b) => score(b) - score(a) || a.entity_id.length - b.entity_id.length);
       return hits;
     }
     async function suggest(key, onlyEmpty) {
@@ -55,9 +62,15 @@
       if (found.some(h => !h.length)) return `${key}: nicht gefunden (${parts.filter((p, i) => !found[i].length).join(', ')})`;
       const box = input.closest('.phase-box');
       const mode = box && box.querySelector('.phase-mode');
-      if (mode && mode.value !== '1') { mode.value = '1'; mode.dispatchEvent(new Event('change')); }
-      input.value = found.map(h => h[0].entity_id).join(' + ');
+      const ids = found.map(h => h[0].entity_id);
+      input.value = ids.join(' + ');
       input.dispatchEvent(new Event('input', {bubbles: true}));
+      if (mode) {
+        // drei Teile = Phasen L1/L2/L3 -> im 3-Phasen-Modus anzeigen, sonst Einzelfeld (Summe)
+        if (ids.length === 3) box.querySelectorAll('.phase-grid input').forEach((f, i) => f.value = ids[i]);
+        mode.value = ids.length === 3 ? '3' : '1';
+        mode.dispatchEvent(new Event('change'));
+      }
       const multi = found.some(h => h.length > 1) ? ' (mehrere Treffer – bitte prüfen)' : '';
       return `${key}: ${input.value}${multi}`;
     }

@@ -17,14 +17,16 @@ MPPT-Laderegler (DC). Je nach hass-victron-Version heißen die Sensoren z. B.
 | Feld im Tool | Sensor | Bedeutung |
 |---|---|---|
 | **Netzbezug (Stromzähler)** | eigener Zähler (z. B. EasyMeter „Gesamtbezug“) | Bezug lt. Zähler, muss zur Rechnung passen |
-| **Gesamtverbrauch Haus** | `vebus_acin1toacout + vebus_invertertoacout` | alles, was am AC-out ankommt = Hausverbrauch |
+| **Gesamtverbrauch Haus** | 3 Phasen Leistung `system_consumption_l1` / `_l2` / `_l3` (W) | Verbrauch aller AC-Lasten; das Tool integriert die Stundenmittel |
 | **Batterie entladen** | `battery_history_dischargedenergy` | Energie aus der Batterie (DC-seitig) |
 | **Batterie geladen gesamt** | `battery_history_chargedenergy` | gesamte Ladung (Netz + PV) |
 | **Batterie aus Netz geladen – dyn. ESS** | `vebus_acin1toinverter` | Netz → Wechselrichter = Ladung aus dem Netz |
 | PV-Direktverbrauch | leer lassen | wird berechnet: Gesamt − Netz direkt − Batterie entladen |
 
-Alternative für den Gesamtverbrauch: Leistung je Phase `system_consumption_l1/_l2/_l3` (W) als
-„3 Phasen“ – das Tool integriert die stündlichen Mittelwerte. Zähler sind aber robuster.
+Alternative für den Gesamtverbrauch: `vebus_acin1toacout + vebus_invertertoacout` (Zähler). Die
+VE.Bus-Zähler werden aber bei Neustarts von GX/MultiPlus (z. B. Firmware-Updates) zurückgesetzt. In einem
+Praxistest (Jan–Okt 2026, 25 Rücksetzungen) lagen sie in Monaten mit Rücksetzungen 8–16 % unter den
+Leistungssensoren, in ruhigen Monaten nur ~1,5 %. Die Leistungssensoren hatten durchgehend 100 % Abdeckung.
 
 Netzladeanteil = `vebus_acin1toinverter ÷ battery_history_chargedenergy` (jeweils Verbrauch im Monat).
 
