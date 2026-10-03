@@ -218,3 +218,15 @@ def test_vat_only_on_supplier_items(setup):
     assert vat["Netzstrom"] and vat["Fixkosten Stromanbieter (Grundpreis/Messstelle) anteilig"]
     assert not vat["PV-Strom direkt"] and not vat["Batteriestrom aus PV"]
     assert not vat["IPTV"] and not vat["Wasser"]
+
+
+def test_grid_control_tolerance_per_day():
+    """August 2026: VRM 79,4 kWh vs. Rechnung 74,8 kWh (+6,2 %, 4,6 kWh in 31 Tagen) -> keine Warnung."""
+    def run_with(meter, days):
+        bill = BillCfg(grid_kwh=74.79, energy_cost_net=18.79, fixed_cost_net=0, vat_rate=0.19, period_days=days)
+        r = compute(bill, [PartyCfg(1, "A", is_owner=True)], [], [], {"g": meter, "t": 1715.0},
+                    EnergyEntities(total="t", grid="g"))
+        return [w for w in r["warnings"] if "weicht" in w]
+    assert run_with(79.39, 31) == []
+    assert run_with(95.0, 31)          # 20 kWh daneben -> Warnung
+    assert run_with(79.39, 0)          # ohne Zeitraum gilt nur die 5-%-Regel

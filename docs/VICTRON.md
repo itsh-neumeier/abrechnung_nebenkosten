@@ -125,3 +125,11 @@ Für den Energiemix werden die VRM-Werte verwendet (Knopf „VRM-Werte für den 
 Alle Mix-Felder aus einer Quelle halten die Bilanz konsistent; der berechnete PV-Direktanteil entspricht dann
 VRM `Pc`. Ergebnis mit echten Daten: August Ø 22,68 statt 23,30 ct/kWh, September Ø 22,52 statt 23,33 ct/kWh
 (Mieter mit 245,8 kWh) gegenüber dem lokalen DC-Batteriezähler.
+
+### Netzbezug VRM vs. EVU-Zähler – kein Zeitzonenfehler
+
+Prüfung August 2026: Der erste VRM-Stundenwert beginnt am 01.08. 00:00 Ortszeit, eine Verschiebung des
+Fensters um ±2 h ändert die Monatssumme nicht (79,39 kWh), und die Tage mit viel Netzbezug liegen in VRM
+und am EasyMeter auf denselben Tagen. VRM liegt aber **jeden Tag ~0,1–0,3 kWh** (≈ 6 W Dauerversatz) über
+dem saldierenden EVU-Zähler – typisch, wenn das ESS um 0 W regelt und kleine Bezugs-/Einspeiseanteile pendeln.
+Die Zählerkontrolle warnt deshalb erst ab 5 % **und** 0,25 kWh je Tag Abweichung.

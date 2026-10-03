@@ -77,6 +77,7 @@ class BillCfg:
     spot_price_ct: float = 0.0  # Ø Börsenpreis netto ct/kWh lt. Rechnung
     pv_rate_ct: float = 0.0  # PV-Bereitstellungssatz ct/kWh (ohne MwSt.)
     owner_free_own_energy: bool = True  # Eigentümer zahlt keinen PV-/Batterie-/Graustrom (eigene Anlage)
+    period_days: int = 0  # Tage im Abrechnungszeitraum (für die Toleranz der Zählerkontrolle)
 
 
 @dataclass
@@ -262,11 +263,14 @@ def compute(
     share = mix["share"]
 
     if grid_meter_kwh is not None and bill.grid_kwh > 0:
-        dev = abs(grid_meter_kwh - bill.grid_kwh) / bill.grid_kwh
-        if dev > 0.05:
+        diff = abs(grid_meter_kwh - bill.grid_kwh)
+        dev = diff / bill.grid_kwh
+        # Toleranz: 5 % UND 0,25 kWh je Tag – kleine Dauerabweichungen (z. B. Messung um 0 W bei ESS-Regelung)
+        # fallen bei sehr kleinem Netzbezug sonst prozentual groß aus
+        if dev > 0.05 and diff > 0.25 * (bill.period_days or 0):
             warnings.append(
                 f"Netzbezug laut Zähler ({_de(grid_meter_kwh, 1)} kWh) weicht um {_pct(dev)} "
-                f"von der Rechnung ({_de(bill.grid_kwh, 1)} kWh) ab."
+                f"({_de(diff, 1)} kWh) von der Rechnung ({_de(bill.grid_kwh, 1)} kWh) ab."
             )
 
     def energy_cost(kwh: float) -> dict[str, tuple[float, float]]:
