@@ -23,7 +23,7 @@
   {% for key, label in house_entities %}
   {% set vh = victron.get(key, {}) %}
   <label>{{ label }}</label>
-  <input type="text" name="{{ key }}" value="{{ st[key] }}" data-phases data-suggest="{{ vh.suggest|join('|') if vh.suggest else '' }}">
+  <input type="text" name="{{ key }}" value="{{ st[key] }}" data-phases data-suggest="{{ vh.suggest|join(';') if vh.suggest else '' }}">
   {% if vh.hint %}<p class="muted hint">💡 {{ vh.hint }}
     {% if vh.suggest %}<button type="button" class="sec pick-btn" data-victron="{{ key }}">Victron-Vorschlag</button>{% endif %}</p>{% endif %}
   {% endfor %}
@@ -55,10 +55,11 @@
     }
     async function suggest(key, onlyEmpty) {
       const input = document.querySelector(`input[name="${key}"]`);
-      const parts = (input.dataset.suggest || '').split('|').filter(Boolean);
+      const parts = (input.dataset.suggest || '').split(';').filter(Boolean);
       if (!parts.length || (onlyEmpty && input.value.trim())) return null;
       const list = await entities();
-      const found = parts.map(p => find(list, p));
+      // ein Teil kann Alternativen enthalten („a|b“): die erste Variante mit Treffer zählt
+      const found = parts.map(p => p.split('|').map(alt => find(list, alt)).find(h => h.length) || []);
       if (found.some(h => !h.length)) return `${key}: nicht gefunden (${parts.filter((p, i) => !found[i].length).join(', ')})`;
       const box = input.closest('.phase-box');
       const mode = box && box.querySelector('.phase-mode');

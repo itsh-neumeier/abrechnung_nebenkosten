@@ -1,0 +1,48 @@
+# Victron Energy Meter (z. B. VM-3P75CT) als Netzzähler direkt per Modbus TCP in Home Assistant
+#
+# Nötig, wenn hass-victron den Zähler nicht als „grid“-Gerät findet (Unit-ID wird nicht gescannt
+# oder ein Register des Blocks fehlt). Die Zähler laufen im Gerät – Lücken in HA sind unkritisch.
+#
+# 1. GX: Einstellungen → Integrationen → Modbus TCP-Server → „Verfügbare Dienste“
+#    → Eintrag „com.victronenergy.grid“ (Energiezähler) → Unit-ID notieren und unten eintragen.
+# 2. GX-IP unten eintragen, Block in configuration.yaml einfügen (bzw. unter vorhandenes „modbus:“)
+#    und Home Assistant neu starten.
+# 3. Im Abrechnungstool unter Netzbezug „sensor.victron_netzzaehler_bezug“ wählen.
+#
+# Register laut Victron-Modbus-Liste (com.victronenergy.grid):
+#   2634 /Ac/Energy/Forward  – Energie aus dem Netz (Bezug)        uint32, Skalierung 100 -> kWh
+#   2636 /Ac/Energy/Reverse  – Energie ins Netz (Einspeisung)      uint32, Skalierung 100 -> kWh
+#   2622/2624/2626 Bezug je Phase L1/L2/L3, 2628/2630/2632 Einspeisung je Phase (optional)
+# In älteren HA-Versionen heißt „device_address“ noch „slave“.
+
+modbus:
+  - name: victron_gx_netzzaehler
+    type: tcp
+    host: 192.168.140.XX        # IP des Cerbo GX / Venus GX
+    port: 502
+    timeout: 5
+    sensors:
+      - name: "Victron Netzzähler Bezug"
+        unique_id: victron_netzzaehler_bezug
+        device_address: 30      # Unit-ID von com.victronenergy.grid (siehe Schritt 1)
+        address: 2634
+        input_type: holding
+        data_type: uint32
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total_increasing
+        scan_interval: 30
+      - name: "Victron Netzzähler Einspeisung"
+        unique_id: victron_netzzaehler_einspeisung
+        device_address: 30
+        address: 2636
+        input_type: holding
+        data_type: uint32
+        scale: 0.01
+        precision: 2
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total_increasing
+        scan_interval: 30

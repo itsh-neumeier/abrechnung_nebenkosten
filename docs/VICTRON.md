@@ -16,7 +16,7 @@ MPPT-Laderegler (DC). Je nach hass-victron-Version heißen die Sensoren z. B.
 
 | Feld im Tool | Sensor | Bedeutung |
 |---|---|---|
-| **Netzbezug (Stromzähler)** | eigener Zähler (z. B. EasyMeter „Gesamtbezug“) | Bezug lt. Zähler, muss zur Rechnung passen |
+| **Netzbezug (Stromzähler)** | Victron Energy Meter `grid_energy_forward_total` bzw. `victron_netzzaehler_bezug` (siehe unten) oder eigener Zähler (z. B. EasyMeter „Gesamtbezug“) | Bezug lt. Zähler, muss zur Rechnung passen |
 | **Gesamtverbrauch Haus** | 3 Phasen Leistung `system_consumption_l1` / `_l2` / `_l3` (W) | Verbrauch aller AC-Lasten; das Tool integriert die Stundenmittel |
 | **Batterie entladen** | `battery_history_dischargedenergy` | Energie aus der Batterie (DC-seitig) |
 | **Batterie geladen gesamt** | `battery_history_chargedenergy` | gesamte Ladung (Netz + PV) |
@@ -29,6 +29,15 @@ Praxistest (Jan–Okt 2026, 25 Rücksetzungen) lagen sie in Monaten mit Rückset
 Leistungssensoren, in ruhigen Monaten nur ~1,5 %. Die Leistungssensoren hatten durchgehend 100 % Abdeckung.
 
 Netzladeanteil = `vebus_acin1toinverter ÷ battery_history_chargedenergy` (jeweils Verbrauch im Monat).
+
+## Victron Energy Meter (VM-3P75CT o. Ä.) als Netzzähler
+
+Der Energiezähler hinter dem EVU-Zähler zählt Bezug und Einspeisung in kWh im Gerät. hass-victron liest ihn
+als „grid“-Gerät (`grid_energy_forward_total`) – aber nur, wenn seine Modbus-Unit-ID in der Scanliste liegt
+(nicht gescannt werden u. a. 13–19, 47–99, 102–203) und alle Register des Blocks 2600–2644 antworten.
+Fehlt er nach „Rescan available devices“, die HA-eigene Modbus-Integration nutzen:
+[`ha-modbus-victron-netzzaehler.yaml`](ha-modbus-victron-netzzaehler.yaml) (Register 2634 Bezug, 2636 Einspeisung).
+Danach den Monatswert einmal mit dem EVU-Zähler bzw. der Rechnung vergleichen – das Tool warnt ab 5 % Abweichung.
 
 ## Hinweise
 
