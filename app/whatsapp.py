@@ -165,7 +165,7 @@ def _http_json(name: str, pos, url: str, headers: dict, body_expr: str, **extra)
 def _status_node(pos, provider: str, msg_id_expr: str) -> dict:
     body = ("={{ JSON.stringify({ billing_id: $('Webhook').item.json.body.billing_id, "
             "party_id: $('Webhook').item.json.body.party_id, ok: !$json.error, "
-            "error: $json.error ? JSON.stringify($json.error).slice(0, 300) : '', "
+            "error: $json.error ? String($json.error.message || JSON.stringify($json.error)).slice(0, 300) : '', "
             f"provider: '{provider}', message_id: {msg_id_expr} }}) }}}}")
     return _http_json("Status an Abrechnung", pos, "={{ $('Webhook').item.json.body.status_url }}",
                       {HEADER: "={{ $('Webhook').item.json.headers['x-abrechnung-token'] }}"}, body)
