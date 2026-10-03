@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ "Neue Umlage" if aid == 0 else a.name }}</h1>
+<form method="post" class="card">
+  <label>Bezeichnung</label><input type="text" name="name" value="{{ a.name }}" required placeholder="Warmwasserbereitung">
+  <div class="grid">
+    <div>
+      <label>Kostenquelle</label>
+      <select name="source_type">
+        <option value="energy" {% if a.source_type=='energy' %}selected{% endif %}>Stromverbrauch einer HA-Entität (kWh, Preis wie Hausstrom)</option>
+        <option value="amount" {% if a.source_type=='amount' %}selected{% endif %}>Betrag in € (je Abrechnung anpassbar)</option>
+      </select>
+    </div>
+    <div><label>Quell-Entität (bei Strom)</label><input type="text" name="source_entity" list="ha-entities" value="{{ a.source_entity }}" placeholder="sensor.warmwasser_energie"></div>
+    <div><label>Standardbetrag (bei Betrag, brutto €)</label><input type="text" name="default_amount" value="{{ a.default_amount|num(2) }}"></div>
+  </div>
+  <p class="muted">Strom-Umlagen werden vom Restverbrauch des Eigentümers abgezogen, damit nichts doppelt berechnet wird.</p>
+  <div class="grid">
+    <div>
+      <label>Verteilschlüssel</label>
+      <select name="key_type">
+        <option value="entity" {% if a.key_type=='entity' %}selected{% endif %}>Verbrauch je Partei aus HA-Entität (z. B. Wasserzähler)</option>
+        <option value="percent" {% if a.key_type=='percent' %}selected{% endif %}>Feste Prozente / Gewichte</option>
+        <option value="equal" {% if a.key_type=='equal' %}selected{% endif %}>Gleichmäßig auf alle</option>
+      </select>
+    </div>
+    <div><label>Einheit Verteilschlüssel (Anzeige)</label><input type="text" name="key_unit" value="{{ a.key_unit }}" placeholder="m³"></div>
+  </div>
+  <h2>Schlüssel je Partei</h2>
+  <p class="muted">Bei „Verbrauch je Partei“: Entität eintragen. Bei „Prozente“: Zahl eintragen. Leer = Partei nimmt nicht teil.</p>
+  {% for p in parties %}
+  <label>{{ p.name }}</label>
+  <input type="text" name="key_{{ p.id }}" list="ha-entities" value="{{ (a.key or {}).get(p.id|string, '') }}">
+  {% endfor %}
+  <div class="check"><input type="checkbox" name="active" id="a" {% if a.active %}checked{% endif %}><label for="a" style="margin:0">aktiv</label></div>
+  <button>Speichern</button>
+  {% if aid %}<button class="danger" name="delete" value="1" onclick="return confirm('Löschen?')">Löschen</button>{% endif %}
+</form>
+{% endblock %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ "Neue Partei" if pid == 0 else p.name }}</h1>
+<form method="post" class="card">
+  <div class="grid">
+    <div><label>Name</label><input type="text" name="name" value="{{ p.name }}" required></div>
+    <div><label>Wohnung / Lage</label><input type="text" name="unit" value="{{ p.unit or '' }}" placeholder="EG links"></div>
+    <div><label>E-Mail</label><input type="text" name="email" value="{{ p.email or '' }}"></div>
+    <div><label>Sortierung</label><input type="number" name="sort" value="{{ p.sort or 0 }}"></div>
+  </div>
+  <label>Rechnungsanschrift</label><textarea name="address">{{ p.address or '' }}</textarea>
+  <label>Shelly-Energie-Entitäten (eine pro Zeile, werden addiert)</label>
+  <textarea name="meters" placeholder="sensor.shelly_wohnung_eg_energy">{{ (p.meters or [])|join("\n") }}</textarea>
+  <label>Entität hinzufügen</label>
+  <input type="text" list="ha-entities" placeholder="tippen zum Suchen …" onchange="const t=this.form.meters;t.value=(t.value.trim()+'\n'+this.value).trim();this.value=''">
+  <div class="check"><input type="checkbox" name="is_owner" id="o" {% if p.is_owner %}checked{% endif %}><label for="o" style="margin:0">Eigentümer / Hauptpartei – bekommt den Restverbrauch</label></div>
+  <div class="check"><input type="checkbox" name="active" id="a" {% if p.active %}checked{% endif %}><label for="a" style="margin:0">aktiv (wird abgerechnet)</label></div>
+  <button>Speichern</button>
+  {% if pid %}<button class="danger" name="delete" value="1" onclick="return confirm('Partei löschen?')">Löschen</button>{% endif %}
+</form>
+{% endblock %}

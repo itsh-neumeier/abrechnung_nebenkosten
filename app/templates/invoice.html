@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Stromabrechnung {{ p.name }} {{ b.period_start.strftime('%m/%Y') }}</title>
+<style>
+  @page { size: A4; margin: 18mm 18mm 20mm 20mm; }
+  body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 10pt; color: #111; max-width: 190mm; margin: {{ '0' if pdf else '20px auto' }}; background:#fff }
+  .head { display: flex; justify-content: space-between; }
+  .sender { font-size: 8pt; color: #555; border-bottom: 1px solid #999; display: inline-block; margin-bottom: 4mm }
+  .addr { min-height: 30mm; white-space: pre-line }
+  .meta { text-align: right; font-size: 9pt; white-space: pre-line }
+  h1 { font-size: 14pt; margin: 8mm 0 4mm }
+  table { width: 100%; border-collapse: collapse; margin-top: 4mm }
+  th, td { padding: 2mm 1.5mm; border-bottom: .3pt solid #bbb; text-align: left; vertical-align: top }
+  th { font-size: 8.5pt; color: #444; border-bottom: .8pt solid #333 }
+  .r { text-align: right; white-space: nowrap }
+  .note { font-size: 8pt; color: #666 }
+  tr.total td { border-top: 1pt solid #111; border-bottom: none; font-weight: bold; font-size: 11pt }
+  .box { margin-top: 6mm; padding: 3mm; background: #f3f4f6; font-size: 8.5pt }
+  .foot { margin-top: 8mm; font-size: 9pt; white-space: pre-line }
+</style>
+</head>
+<body>
+<div class="head">
+  <div>
+    <div class="sender">{{ ll.landlord_name }}{% if ll.landlord_address %} · {{ ll.landlord_address|replace('\n', ' · ') }}{% endif %}</div>
+    <div class="addr">{{ p.name }}{% if p.unit %}
+{{ p.unit }}{% endif %}{% if p.address %}
+{{ p.address }}{% endif %}</div>
+  </div>
+  <div class="meta">{{ ll.landlord_name }}
+{{ ll.landlord_address }}
+{{ ll.landlord_contact }}
+
+Datum: {{ b.created_at.strftime('%d.%m.%Y') }}
+Abrechnung Nr. {{ b.id }}-{{ p.id }}</div>
+</div>
+
+<h1>Stromabrechnung {{ b.period_start.strftime('%d.%m.%Y') }} – {{ b.period_end.strftime('%d.%m.%Y') }}</h1>
+<p>{{ ll.invoice_text }}</p>
+
+<table>
+<tr><th>Position</th><th class="r">Menge</th><th class="r">Einzelpreis</th><th class="r">Betrag</th></tr>
+{% for l in p.lines %}
+<tr>
+  <td>{{ l.label }}{% if l.note %}<div class="note">{{ l.note }}</div>{% endif %}</td>
+  <td class="r">{% if l.quantity is not none %}{{ l.quantity|num(2) }} {{ l.unit }}{% endif %}</td>
+  <td class="r">{% if l.unit_price is not none %}{{ (l.unit_price*100)|num(2) }} ct{% endif %}</td>
+  <td class="r">{{ l.amount|eur }}</td>
+</tr>
+{% endfor %}
+<tr class="total"><td>Gesamtbetrag</td><td></td><td></td><td class="r">{{ p.total|eur }}</td></tr>
+</table>
+
+<div class="box">
+  <b>Berechnungsgrundlage</b><br>
+  Rechnung Stromanbieter{% if b.invoice_no %} Nr. {{ b.invoice_no }}{% endif %}: {{ b.grid_kwh|num(1) }} kWh Netzbezug,
+  Arbeitspreis netto {{ b.energy_cost_net|eur }} → Ø {{ (r.price_net*100)|num(2) }} ct/kWh netto
+  bzw. {{ (r.price_gross*100)|num(2) }} ct/kWh inkl. {{ (b.vat_rate*100)|num(0) }} % MwSt.<br>
+  Gesamtverbrauch Haus {{ r.total_kwh|num(1) if r.total_kwh is not none else '–' }} kWh, davon aus Batterie {{ r.battery_kwh|num(1) }} kWh
+  (Batterieanteil {{ (r.battery_share*100)|num(1) }} %). Ihr Verbrauch: {{ p.kwh|num(2) }} kWh.<br>
+  Batteriestrom wird zum Netto-Durchschnittspreis ohne MwSt. zzgl. Batterienutzungssatz von {{ (r.battery_rate*100)|num(2) }} ct/kWh berechnet.
+</div>
+
+<div class="foot">Bitte überweisen Sie den Betrag bis zum {{ due.strftime('%d.%m.%Y') }}{% if ll.landlord_iban %} auf folgendes Konto:
+{{ ll.landlord_iban }}{% else %}.{% endif %}
+Verwendungszweck: Strom {{ b.period_start.strftime('%m/%Y') }} {{ p.name }}</div>
+</body>
+</html>

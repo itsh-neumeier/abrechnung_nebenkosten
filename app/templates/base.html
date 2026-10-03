@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}Stromabrechnung{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header><nav>
+  <a class="brand" href="/">⚡ Stromabrechnung</a>
+  <a href="/">Abrechnungen</a>
+  <a href="/parties">Parteien</a>
+  <a href="/costs">Fixkosten &amp; Umlagen</a>
+  <a href="/settings">Einstellungen</a>
+</nav></header>
+<main>
+{% if request.query_params.get('msg') %}<div class="msg">{{ request.query_params.get('msg') }}</div>{% endif %}
+{% block content %}{% endblock %}
+</main>
+<datalist id="ha-entities"></datalist>
+<script>
+// Entitäten-Vorschläge aus Home Assistant für alle Felder mit list="ha-entities"
+if (document.querySelector('[list="ha-entities"]')) {
+  fetch('/api/entities').then(r => r.json()).then(list => {
+    const dl = document.getElementById('ha-entities');
+    for (const e of list) {
+      const o = document.createElement('option');
+      o.value = e.entity_id; o.label = `${e.name} (${e.unit})`;
+      dl.appendChild(o);
+    }
+  }).catch(() => {});
+}
+</script>
+</body>
+</html>

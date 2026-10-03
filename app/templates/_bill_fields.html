@@ -1,0 +1,14 @@
+<div class="grid">
+  <div><label>Titel</label><input type="text" name="title" value="{{ b.title if b else '' }}" placeholder="Strom 09/2026" {{ ro }}></div>
+  <div><label>Rechnungsnummer Anbieter</label><input type="text" name="invoice_no" value="{{ b.invoice_no if b else '' }}" {{ ro }}></div>
+  <div><label>Zeitraum von</label><input type="date" name="period_start" value="{{ (b.period_start if b else start).isoformat() }}" required {{ ro }}></div>
+  <div><label>bis (inklusive)</label><input type="date" name="period_end" value="{{ (b.period_end if b else end).isoformat() }}" required {{ ro }}></div>
+</div>
+<div class="grid">
+  <div><label>Netzbezug lt. Rechnung (kWh)</label><input type="text" name="grid_kwh" value="{{ b.grid_kwh|num(3) if b and b.grid_kwh is not none else '' }}" placeholder="leer = aus Zähler-Entität" {{ ro }}></div>
+  <div><label>Arbeitspreis gesamt netto (€)</label><input type="text" name="energy_cost_net" value="{{ b.energy_cost_net|num(2) if b else '' }}" required {{ ro }}></div>
+  <div><label>Fixkosten Anbieter netto (€)</label><input type="text" name="fixed_cost_net" value="{{ b.fixed_cost_net|num(2) if b else '' }}" placeholder="Grundpreis + Messstelle" {{ ro }}></div>
+  <div><label>MwSt. (%)</label><input type="text" name="vat_rate" value="{{ (b.vat_rate*100)|num(0) if b else st.vat_rate }}" {{ ro }}></div>
+  <div><label>Batterienutzungssatz (ct/kWh netto)</label><input type="text" name="battery_rate_ct" value="{{ b.battery_rate_ct|num(2) if b else st.battery_rate_ct }}" {{ ro }}></div>
+</div>
+<p class="muted">Arbeitspreis = Summe aller verbrauchsabhängigen Positionen (inkl. Umlagen, Netzentgelt, Stromsteuer usw.) netto. Fixkosten = Grundpreis, Messstellenbetrieb usw. netto.</p>

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Fixkosten &amp; Umlagen</h1>
+<p class="muted">Die Fixkosten des Stromanbieters (Grundpreis, Messstellenbetrieb) werden je Rechnung erfasst und automatisch gleichmäßig auf alle Parteien verteilt. Hier legst du <b>zusätzliche</b> Kosten an.</p>
+
+<h2>Weitere Fixkosten (je Abrechnung)</h2>
+<a class="btn" href="/costs/fixed/0">+ Fixkosten anlegen</a>
+<div class="card scroll" style="margin-top:12px"><table>
+<tr><th>Bezeichnung</th><th class="r">Betrag brutto</th><th>Verteilt auf</th><th>Status</th></tr>
+{% for c in costs %}
+<tr><td><a href="/costs/fixed/{{ c.id }}">{{ c.name }}</a></td><td class="r">{{ c.amount_gross|eur }}</td>
+<td>{% if c.party_ids %}{% for i in c.party_ids %}{{ parties.get(i|int, '?') }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}alle Parteien{% endif %} (gleichmäßig)</td>
+<td>{{ "aktiv" if c.active else "inaktiv" }}</td></tr>
+{% else %}<tr><td colspan="4" class="muted">z. B. „IPTV-Bereitstellung“</td></tr>{% endfor %}
+</table></div>
+
+<h2>Umlagen nach Verbrauch</h2>
+<a class="btn" href="/costs/alloc/0">+ Umlage anlegen</a>
+<div class="card scroll" style="margin-top:12px"><table>
+<tr><th>Bezeichnung</th><th>Kostenquelle</th><th>Verteilschlüssel</th><th>Status</th></tr>
+{% for a in allocations %}
+<tr><td><a href="/costs/alloc/{{ a.id }}">{{ a.name }}</a></td>
+<td>{% if a.source_type == 'energy' %}Strom von <code>{{ a.source_entity }}</code>{% else %}Betrag (Standard {{ a.default_amount|eur }}){% endif %}</td>
+<td>{{ {'entity':'Verbrauch je Partei (HA)','percent':'feste Prozente','equal':'gleichmäßig'}[a.key_type] }}</td>
+<td>{{ "aktiv" if a.active else "inaktiv" }}</td></tr>
+{% else %}<tr><td colspan="4" class="muted">z. B. „Warmwasserbereitung“ (Strom der Wärmepumpe/des Heizstabs, verteilt nach Warmwasser-Zählern) oder „Wasser“</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

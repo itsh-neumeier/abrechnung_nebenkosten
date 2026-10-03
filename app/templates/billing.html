@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+{% set ro = 'readonly' if b.status == 'final' else '' %}
+<h1>{{ b.title }} {% if b.status == 'final' %}<span class="badge final">abgeschlossen</span>{% else %}<span class="badge">Entwurf</span>{% endif %}</h1>
+
+{% if r %}
+<div class="kpi">
+  <div><span>Ø Preis Netz brutto</span><b>{{ (r.price_gross*100)|num(2) }} ct/kWh</b></div>
+  <div><span>Ø Preis netto</span><b>{{ (r.price_net*100)|num(2) }} ct/kWh</b></div>
+  <div><span>Batterieanteil</span><b>{{ (r.battery_share*100)|num(1) }} %</b></div>
+  <div><span>Gesamtverbrauch Haus</span><b>{{ r.total_kwh|num(1) if r.total_kwh is not none else '–' }} kWh</b></div>
+  <div><span>Rechnung brutto</span><b>{{ r.bill_gross|eur }}</b></div>
+  <div><span>Umgelegt gesamt</span><b>{{ r.charged_total|eur }}</b></div>
+</div>
+{% for w in r.warnings %}<div class="warn">⚠ {{ w }}</div>{% endfor %}
+
+<h2>Ergebnis je Partei</h2>
+<div class="card scroll">
+<table>
+<tr><th>Partei</th><th class="r">kWh</th><th class="r">Betrag</th><th></th></tr>
+{% for p in r.parties %}
+<tr>
+  <td>{{ p.name }}{% if p.is_owner %} <span class="muted">(Eigentümer, Rest)</span>{% endif %}</td>
+  <td class="r">{{ p.kwh|num(1) }}</td>
+  <td class="r"><b>{{ p.total|eur }}</b></td>
+  <td class="r"><a href="/billings/{{ b.id }}/invoice/{{ p.id }}" target="_blank">Ansicht</a> · <a href="/billings/{{ b.id }}/invoice/{{ p.id }}.pdf" target="_blank">PDF</a></td>
+</tr>
+{% endfor %}
+<tr><td><b>Summe</b></td><td></td><td class="r"><b>{{ r.charged_total|eur }}</b></td><td></td></tr>
+<tr><td class="muted">Differenz zur Rechnung (Batterie-/PV-Effekt, Rundung)</td><td></td><td class="r muted">{{ r.difference|eur }}</td><td></td></tr>
+</table>
+<a class="btn sec" href="/billings/{{ b.id }}/all.zip">Alle PDFs als ZIP</a>
+</div>
+{% endif %}
+
+<form method="post">
+<h2>Rechnung des Stromanbieters</h2>
+<div class="card">{% include "_bill_fields.html" %}</div>
+
+<h2>Verbrauchswerte im Zeitraum</h2>
+<div class="card scroll">
+  <p class="muted">{% if b.fetched_at %}Zuletzt aus Home Assistant geladen: {{ b.fetched_at.strftime('%d.%m.%Y %H:%M') }}. {% endif %}Werte können manuell korrigiert werden (Energie kWh, Wasser m³).</p>
+  <table>
+  <tr><th>Rolle</th><th>Entität</th><th class="r">Verbrauch</th></tr>
+  {% for e, role in entities %}
+  <tr><td>{{ role }}</td><td><code>{{ e }}</code></td>
+  <td class="r" style="width:160px"><input type="text" name="val__{{ e }}" value="{{ b.values.get(e)|num(3) if b.values.get(e) is not none else '' }}" {{ ro }} style="text-align:right"></td></tr>
+  {% else %}<tr><td colspan="3" class="muted">Keine Entitäten konfiguriert.</td></tr>{% endfor %}
+  </table>
+</div>
+
+{% if amount_allocs %}
+<h2>Beträge für Umlagen</h2>
+<div class="card grid">
+{% for a in amount_allocs %}
+<div><label>{{ a.name }} (brutto €)</label><input type="text" name="amount__{{ a.id }}" value="{{ (b.amounts.get(a.id|string, a.default_amount))|num(2) }}" {{ ro }}></div>
+{% endfor %}
+</div>
+{% endif %}
+
+<label>Notizen</label><textarea name="notes" {{ ro }}>{{ b.notes }}</textarea>
+
+<div style="margin-top:14px">
+{% if b.status != 'final' %}
+  <button name="action" value="save">Speichern &amp; neu berechnen</button>
+  {% if ha_configured %}<button class="sec" name="action" value="fetch">Werte aus Home Assistant laden</button>{% endif %}
+  <button class="sec" name="action" value="finalize" onclick="return confirm('Abrechnung abschließen? Werte werden eingefroren.')">Abschließen</button>
+{% else %}
+  <button class="sec" name="action" value="reopen">Wieder öffnen</button>
+{% endif %}
+  <button class="danger" name="action" value="delete" onclick="return confirm('Abrechnung löschen?')">Löschen</button>
+</div>
+</form>
+{% endblock %}

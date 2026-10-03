@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ "Neue Fixkosten" if cid == 0 else c.name }}</h1>
+<form method="post" class="card">
+  <div class="grid">
+    <div><label>Bezeichnung</label><input type="text" name="name" value="{{ c.name }}" required placeholder="IPTV-Bereitstellung"></div>
+    <div><label>Betrag je Abrechnung (brutto, €)</label><input type="text" name="amount_gross" value="{{ c.amount_gross|num(2) }}"></div>
+  </div>
+  <label>Verteilen auf (keine Auswahl = alle Parteien, jeweils gleichmäßig)</label>
+  {% for p in parties %}
+  <div class="check"><input type="checkbox" name="party_ids" value="{{ p.id }}" id="p{{ p.id }}" {% if p.id in (c.party_ids or [])|map('int')|list %}checked{% endif %}><label for="p{{ p.id }}" style="margin:0">{{ p.name }}</label></div>
+  {% endfor %}
+  <div class="check"><input type="checkbox" name="active" id="a" {% if c.active %}checked{% endif %}><label for="a" style="margin:0">aktiv</label></div>
+  <button>Speichern</button>
+  {% if cid %}<button class="danger" name="delete" value="1" onclick="return confirm('Löschen?')">Löschen</button>{% endif %}
+</form>
+{% endblock %}

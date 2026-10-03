@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Einstellungen</h1>
+<div class="card">
+  <h2 style="margin-top:0">Home Assistant</h2>
+  <p>URL: <code>{{ ha_url or "– nicht gesetzt –" }}</code> · Token: {{ "gesetzt ✔" if ha_token_set else "nicht gesetzt" }}</p>
+  <p class="muted">URL und Token kommen aus der <code>.env</code> (HA_URL / HA_TOKEN) und werden nicht in der Datenbank gespeichert.</p>
+  <form method="post" action="/settings/test"><button class="sec">Verbindung testen</button></form>
+</div>
+<form method="post" action="/settings">
+<div class="card">
+  <h2 style="margin-top:0">Haus-Entitäten</h2>
+  <p class="muted">Energie-Sensoren mit <code>state_class: total_increasing</code> (kWh). Vorschläge erscheinen beim Tippen, wenn HA verbunden ist.</p>
+  <label>Stromzähler Netzbezug (zur Kontrolle gegen die Rechnung)</label>
+  <input type="text" name="entity_grid" list="ha-entities" value="{{ st.entity_grid }}" placeholder="sensor.stromzaehler_bezug">
+  <label>Gesamtverbrauch Haus (Victron, hinter dem Zähler)</label>
+  <input type="text" name="entity_total" list="ha-entities" value="{{ st.entity_total }}" placeholder="sensor.victron_verbrauch_gesamt">
+  <label>Batterie-Entladung (Victron)</label>
+  <input type="text" name="entity_battery" list="ha-entities" value="{{ st.entity_battery }}" placeholder="sensor.victron_batterie_entladen">
+</div>
+<div class="card">
+  <h2 style="margin-top:0">Standardwerte</h2>
+  <div class="grid">
+    <div><label>Batterienutzungssatz (ct/kWh, ohne MwSt.)</label><input type="text" name="battery_rate_ct" value="{{ st.battery_rate_ct }}"></div>
+    <div><label>MwSt.-Satz Stromrechnung (%)</label><input type="text" name="vat_rate" value="{{ st.vat_rate }}"></div>
+    <div><label>Zahlungsziel (Tage)</label><input type="text" name="payment_days" value="{{ st.payment_days }}"></div>
+  </div>
+</div>
+<div class="card">
+  <h2 style="margin-top:0">Absender auf der Abrechnung</h2>
+  <div class="grid">
+    <div><label>Name</label><input type="text" name="landlord_name" value="{{ st.landlord_name }}"></div>
+    <div><label>IBAN / Bankverbindung</label><input type="text" name="landlord_iban" value="{{ st.landlord_iban }}"></div>
+  </div>
+  <label>Anschrift</label><textarea name="landlord_address">{{ st.landlord_address }}</textarea>
+  <label>Kontakt (Telefon / E-Mail)</label><input type="text" name="landlord_contact" value="{{ st.landlord_contact }}">
+  <label>Einleitungstext</label><textarea name="invoice_text">{{ st.invoice_text }}</textarea>
+</div>
+<button>Speichern</button>
+</form>
+{% endblock %}

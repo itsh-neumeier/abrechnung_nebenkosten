@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Hausparteien</h1>
+<a class="btn" href="/parties/0">+ Partei anlegen</a>
+<div class="card scroll" style="margin-top:12px">
+<table>
+<tr><th>Name</th><th>Wohnung</th><th>Shelly-Zähler</th><th>Rolle</th><th>Status</th></tr>
+{% for p in parties %}
+<tr>
+  <td><a href="/parties/{{ p.id }}">{{ p.name }}</a></td>
+  <td>{{ p.unit }}</td>
+  <td>{% for m in p.meters %}<code>{{ m }}</code><br>{% endfor %}</td>
+  <td>{% if p.is_owner %}<span class="badge">Eigentümer – bekommt Restverbrauch</span>{% endif %}</td>
+  <td>{{ "aktiv" if p.active else "inaktiv" }}</td>
+</tr>
+{% else %}<tr><td colspan="5" class="muted">Noch keine Parteien.</td></tr>{% endfor %}
+</table>
+</div>
+<p class="muted">Der Eigentümer/Hauptpartei erhält den Restverbrauch: Gesamtverbrauch (Victron) minus alle anderen Parteien minus Energie-Umlagen. Eigene Shellys des Eigentümers werden dann nicht benötigt.</p>
+{% endblock %}

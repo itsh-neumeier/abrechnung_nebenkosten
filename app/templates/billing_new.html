@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Neue Stromrechnung erfassen</h1>
+<form method="post" action="/billings" class="card">
+  {% set b = none %}{% set ro = '' %}
+  {% include "_bill_fields.html" %}
+  <div class="check"><input type="checkbox" name="fetch" id="f" value="1" checked><label for="f" style="margin:0">Verbrauchswerte direkt aus Home Assistant laden</label></div>
+  <button>Anlegen &amp; berechnen</button>
+</form>
+{% endblock %}

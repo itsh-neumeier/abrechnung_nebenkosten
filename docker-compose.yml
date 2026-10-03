@@ -1,0 +1,11 @@
+services:
+  stromabrechnung:
+    build: .
+    # alternativ fertiges Image: ghcr.io/itsh-neumeier/abrechnung_nebenkosten:latest
+    container_name: stromabrechnung
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
