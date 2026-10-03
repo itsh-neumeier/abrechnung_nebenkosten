@@ -247,6 +247,8 @@ SETTING_DEFAULTS = {
     "session_secret": "",  # wird erzeugt (oder APP_SECRET_KEY)
     "portal_auto_publish": "1",  # beim Abschließen im Mieterportal veröffentlichen
     # Rechnungsimport
+    "imap_senders": "",  # leer = IMAP_SENDER aus der .env (Standard awattar.de)
+    "imap_forwarded": "1",  # weitergeleitete Mails am Original-Absender erkennen
     "import_mode": "review",  # review | auto_if_clean | auto_always
     "notify_email": "",
     # Victron direkt (Modbus TCP, nur lesend)

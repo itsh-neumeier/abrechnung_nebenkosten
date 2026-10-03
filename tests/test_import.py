@@ -168,7 +168,7 @@ def test_upload_and_imap(tmp_path, monkeypatch):
 
         def uid(self, cmd, *args):
             if cmd == "SEARCH":
-                assert "FROM" in args
+                assert "SINCE" in args
                 return "OK", [b"7"]
             assert "PEEK" in args[-1]
             return "OK", [(b"7 (BODY[] {123}", raw), b")"]
@@ -223,3 +223,47 @@ def test_auto_send_without_validation(monkeypatch):
             b, msg = asyncio.run(service.import_invoice(s, make_pdf(text.replace("2026000099", "2026000098")), "r.pdf"))
             assert b.status == "draft" and "bitte prüfen" in msg  # Hinweis vorhanden -> Entwurf
         c.post("/settings", data={"import_mode": "review"})
+
+
+def _forward(pdf: bytes, inline: bool) -> "EmailMessage":
+    """Weiterleitung aus dem Hauptpostfach: als Text (inline) oder mit angehängter Original-Mail."""
+    from email import message_from_bytes, policy as _policy
+
+    m = EmailMessage()
+    m["From"] = "Timo <ich@hauptmail.de>"
+    m["To"] = "nebenkosten@test.de"
+    m["Subject"] = "WG: aWATTar - Rechnung Strom 08/2026"
+    m["Message-ID"] = "<fwd-1@hauptmail.de>"
+    if inline:
+        m.set_content("---------- Weitergeleitete Nachricht ---------\nVon: aWATTar Service <service@awattar.de>\n"
+                      "Betreff: Rechnung\n\nIm Anhang finden Sie Ihre Stromrechnung.")
+        m.add_attachment(pdf, maintype="application", subtype="pdf", filename="rechnung.pdf")
+    else:
+        m.set_content("Siehe Anhang.")
+        m.add_attachment(message_from_bytes(make_eml(pdf), policy=_policy.default))
+    return message_from_bytes(m.as_bytes(), policy=_policy.default)
+
+
+def test_sender_matching_and_forwarded_mails():
+    from email import message_from_bytes, policy as _policy
+
+    from app import mailbox
+
+    pdf = make_pdf()
+    direct = message_from_bytes(make_eml(pdf), policy=_policy.default)
+    inline, attached = _forward(pdf, True), _forward(pdf, False)
+
+    assert mailbox.matches(direct, ["awattar.de"])[0]
+    assert mailbox.matches(inline, ["awattar.de"]) == (True, "weitergeleitet (awattar.de)")
+    assert mailbox.matches(attached, ["awattar.de"])[0]
+    assert ii.pdf_attachments(attached)  # PDF in der angehängten Original-Mail wird gefunden
+    # ohne Erkennung der Weiterleitung nur über die eigene Absenderadresse
+    assert not mailbox.matches(inline, ["awattar.de"], forwarded=False)[0]
+    assert mailbox.matches(inline, ["awattar.de", "ich@hauptmail.de"], forwarded=False) == (True, "Absender ich@hauptmail.de")
+    # fremde Mail
+    spam = EmailMessage()
+    spam["From"] = "jemand@example.com"
+    spam.set_content("Hallo")
+    assert not mailbox.matches(spam, ["awattar.de", "ich@hauptmail.de"])[0]
+    assert mailbox.matches(spam, [])[0]  # keine Absender eingetragen = alle
+    assert mailbox.sender_patterns({"imap_senders": " awattar.de; Ich@Hauptmail.de "}) == ["awattar.de", "ich@hauptmail.de"]

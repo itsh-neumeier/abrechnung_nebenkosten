@@ -10,7 +10,9 @@
 <div class="card">
   <b>Eingang Stromrechnungen</b>
   {% if imap_ok %}
-  <p class="muted">Postfach <code>{{ imap.imap_user }}</code> wird alle {{ imap.imap_interval_min }} Min. auf Rechnungen von <code>{{ imap.imap_sender }}</code> geprüft.
+  <p class="muted">Postfach <code>{{ imap.imap_user }}</code> wird alle {{ imap.imap_interval_min }} Min. auf Rechnungen von
+  {% for x in senders %}<code>{{ x }}</code>{{ ", " if not loop.last }}{% else %}<i>allen Absendern</i>{% endfor %}
+  geprüft{% if forwarded and senders %} (auch weitergeleitet){% endif %} – <a href="/settings#eingang">ändern</a>.
   {% if mbox.last_run %}<br>Letzter Abruf {{ mbox.last_run[:16]|replace('T', ' ') }}: {{ mbox.last_result }}{% endif %}</p>
   <form method="post" action="/mailbox/check" style="display:inline"><button class="sec">Postfach jetzt prüfen</button></form>
   {% else %}

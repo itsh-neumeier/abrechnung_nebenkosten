@@ -202,12 +202,19 @@
   <p class="muted">Platzhalter: {name}, {wohneinheit}, {we_id}, {zeitraum}, {betrag}, {absender}, {gebaeude}</p>
 </div>
 <div class="card">
-  <h2 style="margin-top:0">Rechnungseingang</h2>
+  <h2 style="margin-top:0" id="eingang">Rechnungseingang</h2>
   {% if imap_ok %}
-  <p>Postfach <code>{{ smtp.imap_user }}@{{ smtp.imap_host }}</code> / <code>{{ smtp.imap_folder }}</code>, Absender <code>{{ smtp.imap_sender }}</code>, alle {{ smtp.imap_interval_min }} Min.</p>
+  <p>Postfach <code>{{ smtp.imap_user }}</code> auf <code>{{ smtp.imap_host }}</code> / <code>{{ smtp.imap_folder }}</code>, alle {{ smtp.imap_interval_min }} Min.,
+  Mails der letzten {{ smtp.imap_since_days }} Tage.</p>
   {% else %}
   <div class="warn">Automatischer Abruf aus: <code>IMAP_HOST</code>, <code>IMAP_USER</code>, <code>IMAP_PASSWORD</code> in der <code>.env</code> setzen. Upload im Webinterface geht immer.</div>
   {% endif %}
+  <label>Rechnungen kommen von (Absender-Adressen oder Domains, mit Komma getrennt)</label>
+  <input type="text" name="imap_senders" value="{{ st.imap_senders }}" placeholder="{{ smtp.imap_sender or 'awattar.de' }}, ich@hauptmail.de">
+  <p class="muted">Leer = <code>{{ smtp.imap_sender or 'alle Absender' }}</code> aus der Portainer-Konfiguration. Leitest du die Rechnung
+  aus deinem Hauptpostfach weiter, trag hier deine Hauptadresse ein (und/oder lass „weitergeleitete Mails erkennen“ an).
+  Es werden nur Mails mit PDF-Anhang importiert; schon importierte Rechnungen werden erkannt.</p>
+  <div class="check"><input type="checkbox" name="imap_forwarded" id="ifw" {% if st.imap_forwarded %}checked{% endif %}><label for="ifw" style="margin:0">Weitergeleitete Mails am Original-Absender erkennen („Von: …@awattar.de“ im Text oder angehängte Original-Mail)</label></div>
   <label>Nach dem Import</label>
   <select name="import_mode">
     <option value="review" {% if st.import_mode == 'review' %}selected{% endif %}>Erst prüfen – Entwurf anlegen, Abschließen und Versand manuell</option>

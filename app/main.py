@@ -153,7 +153,8 @@ def index(request: Request, s: Session = Depends(get_session)):
     if not service.active_parties(s):
         setup_missing.append("Parteien")
     return render(request, "index.html", billings=billings, setup_missing=setup_missing,
-                  imap_ok=mailbox.configured(), mbox=mailbox.status, imap=config)
+                  imap_ok=mailbox.configured(), mbox=mailbox.status, imap=config,
+                  senders=mailbox.sender_patterns(st), forwarded=bool(st["imap_forwarded"]))
 
 
 @app.post("/mailbox/check")
@@ -194,7 +195,7 @@ def settings_page(request: Request, s: Session = Depends(get_session)):
 async def settings_save(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
     data = {k: (normalize_spec(str(v)) if k.startswith("entity_") else str(v).strip()) for k, v in form.items()}
-    for flag in ("mail_auto_send", "victron_enabled", "owner_free_own_energy"):  # Checkboxen
+    for flag in ("mail_auto_send", "victron_enabled", "owner_free_own_energy", "imap_forwarded"):  # Checkboxen
         data[flag] = "1" if form.get(flag) else ""
     save_settings(s, data)
     return redirect("/settings", "Gespeichert")
