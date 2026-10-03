@@ -9,6 +9,28 @@
 </div>
 <form method="post" action="/settings">
 <div class="card">
+  <h2 style="margin-top:0">Victron direkt (Modbus TCP, nur lesend)</h2>
+  <p class="muted">Eigener Logger ohne Home Assistant: liest den GX alle 10 s (Leistungen) bzw. jede Minute (Zähler) und
+  speichert 15-Minuten-Werte. Der Client kann technisch nur lesen. Daten gibt es ab dem Start des Loggers – für die
+  Vergangenheit bleibt Home Assistant die Quelle. In den Entitätsfeldern als <code>victron:…</code> wählbar.</p>
+  <div class="check"><input type="checkbox" name="victron_enabled" id="ve" {% if st.victron_enabled %}checked{% endif %}><label for="ve" style="margin:0">Victron-Logger aktiv</label></div>
+  <div class="grid">
+    <div><label>IP / Hostname des GX</label><input type="text" name="victron_host" value="{{ st.victron_host }}" placeholder="192.168.x.x"></div>
+    <div><label>Port</label><input type="text" name="victron_port" value="{{ st.victron_port }}"></div>
+    <div><label>Unit-IDs (automatisch, JSON)</label><input type="text" name="victron_units" value="{{ st.victron_units }}" placeholder='leer = automatisch suchen'></div>
+  </div>
+  <p class="muted" id="vstatus">
+    {% if victron_status.running %}✔ läuft · letzter Abruf {{ (victron_status.last_ok or '')[:19]|replace('T', ' ') }}{% elif st.victron_enabled %}startet …{% else %}aus{% endif %}
+    {% if victron_status.last_error %}<br><span style="color:var(--danger)">Fehler: {{ victron_status.last_error }}</span>{% endif %}
+  </p>
+  {% if victron_status.live %}
+  <details><summary>Live-Werte</summary><table>
+  {% for k, v in victron_status.live.items() %}<tr><td><code>{{ k }}</code></td><td class="r">{{ v|num(2) }}</td></tr>{% endfor %}
+  </table><p class="muted">Leistungen in W, Zähler in kWh.</p></details>
+  {% endif %}
+  <button class="sec pick-btn" formaction="/victron/discover" formmethod="post">Verbindung testen &amp; Geräte suchen</button>
+</div>
+<div class="card">
   <h2 style="margin-top:0">Haus-Entitäten (Energiemix)</h2>
   <p class="muted">Zählersensoren (kWh) mit Langzeitstatistik. Über „Aus HA wählen“ direkt aus Home Assistant auswählen.
   Je Feld wahlweise <b>1 Entität (gesamt)</b> oder <b>3 Phasen (L1/L2/L3)</b> – Phasen werden addiert.

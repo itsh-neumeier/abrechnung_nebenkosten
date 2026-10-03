@@ -6,7 +6,8 @@ import os
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, Integer, String, Text, create_engine, inspect, text
+from sqlalchemy import (JSON, Boolean, Date, DateTime, Float, Integer, String, Text, UniqueConstraint,
+                        create_engine, inspect, text)
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from .config import config
@@ -96,6 +97,27 @@ class Billing(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 
+class VictronBucket(Base):
+    """Victron direkt: Energie je 15-Minuten-Block und Schlüssel."""
+
+    __tablename__ = "victron_buckets"
+    __table_args__ = (UniqueConstraint("start", "key"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    start: Mapped[datetime] = mapped_column(DateTime, index=True)  # UTC
+    key: Mapped[str] = mapped_column(String(64), index=True)
+    kwh: Mapped[float] = mapped_column(Float, default=0.0)
+    seconds: Mapped[float] = mapped_column(Float, default=0.0)  # abgedeckte Zeit
+
+
+class VictronState(Base):
+    """Victron direkt: letzter gelesener Zählerstand je Schlüssel."""
+
+    __tablename__ = "victron_state"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    raw: Mapped[float] = mapped_column(Float)
+    ts: Mapped[datetime] = mapped_column(DateTime)  # UTC
+
+
 if config.database_url.startswith("sqlite:///"):
     os.makedirs(os.path.dirname(config.database_url.removeprefix("sqlite:///")) or ".", exist_ok=True)
 
@@ -163,7 +185,12 @@ SETTING_DEFAULTS = {
     "mail_bcc": "",
     # Rechnungsimport
     "import_mode": "review",  # review | auto_if_clean | auto_always
-    "notify_email": "",  # Hinweis-Mail bei neu importierter Rechnung
+    "notify_email": "",
+    # Victron direkt (Modbus TCP, nur lesend)
+    "victron_enabled": "",
+    "victron_host": "",
+    "victron_port": "502",
+    "victron_units": "",  # gefundene Unit-IDs (JSON), leer = automatisch suchen  # Hinweis-Mail bei neu importierter Rechnung
     "landlord_name": "",
     "landlord_address": "",
     "landlord_contact": "",

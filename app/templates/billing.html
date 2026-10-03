@@ -71,6 +71,23 @@
 </div>
 {% endif %}
 
+{% if compare %}
+<h2>Vergleich mit Victron direkt</h2>
+<div class="card scroll">
+  <p class="muted">Werte dieser Abrechnung (z. B. aus Home Assistant) gegenüber dem eigenen Victron-Logger im selben Zeitraum.
+  Große Abweichungen deuten auf Zählerrücksetzungen, Lücken oder falsch zugeordnete Sensoren hin.</p>
+  <table>
+  <tr><th>Feld</th><th class="r">Abrechnung</th><th>Victron direkt</th><th class="r">kWh</th><th class="r">erfasst</th><th class="r">Abweichung</th></tr>
+  {% for c in compare %}
+  <tr><td>{{ c.label }}</td><td class="r">{{ c.field_value|num(1) if c.field_value is not none else '–' }}</td>
+  <td><span class="muted">{{ c.victron_label }}</span><br><code>{{ c.victron_key }}</code></td>
+  <td class="r">{{ c.victron_value|num(1) }}</td><td class="r">{{ (c.coverage*100)|num(0) }} %</td>
+  <td class="r">{% if c.deviation is not none %}<span {% if c.deviation|abs > 0.05 and c.coverage > 0.98 %}style="color:var(--danger)"{% endif %}>{{ '%+.1f'|format(c.deviation*100) }} %</span>{% else %}–{% endif %}</td></tr>
+  {% endfor %}
+  </table>
+</div>
+{% endif %}
+
 <form method="post">
 <h2>Rechnung des Stromanbieters</h2>
 <div class="card">{% include "_bill_fields.html" %}</div>
@@ -84,7 +101,8 @@
   {% for e, role in entities %}
   {% set vm = (b.values_meta or {}).get(e, {}) %}
   <tr><td>{{ role }}</td><td><code>{{ e }}</code>
-  {% if vm.method == 'power' %}<br><span class="muted">aus Leistung (Ø kW × h) · {{ (vm.coverage*100)|num(1) }} % der Stunden mit Daten</span>{% endif %}</td>
+  {% if vm.method == 'power' %}<br><span class="muted">aus Leistung (Ø kW × h) · {{ (vm.coverage*100)|num(1) }} % der Stunden mit Daten</span>{% endif %}
+  {% if vm.method == 'victron' %}<br><span class="muted">Victron direkt · {{ (vm.coverage*100)|num(1) }} % des Zeitraums erfasst</span>{% endif %}</td>
   <td class="r" style="width:160px"><input type="text" name="val__{{ e }}" value="{{ b.values.get(e)|num(3) if b.values.get(e) is not none else '' }}" {{ ro }} style="text-align:right"></td></tr>
   {% else %}<tr><td colspan="3" class="muted">Keine Entitäten konfiguriert.</td></tr>{% endfor %}
   </table>
@@ -104,7 +122,7 @@
 <div style="margin-top:14px">
 {% if b.status != 'final' %}
   <button name="action" value="save">Speichern &amp; neu berechnen</button>
-  {% if ha_configured %}<button class="sec" name="action" value="fetch">Werte aus Home Assistant laden</button>{% endif %}
+  {% if ha_configured or st.victron_enabled %}<button class="sec" name="action" value="fetch">Werte laden (Home Assistant / Victron)</button>{% endif %}
   <button class="sec" name="action" value="finalize" onclick="return confirm('Abrechnung abschließen? Werte werden eingefroren.')">Abschließen</button>
 {% else %}
   <button class="sec" name="action" value="reopen">Wieder öffnen</button>

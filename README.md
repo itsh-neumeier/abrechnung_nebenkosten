@@ -135,4 +135,4 @@ Struktur: `app/billing.py` (reine Berechnung), `app/ha.py` (HA REST/WebSocket),
 `app/service.py` (DB ↔ Berechnung), `app/main.py` (Web), `app/templates/` (UI + Rechnungsvorlage).
 
 Offene Punkte / Entscheidungen: siehe [`docs/KONZEPT.md`](docs/KONZEPT.md).
-Victron-Entitäten (hass-victron): siehe [`docs/VICTRON.md`](docs/VICTRON.md).
+Victron-Entitäten (hass-victron) und der eigene Victron-Logger (Modbus TCP, ohne HA): siehe [`docs/VICTRON.md`](docs/VICTRON.md).

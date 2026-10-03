@@ -62,3 +62,23 @@ Danach den Monatswert einmal mit dem EVU-Zähler bzw. der Rechnung vergleichen �
 - `battery_history_*energy` sind 16-Bit-Register (max. 6553,5 kWh) und können überlaufen;
   Home Assistant behandelt das bei `total_increasing` wie einen Zählerreset, die Monatswerte bleiben korrekt.
 - Mehrere Zähler je Feld werden im Tool mit `+` addiert.
+
+## Victron direkt – eigener Logger ohne Home Assistant
+
+Zusätzlich (oder alternativ) zu Home Assistant kann das Tool den GX selbst per **Modbus TCP** lesen
+(*Einstellungen → Victron direkt*). Der Client kann ausschließlich lesen (Funktionscode 3).
+
+- **Der GX speichert selbst keine abfragbare Historie** – nur einen Sendepuffer für VRM (intern ca. 48 h,
+  mit microSD/USB länger). Daten von „Victron direkt“ gibt es daher erst ab dem Start des Loggers;
+  für vergangene Monate bleibt Home Assistant die Quelle.
+- **Zähler** (jede Minute): Energiezähler Bezug/Einspeisung (Register 2634/2636), Batteriewächter
+  geladen/entladen (302/301, 16-Bit-Überlauf wird erkannt), VE.Bus 74–93. Differenzen werden auch über
+  Ausfälle des Containers hinweg verbucht, Rücksetzungen erkannt.
+- **Leistungen** (alle 10 s, selbst integriert): Verbrauch L1–L3 (817–819), Netz L1–L3 (820–822, je Abtastung
+  über die Phasen saldiert), Batterieleistung (842), PV DC (850).
+- Gespeichert werden 15-Minuten-Blöcke. In allen Entitätsfeldern wählbar als `victron:<schlüssel>`, z. B.
+  `victron:grid_import`, `victron:consumption`, `victron:battery_charged`, `victron:vebus_acin1toinverter`.
+- Jede Abrechnung zeigt eine **Gegenüberstellung** der verwendeten Werte (z. B. aus HA) mit dem Logger.
+- Geräte werden automatisch gesucht („Verbindung testen & Geräte suchen“). Der Suchlauf fragt auch Unit-IDs
+  ohne Gerät ab – dadurch kann im GX unter Modbus TCP ein harmloser Fehler „Error finding service …“ stehen.
+- Netzwerk: Der Container braucht Zugriff auf den GX, Port 502/TCP (Firewall-Regel nur vom Docker-Host).

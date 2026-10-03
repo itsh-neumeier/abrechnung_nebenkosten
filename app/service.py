@@ -10,7 +10,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from . import billing as calc
-from . import invoice_import, mailer, render
+from . import invoice_import, mailer, render, victron
 from .config import config
 from .db import Allocation, Billing, FixedCost, Party, get_settings
 from .ha import HAClient
@@ -125,10 +125,19 @@ def required_entities(s: Session) -> list[tuple[str, str]]:
 
 
 async def fetch_values(s: Session, b: Billing) -> list[str]:
-    """Holt Verbrauchswerte aus HA. Gibt Entitäten ohne Statistik zurück."""
+    """Holt Verbrauchswerte aus HA bzw. dem Victron-Logger („victron:…“).
+    Gibt Entitäten ohne Daten zurück."""
     ents = [e for e, _ in required_entities(s)]
-    client = HAClient(config.ha_url, config.ha_token)
-    fetched, meta = await client.consumption_detail(ents, b.period_start, b.period_end, config.timezone)
+    ha_ids = [e for e in ents if not victron.is_victron(e)]
+    vic_ids = [e for e in ents if victron.is_victron(e)]
+    fetched, meta = {}, {}
+    if ha_ids:
+        client = HAClient(config.ha_url, config.ha_token)
+        fetched, meta = await client.consumption_detail(ha_ids, b.period_start, b.period_end, config.timezone)
+    if vic_ids:
+        v_vals, v_meta = victron.consumption(s, vic_ids, b.period_start, b.period_end, config.timezone)
+        fetched.update(v_vals)
+        meta.update(v_meta)
     values = dict(b.values or {})
     values_meta = dict(b.values_meta or {})
     missing = []
@@ -141,8 +150,9 @@ async def fetch_values(s: Session, b: Billing) -> list[str]:
     b.values = values
     b.values_meta = values_meta
     st = get_settings(s)
-    if not b.grid_kwh and st["entity_grid"] and values.get(st["entity_grid"]) is not None:
-        b.grid_kwh = values[st["entity_grid"]]
+    grid_val = calc._sum(values, st["entity_grid"]) if st["entity_grid"] else None
+    if not b.grid_kwh and grid_val is not None:
+        b.grid_kwh = round(grid_val, 3)
     b.fetched_at = datetime.now()
     return missing
 
@@ -184,6 +194,11 @@ def recompute(s: Session, b: Billing) -> dict:
     )
     result = calc.compute(bill, parties, fixed, allocs, b.values or {}, energy_entities(st))
     for e, m in (b.values_meta or {}).items():
+        if m.get("method") == "victron" and m.get("coverage", 1) < 0.98 and e in (b.values or {}):
+            result["warnings"].append(
+                f"{e}: Victron-Logger hat nur {m['coverage']:.0%} des Zeitraums erfasst (Daten ab {m.get('since', '?')}) "
+                "– Wert ist unvollständig."
+            )
         if m.get("method") == "power" and m.get("coverage", 1) < 0.98 and e in (b.values or {}):
             result["warnings"].append(
                 f"{e}: aus Leistung berechnet, aber nur für {m['hours']} von {m['expected_hours']} Stunden Daten "
@@ -318,7 +333,7 @@ async def import_invoice(s: Session, pdf: bytes, filename: str, message_id: str 
     b = create_from_invoice(s, inv, pdf, filename, message_id)
     s.commit()
     msgs = [f"Rechnung {inv.invoice_no} ({inv.period_start:%d.%m.%Y} – {inv.period_end:%d.%m.%Y}) importiert"]
-    if config.ha_url and config.ha_token:
+    if (config.ha_url and config.ha_token) or get_settings(s)["victron_enabled"]:
         try:
             missing = await fetch_values(s, b)
             msgs.append("Werte aus Home Assistant geladen" + (f" (ohne Statistik: {', '.join(missing)})" if missing else ""))
@@ -353,3 +368,24 @@ async def import_invoice(s: Session, pdf: bytes, filename: str, message_id: str 
         except Exception:  # noqa: BLE001
             pass
     return b, text_msg
+
+
+def victron_comparison(s: Session, b: Billing) -> list[dict]:
+    """Gegenüberstellung: Wert in der Abrechnung (z. B. aus HA) ↔ Victron-Logger im selben Zeitraum."""
+    st = get_settings(s)
+    if not st["victron_enabled"]:
+        return []
+    rows = []
+    for field, label, keys in victron.COMPARE:
+        ids = [victron.PREFIX + k for k in keys]
+        vals, meta = victron.consumption(s, ids, b.period_start, b.period_end, config.timezone)
+        own = calc._sum(b.values or {}, st[field]) if st[field] else None
+        for vid in ids:
+            if vals.get(vid) is None:
+                continue
+            v = vals[vid]
+            dev = (own / v - 1) if own and v else None
+            rows.append({"label": label, "field_value": own, "victron_key": vid,
+                         "victron_label": victron.KEY_BY_NAME[vid[len(victron.PREFIX):]].label,
+                         "victron_value": v, "coverage": meta[vid]["coverage"], "deviation": dev})
+    return rows

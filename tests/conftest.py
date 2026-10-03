@@ -7,6 +7,7 @@ os.environ.setdefault("HA_URL", "http://ha.test")
 os.environ.setdefault("HA_TOKEN", "dummy")
 os.environ.setdefault("SMTP_HOST", "smtp.test")
 os.environ.setdefault("SMTP_FROM", "abrechnung@test.de")
+os.environ["VICTRON_LOGGER"] = "0"  # Hintergrund-Logger in Tests nicht starten
 
 import pytest  # noqa: E402
 

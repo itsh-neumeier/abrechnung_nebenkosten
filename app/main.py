@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import io
 import os
 import re
@@ -19,7 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from . import invoice_import, mailbox, mailer, service
+from . import invoice_import, mailbox, mailer, service, victron
 from .config import config
 from .db import Allocation, Billing, FixedCost, Party, get_session, get_settings, init_db, save_settings
 from .ha import HAClient
@@ -29,10 +30,14 @@ from .render import BASE, invoice_html, invoice_pdf, parse_float, party_result, 
 @asynccontextmanager
 async def lifespan(_app):
     init_db()
-    task = asyncio.create_task(mailbox.poll_forever()) if mailbox.configured() else None
+    tasks = []
+    if mailbox.configured():
+        tasks.append(asyncio.create_task(mailbox.poll_forever()))
+    if config.victron_logger:
+        tasks.append(asyncio.create_task(victron.logger.run_forever()))
     yield
-    if task:
-        task.cancel()
+    for t in tasks:
+        t.cancel()
 
 
 app = FastAPI(title="Stromabrechnung Hausparteien", lifespan=lifespan)
@@ -47,6 +52,7 @@ def normalize_spec(text: str) -> str:
 
 def render(request: Request, name: str, **ctx) -> HTMLResponse:
     ctx.setdefault("ha_configured", bool(config.ha_url and config.ha_token))
+    ctx.setdefault("victron_status", victron.logger.status)
     return templates.TemplateResponse(request, name, ctx)
 
 
@@ -129,7 +135,7 @@ def settings_page(request: Request, s: Session = Depends(get_session)):
 async def settings_save(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
     data = {k: (normalize_spec(str(v)) if k.startswith("entity_") else str(v).strip()) for k, v in form.items()}
-    for flag in ("mail_auto_send",):  # Checkboxen
+    for flag in ("mail_auto_send", "victron_enabled"):  # Checkboxen
         data[flag] = "1" if form.get(flag) else ""
     save_settings(s, data)
     return redirect("/settings", "Gespeichert")
@@ -159,17 +165,53 @@ _entity_cache: dict = {"at": 0.0, "data": None}
 
 
 @app.get("/api/entities")
-async def api_entities(refresh: bool = False):
-    """Zähler-Sensoren aus Home Assistant für die Entitäten-Auswahl."""
+async def api_entities(refresh: bool = False, s: Session = Depends(get_session)):
+    """Zähler-/Leistungssensoren aus Home Assistant + virtuelle Victron-Entitäten des Loggers."""
+    virtual = victron.virtual_entities() if get_settings(s)["victron_enabled"] else []
     if not (config.ha_url and config.ha_token):
+        if virtual:
+            return virtual
         return JSONResponse({"error": "Home Assistant ist nicht konfiguriert (HA_URL / HA_TOKEN)."}, 503)
     if refresh or _entity_cache["data"] is None or time.time() - _entity_cache["at"] > 60:
         try:
             out = await HAClient(config.ha_url, config.ha_token).entities()
         except Exception as e:  # noqa: BLE001
+            if virtual:
+                return virtual
             return JSONResponse({"error": f"Home Assistant nicht erreichbar: {e}"}, 502)
         _entity_cache.update(at=time.time(), data=out)
-    return _entity_cache["data"]
+    return virtual + _entity_cache["data"]
+
+
+# --------------------------------------------------------------------------- Victron direkt
+@app.post("/victron/discover")
+async def victron_discover(request: Request, s: Session = Depends(get_session)):
+    form = await request.form()
+    if "victron_host" in form:  # Knopf sitzt im Einstellungsformular: Eingaben zuerst übernehmen
+        save_settings(s, {"victron_host": str(form.get("victron_host", "")).strip(),
+                          "victron_port": str(form.get("victron_port", "502")).strip() or "502",
+                          "victron_enabled": "1" if form.get("victron_enabled") else ""})
+    st = get_settings(s)
+    if not st["victron_host"]:
+        return redirect("/settings", "Bitte zuerst die IP des GX eintragen und speichern.")
+    reader = victron.ModbusReader(st["victron_host"], int(st["victron_port"] or 502))
+    try:
+        units = await victron.discover(reader)
+    except Exception as e:  # noqa: BLE001
+        return redirect("/settings", f"Victron: {e}")
+    finally:
+        await reader.close()
+    save_settings(s, {"victron_units": json.dumps(units)})
+    victron.logger.units = units
+    names = {"system": "System", "vebus": "VE.Bus", "battery": "Batteriewächter", "grid": "Energiezähler"}
+    found = ", ".join(f"{names[k]} = Unit {v}" for k, v in units.items() if v is not None) or "nichts"
+    missing = ", ".join(names[k] for k, v in units.items() if v is None)
+    return redirect("/settings", f"Victron gefunden: {found}" + (f" · nicht gefunden: {missing}" if missing else ""))
+
+
+@app.get("/api/victron/status")
+def victron_status():
+    return victron.logger.status
 
 
 # --------------------------------------------------------------------------- Parteien
@@ -341,7 +383,7 @@ async def billing_create(request: Request, s: Session = Depends(get_session)):
     s.add(b)
     s.commit()
     msg = "Angelegt"
-    if form.get("fetch") and config.ha_url and config.ha_token:
+    if form.get("fetch") and ((config.ha_url and config.ha_token) or st["victron_enabled"]):
         try:
             missing = await service.fetch_values(s, b)
             msg = "Werte aus Home Assistant geladen" + (f" (ohne Statistik: {', '.join(missing)})" if missing else "")
@@ -366,7 +408,8 @@ def billing_view(request: Request, bid: int, s: Session = Depends(get_session)):
               if a.source_type == "amount" or (a.source_type == "quantity" and a.price_source != "water")]
     emails = {p.id: p.email for p in s.query(Party).all()}
     return render(request, "billing.html", b=b, r=b.result or {}, entities=service.required_entities(s),
-                  amount_allocs=allocs, st=get_settings(s), emails=emails, mail_ok=mailer.configured())
+                  amount_allocs=allocs, st=get_settings(s), emails=emails, mail_ok=mailer.configured(),
+                  compare=service.victron_comparison(s, b))
 
 
 def _report_msg(report: list[tuple[str, bool, str]]) -> str:
