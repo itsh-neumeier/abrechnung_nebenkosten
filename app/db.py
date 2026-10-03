@@ -50,15 +50,16 @@ class FixedCost(Base):
 
 
 class Allocation(Base):
-    """Umlage nach Verbrauch, z. B. Warmwasserbereitung oder Wasser."""
+    """Umlage, z. B. Warmwasserbereitung (Strom eines Shelly) oder Trinkwasser (m³ x Preis)."""
 
     __tablename__ = "allocations"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
-    source_type: Mapped[str] = mapped_column(String(20), default="energy")  # energy | amount
+    source_type: Mapped[str] = mapped_column(String(20), default="energy")  # energy | quantity | amount
     source_entity: Mapped[str] = mapped_column(String(255), default="")
-    default_amount: Mapped[float] = mapped_column(Float, default=0.0)
-    key_type: Mapped[str] = mapped_column(String(20), default="entity")  # entity | percent | equal
+    source_unit: Mapped[str] = mapped_column(String(20), default="m³")  # Einheit bei quantity
+    default_amount: Mapped[float] = mapped_column(Float, default=0.0)  # Betrag bzw. Preis je Einheit
+    key_type: Mapped[str] = mapped_column(String(20), default="percent")  # entity | percent | equal
     key_unit: Mapped[str] = mapped_column(String(20), default="")
     key: Mapped[dict] = mapped_column(JSON, default=dict)  # {party_id: entity | prozent}
     active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -82,6 +83,9 @@ class Billing(Base):
     pv_rate_ct: Mapped[float] = mapped_column(Float, default=0.0)  # PV-Bereitstellungssatz
     pv_rate_on_battery: Mapped[bool] = mapped_column(Boolean, default=True)
     sent: Mapped[dict] = mapped_column(JSON, default=dict)  # party_id -> Versandzeitpunkt / Fehler
+    source_file: Mapped[str] = mapped_column(String(255), default="")  # importierte Original-Rechnung (PDF)
+    import_info: Mapped[dict] = mapped_column(JSON, default=dict)  # Positionen / Prüfungen des Imports
+    mail_message_id: Mapped[str] = mapped_column(String(255), default="")
     values: Mapped[dict] = mapped_column(JSON, default=dict)  # entity_id -> Verbrauch
     amounts: Mapped[dict] = mapped_column(JSON, default=dict)  # allocation_id -> Betrag
     result: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -120,7 +124,7 @@ def _add_missing_columns() -> None:
                 elif isinstance(default, str):
                     literal = "'" + default.replace("'", "''") + "'"
                 elif isinstance(col.type, JSON):
-                    literal = "'{}'" if col.name in ("sent", "values", "amounts", "result", "key") else "'[]'"
+                    literal = "'{}'" if col.name in ("sent", "values", "amounts", "result", "key", "import_info") else "'[]'"
                 else:
                     literal = "NULL"
                 coltype = col.type.compile(engine.dialect)
@@ -155,6 +159,9 @@ SETTING_DEFAULTS = {
     "mail_body": "Hallo {name},\n\nanbei die Nebenkostenabrechnung Strom für den Zeitraum {zeitraum}.\n"
                  "Betrag: {betrag}\n\nViele Grüße\n{absender}",
     "mail_bcc": "",
+    # Rechnungsimport
+    "import_auto_finalize": "",  # importierte Rechnung ohne Warnungen direkt abschließen (+ ggf. versenden)
+    "notify_email": "",  # Hinweis-Mail bei neu importierter Rechnung
     "landlord_name": "",
     "landlord_address": "",
     "landlord_contact": "",

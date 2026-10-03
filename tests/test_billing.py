@@ -127,3 +127,21 @@ def test_warnings_negative_rest_and_grid_deviation(setup):
     assert r["parties"][0]["kwh"] == 0
     assert any("negativ" in w for w in r["warnings"])
     assert any("weicht" in w for w in r["warnings"])
+
+
+def test_drinking_water_and_hot_water_by_percent(setup):
+    """Trinkwasser: m³ aus HA x Preis, Warmwasserbereitung: Shelly-kWh zum Mix – beide nach Prozent."""
+    bill, parties, values = setup
+    values.update({"sensor.wasser": 12.0, "sensor.shelly_ww": 100.0})
+    water = AllocationCfg(1, "Trinkwasser", "quantity", source_entity="sensor.wasser", amount=4.5,
+                          source_unit="m³", key_type="percent", key={1: 20, 2: 50, 3: 30})
+    hot = AllocationCfg(2, "Warmwasserbereitung", "energy", source_entity="sensor.shelly_ww",
+                        key_type="percent", key={2: 60, 3: 40})
+    r = run(bill, parties, values, allocs=[water, hot])
+    owner, eg, og = r["parties"]
+    assert [amounts(p)["Trinkwasser"] for p in r["parties"]] == [10.80, 27.00, 16.20]  # 54 € gesamt
+    assert "12,00 m³ × 4,50 €/m³ = 54,00 €" in next(l["note"] for l in eg["lines"] if l["label"] == "Trinkwasser")
+    pot = 40 * 0.2975 + 35 * 0.15 + 12.5 * 0.23 + 12.5 * 0.18
+    assert amounts(eg)["Warmwasserbereitung"] == pytest.approx(round(pot * 0.6, 2))
+    assert "Warmwasserbereitung" not in amounts(owner)
+    assert owner["kwh"] == pytest.approx(500)  # Warmwasser-Strom nicht doppelt beim Eigentümer

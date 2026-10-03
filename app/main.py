@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
+import os
 import re
 import secrets
 import time
@@ -13,11 +15,11 @@ from datetime import date, timedelta
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from . import mailer, service
+from . import invoice_import, mailbox, mailer, service
 from .config import config
 from .db import Allocation, Billing, FixedCost, Party, get_session, get_settings, init_db, save_settings
 from .ha import HAClient
@@ -27,7 +29,10 @@ from .render import BASE, invoice_html, invoice_pdf, parse_float, party_result, 
 @asynccontextmanager
 async def lifespan(_app):
     init_db()
+    task = asyncio.create_task(mailbox.poll_forever()) if mailbox.configured() else None
     yield
+    if task:
+        task.cancel()
 
 
 app = FastAPI(title="Stromabrechnung Hausparteien", lifespan=lifespan)
@@ -82,7 +87,32 @@ def index(request: Request, s: Session = Depends(get_session)):
     ]
     if not service.active_parties(s):
         setup_missing.append("Parteien")
-    return render(request, "index.html", billings=billings, setup_missing=setup_missing)
+    return render(request, "index.html", billings=billings, setup_missing=setup_missing,
+                  imap_ok=mailbox.configured(), mbox=mailbox.status, imap=config)
+
+
+@app.post("/mailbox/check")
+async def mailbox_check():
+    return redirect("/", await mailbox.check_mailbox())
+
+
+@app.post("/billings/import")
+async def billing_import(request: Request, s: Session = Depends(get_session)):
+    form = await request.form()
+    upload = form.get("file")
+    if upload is None or not getattr(upload, "filename", ""):
+        return redirect("/billings/new", "Bitte eine PDF- oder .eml-Datei auswählen.")
+    data = await upload.read()
+    try:
+        files = invoice_import.load_upload(upload.filename, data)
+        last = None
+        msgs = []
+        for name, pdf, mid in files:
+            last, msg = await service.import_invoice(s, pdf, name, mid, source="Upload")
+            msgs.append(msg)
+    except invoice_import.ImportError_ as e:
+        return redirect("/billings/new", f"Import fehlgeschlagen: {e}")
+    return redirect(f"/billings/{last.id}" if last else "/", " · ".join(msgs))
 
 
 # --------------------------------------------------------------------------- Einstellungen
@@ -243,8 +273,8 @@ async def fixed_save(request: Request, cid: int, s: Session = Depends(get_sessio
 
 @app.get("/costs/alloc/{aid}", response_class=HTMLResponse)
 def alloc_edit(request: Request, aid: int, s: Session = Depends(get_session)):
-    a = (Allocation(name="", source_type="energy", source_entity="", default_amount=0.0, key_type="entity",
-                    key_unit="m³", key={}, active=True)
+    a = (Allocation(name="", source_type="energy", source_entity="", source_unit="m³", default_amount=0.0,
+                    key_type="percent", key_unit="", key={}, active=True)
          if aid == 0 else s.get(Allocation, aid))
     if a is None:
         raise HTTPException(404)
@@ -266,6 +296,7 @@ async def alloc_save(request: Request, aid: int, s: Session = Depends(get_sessio
     a.name = str(form.get("name", "")).strip()
     a.source_type = str(form.get("source_type", "energy"))
     a.source_entity = str(form.get("source_entity", "")).strip()
+    a.source_unit = str(form.get("source_unit", "")).strip() or "m³"
     a.default_amount = parse_float(form.get("default_amount")) or 0.0
     a.key_type = str(form.get("key_type", "entity"))
     a.key_unit = str(form.get("key_unit", "")).strip()
@@ -339,7 +370,7 @@ def _get_billing(s: Session, bid: int) -> Billing:
 @app.get("/billings/{bid}", response_class=HTMLResponse)
 def billing_view(request: Request, bid: int, s: Session = Depends(get_session)):
     b = _get_billing(s, bid)
-    allocs = s.query(Allocation).filter(Allocation.active.is_(True), Allocation.source_type == "amount").all()
+    allocs = s.query(Allocation).filter(Allocation.active.is_(True), Allocation.source_type.in_(("amount", "quantity"))).all()
     emails = {p.id: p.email for p in s.query(Party).all()}
     return render(request, "billing.html", b=b, r=b.result or {}, entities=service.required_entities(s),
                   amount_allocs=allocs, st=get_settings(s), emails=emails, mail_ok=mailer.configured())
@@ -410,6 +441,14 @@ def _party_or_404(b: Billing, pid: int) -> dict:
     if p is None:
         raise HTTPException(404, "Partei nicht in dieser Abrechnung")
     return p
+
+
+@app.get("/billings/{bid}/source.pdf")
+def billing_source(bid: int, s: Session = Depends(get_session)):
+    b = _get_billing(s, bid)
+    if not b.source_file or not os.path.exists(b.source_file):
+        raise HTTPException(404, "Keine Original-Rechnung gespeichert")
+    return FileResponse(b.source_file, media_type="application/pdf")
 
 
 @app.get("/billings/{bid}/invoice/{pid}.pdf")

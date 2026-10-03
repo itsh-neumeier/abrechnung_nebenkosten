@@ -22,8 +22,10 @@ Preise je kWh
 
 Jede Partei (Summe ihrer Shelly-Zähler) bekommt denselben Mix. Der Eigentümer
 bekommt den Restverbrauch. Fixkosten des Anbieters werden gleichmäßig verteilt,
-weitere Fixkosten (z. B. IPTV) auf die ausgewählten Parteien, Umlagen (Warmwasser,
-Wasser) nach Verbrauch je Partei, Prozent oder gleichmäßig.
+weitere Fixkosten (z. B. IPTV) auf die ausgewählten Parteien. Umlagen verteilen
+Strom eines Verbrauchers (z. B. Warmwasserbereitung, kWh zum Hausstrom-Mix), eine
+Menge x Preis (z. B. Trinkwasser m³ x €/m³) oder einen Betrag nach Prozent,
+Verbrauch je Partei oder gleichmäßig.
 """
 
 from __future__ import annotations
@@ -54,9 +56,10 @@ class FixedCostCfg:
 class AllocationCfg:
     id: int
     name: str
-    source_type: str  # "energy" (kWh aus HA-Entität) | "amount" (Betrag in EUR)
+    source_type: str  # "energy" (kWh, Hausstrom-Mix) | "quantity" (Menge x Preis, z. B. m³) | "amount" (EUR)
     source_entity: str = ""
-    amount: float = 0.0  # bei source_type == "amount"
+    amount: float = 0.0  # bei "amount": Betrag; bei "quantity": Preis je Einheit (brutto)
+    source_unit: str = ""  # Einheit der Menge bei "quantity", z. B. m³
     key_type: str = "equal"  # "entity" | "percent" | "equal"
     key: dict[int, str | float] = field(default_factory=dict)
     key_unit: str = ""
@@ -324,6 +327,10 @@ def compute(
             src_kwh = _val(values, a.source_entity)
             pot = sum(eur for _, eur in energy_cost(src_kwh).values())
             pot_desc = f"{_de(src_kwh, 1)} kWh = {_de(pot)} €"
+        elif a.source_type == "quantity":
+            qty = _val(values, a.source_entity)
+            pot = qty * a.amount
+            pot_desc = f"{_de(qty, 2)} {a.source_unit} × {_de(a.amount)} €/{a.source_unit} = {_de(pot)} €"
         else:
             pot = a.amount
             pot_desc = f"{_de(pot)} €"

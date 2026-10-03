@@ -1,6 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Neue Stromrechnung erfassen</h1>
+<h1>Neue Stromrechnung</h1>
+<form method="post" action="/billings/import" enctype="multipart/form-data" class="card">
+  <h2 style="margin-top:0">Rechnung importieren</h2>
+  <p class="muted">PDF der Rechnung oder die ganze E-Mail (.eml) des Lieferanten. Zeitraum, kWh, Arbeitspreis, Fixkosten,
+  Börsenpreis und MwSt. werden ausgelesen, Verbrauchswerte aus Home Assistant geladen.</p>
+  <input type="file" name="file" accept=".pdf,.eml,application/pdf,message/rfc822" required>
+  <button>Importieren</button>
+</form>
+<h2>… oder manuell erfassen</h2>
 <form method="post" action="/billings" class="card">
   {% set b = none %}{% set ro = '' %}
   {% include "_bill_fields.html" %}

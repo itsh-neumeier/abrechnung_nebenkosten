@@ -20,9 +20,12 @@
 <tr><th>Bezeichnung</th><th>Kostenquelle</th><th>Verteilschlüssel</th><th>Status</th></tr>
 {% for a in allocations %}
 <tr><td><a href="/costs/alloc/{{ a.id }}">{{ a.name }}</a></td>
-<td>{% if a.source_type == 'energy' %}Strom von <code>{{ a.source_entity }}</code>{% else %}Betrag (Standard {{ a.default_amount|eur }}){% endif %}</td>
-<td>{{ {'entity':'Verbrauch je Partei (HA)','percent':'feste Prozente','equal':'gleichmäßig'}[a.key_type] }}</td>
+<td>{% if a.source_type == 'energy' %}Strom von <code>{{ a.source_entity }}</code>
+{% elif a.source_type == 'quantity' %}<code>{{ a.source_entity }}</code> × {{ a.default_amount|num(4) }} €/{{ a.source_unit }}
+{% else %}Betrag (Standard {{ a.default_amount|eur }}){% endif %}</td>
+<td>{{ {'entity':'Verbrauch je Partei (HA)','percent':'feste Prozente','equal':'gleichmäßig'}[a.key_type] }}
+{% if a.key_type == 'percent' %}<span class="muted">({% for pid, v in (a.key or {}).items() %}{{ parties.get(pid|int, '?') }} {{ v|num(1) }} %{% if not loop.last %}, {% endif %}{% endfor %})</span>{% endif %}</td>
 <td>{{ "aktiv" if a.active else "inaktiv" }}</td></tr>
-{% else %}<tr><td colspan="4" class="muted">z. B. „Warmwasserbereitung“ (Strom der Wärmepumpe/des Heizstabs, verteilt nach Warmwasser-Zählern) oder „Wasser“</td></tr>{% endfor %}
+{% else %}<tr><td colspan="4" class="muted">z. B. „Trinkwasser“ (m³ aus HA × Preis je m³, nach Prozent) oder „Warmwasserbereitung“ (kWh des Shelly zum Hausstrom-Mix, nach Prozent)</td></tr>{% endfor %}
 </table></div>
 {% endblock %}

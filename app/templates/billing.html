@@ -52,6 +52,25 @@
 </div>
 {% endif %}
 
+{% set imp = b.import_info or {} %}
+{% if imp.positions %}
+<h2>Importierte Rechnung</h2>
+<div class="card scroll">
+  <p>{{ imp.supplier }} Rechnung {{ imp.invoice_no }}{% if imp.invoice_date %} vom {{ imp.invoice_date|de_date }}{% endif %}
+  · Summe {{ imp.total_net|eur }} netto / {{ imp.total_gross|eur }} brutto
+  {% if b.source_file %} · <a href="/billings/{{ b.id }}/source.pdf" target="_blank">Original-PDF</a>{% endif %}</p>
+  {% for w in imp.warnings %}<div class="warn">⚠ {{ w }}</div>{% endfor %}
+  <details><summary>Positionen ({{ imp.positions|length }})</summary>
+  <table>
+  <tr><th>Position</th><th>Zuordnung</th><th class="r">Preis</th><th class="r">Menge</th><th class="r">Netto</th></tr>
+  {% for p in imp.positions %}
+  <tr><td>{{ p.description }}</td><td>{{ {'energy':'Arbeitspreis','fixed':'Fixkosten','other':'?'}[p.kind] }}{% if p.kind == 'energy' and (p.price|num(2)) == (b.spot_price_ct|num(2)) %} · Börsenpreis{% endif %}</td>
+  <td class="r">{{ p.price|num(2) }} {{ p.price_unit }}</td><td class="r">{{ p.quantity|num(2) }} {{ p.quantity_unit }}</td><td class="r">{{ p.net|eur }}</td></tr>
+  {% endfor %}
+  </table></details>
+</div>
+{% endif %}
+
 <form method="post">
 <h2>Rechnung des Stromanbieters</h2>
 <div class="card">{% include "_bill_fields.html" %}</div>
@@ -69,10 +88,10 @@
 </div>
 
 {% if amount_allocs %}
-<h2>Beträge für Umlagen</h2>
+<h2>Preise / Beträge für Umlagen</h2>
 <div class="card grid">
 {% for a in amount_allocs %}
-<div><label>{{ a.name }} (brutto €)</label><input type="text" name="amount__{{ a.id }}" value="{{ (b.amounts.get(a.id|string, a.default_amount))|num(2) }}" {{ ro }}></div>
+<div><label>{{ a.name }} {% if a.source_type == 'quantity' %}– Preis je {{ a.source_unit }} (brutto €){% else %}(brutto €){% endif %}</label><input type="text" name="amount__{{ a.id }}" value="{{ (b.amounts.get(a.id|string, a.default_amount))|num(4 if a.source_type == 'quantity' else 2) }}" {{ ro }}></div>
 {% endfor %}
 </div>
 {% endif %}

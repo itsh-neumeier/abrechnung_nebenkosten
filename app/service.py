@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from datetime import datetime
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
 from . import billing as calc
-from . import mailer, render
+from . import invoice_import, mailer, render
 from .config import config
 from .db import Allocation, Billing, FixedCost, Party, get_settings
 from .ha import HAClient
@@ -46,7 +48,7 @@ def required_entities(s: Session) -> list[tuple[str, str]]:
         for m in p.meters or []:
             out.append((m, f"Zähler {p.name}"))
     for a in s.query(Allocation).filter(Allocation.active.is_(True)).all():
-        if a.source_type == "energy" and a.source_entity:
+        if a.source_type in ("energy", "quantity") and a.source_entity:
             out.append((a.source_entity, f"Umlage {a.name} (Quelle)"))
         if a.key_type == "entity":
             for pid, ent in (a.key or {}).items():
@@ -99,7 +101,8 @@ def recompute(s: Session, b: Billing) -> dict:
         allocs.append(
             calc.AllocationCfg(
                 id=a.id, name=a.name, source_type=a.source_type, source_entity=a.source_entity,
-                amount=float(amount or 0), key_type=a.key_type, key_unit=a.key_unit,
+                amount=float(amount or 0), source_unit=a.source_unit or "", key_type=a.key_type,
+                key_unit=a.key_unit,
                 key={int(k): v for k, v in (a.key or {}).items() if v not in ("", None)},
             )
         )
@@ -178,3 +181,98 @@ def send_invoices(s: Session, b: Billing, party_ids: list[int] | None = None,
             report.append((rp["name"], False, str(e)))
     b.sent = sent
     return report
+
+
+# --------------------------------------------------------------------------- Rechnungsimport
+def invoice_dir() -> Path:
+    base = Path(config.data_dir) if config.data_dir else (
+        Path(config.database_url.removeprefix("sqlite:///")).parent
+        if config.database_url.startswith("sqlite:///") else Path("data"))
+    d = base / "invoices"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def find_duplicate(s: Session, inv: invoice_import.ParsedInvoice, message_id: str = "") -> Billing | None:
+    q = s.query(Billing)
+    if inv.invoice_no:
+        hit = q.filter(Billing.invoice_no == inv.invoice_no).first()
+        if hit:
+            return hit
+    if message_id:
+        return q.filter(Billing.mail_message_id == message_id).first()
+    return None
+
+
+def create_from_invoice(s: Session, inv: invoice_import.ParsedInvoice, pdf: bytes, filename: str,
+                        message_id: str = "") -> Billing:
+    """Legt einen Abrechnungs-Entwurf aus einer importierten Rechnung an."""
+    st = get_settings(s)
+    b = Billing(
+        title=f"Strom {inv.period_start:%m/%Y}" if inv.period_start else "Strom",
+        invoice_no=inv.invoice_no,
+        period_start=inv.period_start,
+        period_end=inv.period_end,
+        grid_kwh=inv.grid_kwh,
+        energy_cost_net=inv.energy_cost_net,
+        fixed_cost_net=inv.fixed_cost_net,
+        spot_price_ct=inv.spot_price_ct or 0.0,
+        vat_rate=inv.vat_rate if inv.vat_rate is not None else (float(st["vat_rate"] or 19) / 100),
+        battery_rate_ct=float(st["battery_rate_ct"].replace(",", ".") or 0),
+        pv_rate_ct=float(st["pv_rate_ct"].replace(",", ".") or 0),
+        pv_rate_on_battery=bool(st["pv_rate_on_battery"]),
+        values={}, amounts={}, result={}, sent={},
+        import_info={**inv.info(), "filename": filename},
+        mail_message_id=message_id,
+        notes=f"Automatisch importiert aus {filename}",
+    )
+    s.add(b)
+    s.flush()
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", filename)
+    path = invoice_dir() / f"{b.id}_{safe}"
+    path.write_bytes(pdf)
+    b.source_file = str(path)
+    return b
+
+
+async def import_invoice(s: Session, pdf: bytes, filename: str, message_id: str = "",
+                         source: str = "Upload") -> tuple[Billing | None, str]:
+    """Kompletter Ablauf: PDF lesen, Entwurf anlegen, HA-Werte laden, berechnen,
+    ggf. automatisch abschließen/versenden und benachrichtigen."""
+    inv = invoice_import.parse_pdf(pdf)
+    dup = find_duplicate(s, inv, message_id)
+    if dup:
+        return dup, f"Rechnung {inv.invoice_no or filename} ist bereits erfasst."
+    b = create_from_invoice(s, inv, pdf, filename, message_id)
+    s.commit()
+    msgs = [f"Rechnung {inv.invoice_no} ({inv.period_start:%d.%m.%Y} – {inv.period_end:%d.%m.%Y}) importiert"]
+    if config.ha_url and config.ha_token:
+        try:
+            missing = await fetch_values(s, b)
+            msgs.append("Werte aus Home Assistant geladen" + (f" (ohne Statistik: {', '.join(missing)})" if missing else ""))
+        except Exception as e:  # noqa: BLE001
+            msgs.append(f"Home Assistant nicht erreichbar: {e}")
+    result = recompute(s, b)
+    warnings = list(inv.warnings) + list(result.get("warnings", []))
+    st = get_settings(s)
+    if st["import_auto_finalize"] and not warnings:
+        b.status = "final"
+        msgs.append("automatisch abgeschlossen")
+        if st["mail_auto_send"] and mailer.configured():
+            s.commit()
+            report = send_invoices(s, b, only_unsent=True)
+            msgs.append(f"{sum(1 for _, ok, _ in report if ok)} Abrechnung(en) versendet")
+    elif warnings:
+        msgs.append(f"{len(warnings)} Hinweis(e) – bitte prüfen")
+    s.commit()
+    text_msg = " · ".join(msgs)
+    if st["notify_email"] and mailer.configured():
+        link = f"{config.app_base_url}/billings/{b.id}" if config.app_base_url else f"/billings/{b.id}"
+        body = (f"Neue Stromrechnung über {source} eingegangen.\n\n{text_msg}\n\n"
+                + ("Hinweise:\n- " + "\n- ".join(warnings) + "\n\n" if warnings else "")
+                + f"Abrechnung: {link}\n")
+        try:
+            mailer.send_mail(_split_addr(st["notify_email"]), f"Stromrechnung importiert: {b.title}", body, [])
+        except Exception:  # noqa: BLE001
+            pass
+    return b, text_msg
