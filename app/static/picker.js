@@ -2,7 +2,8 @@
 //
 // <input data-phases ...>  -> Umschaltung „1 Entität (gesamt)“ / „3 Phasen (L1/L2/L3)“.
 //                             Im Phasen-Modus wird der Wert als „a + b + c“ gespeichert (Summe).
-// <input data-entity ...>  -> Button „Aus HA wählen“ (ersetzt den Wert).
+// <input data-entity ...>  -> Button „Auswählen“ (ersetzt den Wert). Quellen: Home Assistant,
+//                             Victron Modbus (victron:…, eigener Logger) und VRM (vrm:…, Cloud).
 // data-unit="volume"       -> Auswahl-Dialog startet mit Filter Wasser/Volumen.
 // window.EntityFields.init(container) initialisiert nachträglich eingefügte Felder.
 (function () {
@@ -10,6 +11,8 @@
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
   const UNITS = {energy: ['kWh', 'Wh', 'MWh', 'W', 'kW'], volume: ['m³', 'L', 'l', 'gal', 'ft³']};
   const split = (v) => (v || '').split(/[\s+,;]+/).filter(Boolean);
+  const source = (e) => e.entity_id.startsWith('victron:') ? 'victron' : e.entity_id.startsWith('vrm:') ? 'vrm' : 'ha';
+  const SRC_LABEL = {ha: 'HA', victron: 'Victron Modbus', vrm: 'VRM'};
 
   // ------------------------------------------------------------------ Dialog
   function dialog() {
@@ -18,11 +21,17 @@
     dlg.className = 'picker';
     dlg.innerHTML = `
       <div class="picker-head">
-        <b>Entität aus Home Assistant wählen</b>
+        <b>Datenquelle wählen</b>
         <button type="button" class="sec" data-close>✕</button>
       </div>
       <div class="picker-filter">
         <input type="text" placeholder="Suchen (Name oder entity_id) …" data-q>
+        <select data-src>
+          <option value="">alle Quellen</option>
+          <option value="ha">Home Assistant</option>
+          <option value="victron">Victron Modbus</option>
+          <option value="vrm">VRM (Cloud)</option>
+        </select>
         <select data-unit>
           <option value="energy">Energie / Leistung (kWh, W)</option>
           <option value="volume">Wasser/Volumen (m³/L)</option>
@@ -43,6 +52,7 @@
     });
     $('[data-q]').addEventListener('input', draw);
     $('[data-unit]').addEventListener('change', draw);
+    $('[data-src]').addEventListener('change', draw);
     $('[data-stat]').addEventListener('change', draw);
     $('[data-refresh]').addEventListener('click', () => load(true));
     $('[data-close]').addEventListener('click', () => dlg.close());
@@ -54,13 +64,20 @@
     if (cache && cache.error) { list.innerHTML = `<p class="warn">${esc(cache.error)}</p>`; return; }
     if (!cache) { list.innerHTML = '<p class="muted">Lade …</p>'; return; }
     const q = $('[data-q]').value.toLowerCase(), unit = $('[data-unit]').value, stat = $('[data-stat]').checked;
+    const src = $('[data-src]').value;
     const rows = cache.filter(e =>
+      (!src || source(e) === src) &&
       (!unit || UNITS[unit].includes(e.unit)) && (!stat || e.statistics) &&
       (!q || e.entity_id.toLowerCase().includes(q) || (e.name || '').toLowerCase().includes(q)));
-    if (!rows.length) { list.innerHTML = '<p class="muted">Keine passenden Entitäten.</p>'; return; }
+    if (!rows.length) {
+      const hint = {victron: 'Victron Modbus: unter Einstellungen → „Victron direkt“ den Logger aktivieren.',
+                    vrm: 'VRM: VRM_TOKEN setzen und unter Einstellungen → VRM die Anlage suchen.'}[src] || '';
+      list.innerHTML = `<p class="muted">Keine passenden Entitäten. ${hint}</p>`; return;
+    }
     list.innerHTML = '<table>' + rows.map(e => `
       <tr data-id="${esc(e.entity_id)}">
-        <td><b>${esc(e.name || e.entity_id)}</b><br><code>${esc(e.entity_id)}</code>
+        <td><span class="src-badge src-${source(e)}">${SRC_LABEL[source(e)]}</span>
+            <b>${esc(e.name || e.entity_id)}</b><br><code>${esc(e.entity_id)}</code>
             ${e.statistics ? '' : '<br><span class="muted">keine Langzeitstatistik</span>'}</td>
         <td class="r">${esc(e.state)} ${esc(e.unit)}</td></tr>`).join('') + '</table>';
   }
@@ -78,6 +95,8 @@
     target = input;
     const d = dialog();
     d.querySelector('[data-unit]').value = input.dataset.unit ?? 'energy';
+    const cur = (input.value || '').trim();
+    d.querySelector('[data-src]').value = cur.startsWith('victron:') ? 'victron' : cur.startsWith('vrm:') ? 'vrm' : '';
     d.querySelector('[data-q]').value = '';
     d.showModal();
     if (!cache || cache.error) load(false); else draw();
@@ -88,7 +107,7 @@
     if (input.dataset.pickerReady) return;
     input.dataset.pickerReady = '1';
     const btn = document.createElement('button');
-    btn.type = 'button'; btn.className = 'sec pick-btn'; btn.textContent = 'Aus HA wählen';
+    btn.type = 'button'; btn.className = 'sec pick-btn'; btn.textContent = 'Auswählen (HA / Victron / VRM)';
     btn.addEventListener('click', () => open(input));
     input.insertAdjacentElement('afterend', btn);
   }

@@ -53,3 +53,6 @@ h3{font-size:.95rem;margin:1.2em 0 .2em;color:var(--muted)}
 [hidden]{display:none !important}
 .hint-box{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0;font-size:.9rem}
 p.hint{margin:4px 0 2px;font-size:.84rem}
+.src-badge{display:inline-block;font-size:.7rem;padding:0 6px;border-radius:99px;border:1px solid var(--line);margin-right:6px;vertical-align:1px}
+.src-victron{border-color:#2563eb;color:#2563eb}.src-vrm{border-color:#9333ea;color:#9333ea}
+.picker-filter{grid-template-columns:minmax(160px,2fr) minmax(120px,1fr) minmax(120px,1fr) auto auto}
