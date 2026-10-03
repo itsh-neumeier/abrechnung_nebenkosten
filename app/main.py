@@ -67,7 +67,7 @@ def redirect(url: str, msg: str = "") -> RedirectResponse:
 
 
 PUBLIC = ("/login", "/logout", "/setup", "/password/", "/static/", "/healthz", "/favicon", "/apple-touch-icon",
-          "/api/n8n/", "/api/whatsapp/")
+          "/api/n8n/", "/api/whatsapp/", "/manifest.webmanifest", "/sw.js", "/offline", "/app")
 TENANT_OK = ("/portal", "/account")
 
 
@@ -106,6 +106,29 @@ async def authenticate(request: Request, call_next):
 @app.get("/favicon.ico")
 def favicon():
     return FileResponse(BASE / "static" / "favicon.ico", media_type="image/x-icon")
+
+
+@app.get("/manifest.webmanifest")
+def manifest():
+    return FileResponse(BASE / "static" / "manifest.webmanifest", media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+def service_worker():
+    js = (BASE / "static" / "sw.js").read_text().replace("__VERSION__", templates.env.globals["app_version"])
+    return Response(js, media_type="text/javascript",
+                    headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+
+@app.get("/offline", response_class=HTMLResponse)
+def offline(request: Request):
+    return templates.TemplateResponse(request, "offline.html", {})
+
+
+@app.get("/app", response_class=HTMLResponse)
+def app_info(request: Request):
+    return templates.TemplateResponse(request, "app.html", {"https": request.url.scheme == "https",
+                                                            "base": config.app_base_url})
 
 
 @app.get("/apple-touch-icon.png")

@@ -73,9 +73,47 @@ p.hint{margin:4px 0 2px;font-size:.84rem}
 footer.ver { text-align: center; font-size: 11px; color: #9ca3af; padding: 12px 0 18px }
 #native code { overflow-wrap: anywhere }
 img.logo { width: 22px; height: 22px; vertical-align: -4px; margin-right: 4px }
-header nav a.who { margin-left: auto; color: var(--muted) }
-header nav a.brand + a.who { margin-left: 0 }
 .auth-box { max-width: 420px; margin: 6vh auto 0 }
 .auth-box h1 { text-align: center }
 .auth-box .logo-big { display: block; width: 64px; height: 64px; margin: 0 auto 10px }
 .links { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 12px; font-size: .9rem }
+
+/* ---- Navigation, mobil als Ausklappmenü ---- */
+header{position:sticky;top:0;z-index:20;padding-top:env(safe-area-inset-top)}
+.nav-links{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.nav-links a.who{color:var(--muted)}
+.menu-toggle{display:none;background:transparent;border:1px solid var(--line);padding:8px 9px;margin:0;border-radius:8px}
+.menu-toggle span{display:block;width:20px;height:2px;margin:4px 0;background:var(--fg);border-radius:2px;transition:.2s}
+nav.open .menu-toggle span:nth-child(1){transform:translateY(6px) rotate(45deg)}
+nav.open .menu-toggle span:nth-child(2){opacity:0}
+nav.open .menu-toggle span:nth-child(3){transform:translateY(-6px) rotate(-45deg)}
+@media (max-width:860px){
+  header nav{gap:10px}
+  .menu-toggle{display:block}
+  .nav-links{display:none;width:100%;flex-direction:column;align-items:stretch;gap:0;padding:4px 0 6px}
+  nav.open .nav-links{display:flex}
+  .nav-links a{padding:11px 4px;border-top:1px solid var(--line)}
+}
+/* ---- App-Seite ---- */
+.app-hero{display:flex;gap:16px;align-items:center}
+.app-hero img{border-radius:16px;flex:none}
+.status-list{list-style:none;padding:0;margin:0 0 8px}
+.status-list li{padding:4px 0}
+.grid-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:0 16px}
+.grid-cards ol{padding-left:20px;margin:0}
+/* ---- allgemein responsiv ---- */
+img,svg{max-width:100%}
+.card{overflow-wrap:anywhere}
+.card table{overflow-wrap:normal}
+main{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));
+     padding-bottom:max(60px,env(safe-area-inset-bottom))}
+@media (max-width:600px){
+  body{font-size:15px}
+  h1{font-size:1.3rem}
+  .card{padding:14px 12px}
+  th,td{padding:6px 6px}
+  .grid{grid-template-columns:1fr}
+  .btn,button{padding:10px 14px}
+  input[type=text],input[type=number],input[type=date],input[type=password],select,textarea{font-size:16px} /* kein Auto-Zoom auf iOS */
+}
+html.standalone footer.ver{padding-bottom:max(18px,env(safe-area-inset-bottom))}

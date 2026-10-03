@@ -1,12 +1,17 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>{% block title %}Nebenkostenabrechnung{% endblock %}</title>
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon.ico" sizes="32x32">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#2563eb">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Nebenkosten">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -14,6 +19,8 @@
 {% set auth_on = request.state.auth_enabled if request.state is defined else false %}
 <header><nav>
   <a class="brand" href="/"><img src="/static/favicon.svg" alt="" class="logo"> Nebenkostenabrechnung</a>
+  <button type="button" class="menu-toggle" aria-label="Menü" aria-expanded="false"><span></span><span></span><span></span></button>
+  <div class="nav-links">
   {% if not auth_on or (me and me.is_admin) %}
   <a href="/">Abrechnungen</a>
   <a href="/parties">Parteien</a>
@@ -24,7 +31,9 @@
   {% elif me %}
   <a href="/portal">Meine Abrechnungen</a>
   {% endif %}
+  <a href="/app" class="app-link" title="Als App installieren">📲 App</a>
   {% if me %}<a href="/account" class="who">👤 {{ me.display }}</a><a href="/logout">Abmelden</a>{% endif %}
+  </div>
 </nav></header>
 <main>
 {% if not auth_on and request.url.path not in ('/setup',) %}
@@ -36,5 +45,6 @@
 </main>
 <footer class="ver">Version {{ app_version }}</footer>
 <script src="/static/picker.js" defer></script>
+<script src="/static/app.js" defer></script>
 </body>
 </html>

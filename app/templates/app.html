@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}App installieren – Nebenkostenabrechnung{% endblock %}
+{% block content %}
+<h1>Als App installieren</h1>
+<div class="card app-hero">
+  <img src="/static/icon-192.png" alt="" width="72" height="72">
+  <div>
+    <b>Nebenkostenabrechnung</b><br>
+    <span class="muted">Eigenes Symbol auf dem Startbildschirm, öffnet ohne Browserleiste wie eine App. Daten bleiben auf
+    deinem Server – es wird nichts aus einem App-Store geladen.</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Status auf diesem Gerät</h2>
+  <ul class="status-list">
+    <li id="st-standalone">…</li>
+    <li id="st-secure">{{ "✔ Sichere Verbindung (HTTPS)" if https else "✘ Keine sichere Verbindung (HTTP) – Installation als App nicht möglich, siehe unten" }}</li>
+    <li id="st-sw">…</li>
+  </ul>
+  <button type="button" data-install hidden>📲 Jetzt installieren</button>
+  <p class="muted" id="st-hint" hidden>Chrome bietet die Installation gerade nicht direkt an – nutze das Menü wie unten beschrieben.</p>
+</div>
+
+<div class="grid-cards">
+  <div class="card">
+    <h2 style="margin-top:0">🤖 Android (Chrome)</h2>
+    <ol>
+      <li>Diese Seite in <b>Chrome</b> über die <b>https://</b>-Adresse öffnen{% if base %} (<code>{{ base }}</code>){% endif %}.</li>
+      <li>Auf <b>„📲 Jetzt installieren“</b> tippen – oder im Chrome-Menü <b>⋮ → „App installieren“</b>
+        (bei älteren Versionen „Zum Startbildschirm hinzufügen“).</li>
+      <li>Bestätigen. Das Symbol erscheint im App-Drawer bzw. auf dem Startbildschirm.</li>
+    </ol>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">🍎 iPhone / iPad (Safari)</h2>
+    <ol>
+      <li>Seite in <b>Safari</b> öffnen.</li>
+      <li>Unten auf <b>Teilen</b> (Quadrat mit Pfeil) tippen.</li>
+      <li><b>„Zum Home-Bildschirm“</b> wählen und „Hinzufügen“.</li>
+    </ol>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">💻 PC (Chrome / Edge)</h2>
+    <ol>
+      <li>Rechts in der Adressleiste auf das <b>Installieren-Symbol</b> (Bildschirm mit Pfeil) klicken</li>
+      <li>oder Menü → <b>„Seite als App installieren“</b>.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Voraussetzung: HTTPS</h2>
+  <p>Chrome installiert Web-Apps nur über eine <b>sichere Verbindung</b>. Über <code>http://192.168.…</code> im Heimnetz
+  erscheint die Option nicht (dort geht höchstens ein Lesezeichen auf dem Startbildschirm, das im Browser öffnet).
+  Möglichkeiten:</p>
+  <ul>
+    <li><b>Reverse Proxy mit Zertifikat</b> (z. B. Nginx Proxy Manager, Traefik oder Caddy in Portainer) und eigener
+      Subdomain, Zertifikat per Let's Encrypt.</li>
+    <li><b>Tailscale</b> (<code>tailscale serve</code>) oder <b>Cloudflare Tunnel</b> – HTTPS ohne Portfreigabe.</li>
+  </ul>
+  <p class="muted">Danach in Portainer <code>APP_BASE_URL</code> auf die https-Adresse setzen (für Links in E-Mails,
+  WhatsApp-Webhook und Passwort-Reset). Der Login bleibt in der App erhalten („angemeldet bleiben“ = 30 Tage).</p>
+</div>
+{% endblock %}

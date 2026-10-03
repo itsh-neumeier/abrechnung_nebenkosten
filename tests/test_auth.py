@@ -172,3 +172,24 @@ def test_bootstrap_admin_from_env(monkeypatch):
         u = s.query(User).one()
         assert u.role == "admin" and auth.verify_password("start-pass-1", u.password_hash)
         assert auth.bootstrap(s) is None  # nur beim ersten Mal
+
+
+def test_pwa_files_public_and_valid():
+    import json as _json
+
+    with TestClient(app) as c:
+        c.post("/setup", data={"username": "admin", "password": "admin-pass-1", "password2": "admin-pass-1"})
+        c.get("/logout")
+        m = c.get("/manifest.webmanifest")
+        assert m.status_code == 200 and m.headers["content-type"].startswith("application/manifest+json")
+        man = _json.loads(m.text)
+        assert man["display"] == "standalone" and man["start_url"].startswith("/")
+        sizes = {i["sizes"] for i in man["icons"]}
+        assert {"192x192", "512x512"} <= sizes and any(i["purpose"] == "maskable" for i in man["icons"])
+        for icon in man["icons"]:
+            assert c.get(icon["src"]).status_code == 200
+        sw = c.get("/sw.js")
+        assert sw.status_code == 200 and "__VERSION__" not in sw.text and sw.headers["service-worker-allowed"] == "/"
+        assert "Keine Verbindung" in c.get("/offline").text
+        assert "Android" in c.get("/app").text  # Installationshilfe ohne Login erreichbar
+        assert 'rel="manifest"' in c.get("/login").text

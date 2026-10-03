@@ -2,7 +2,9 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-{% if not pdf %}<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">{% endif %}
+{% if not pdf %}<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#2563eb">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">{% endif %}
 <title>{{ bld.building_title or 'Nebenkostenabrechnung' }} {{ p.name }} {{ b.period_start.strftime('%m/%Y') }}</title>
 <style>
   @page { size: A4; margin: 12mm 15mm 14mm 17mm;
@@ -43,6 +45,21 @@
   table.days td, table.days th { padding: .3mm 1.2mm; border-bottom: .3pt solid #ddd; text-align: right }
   table.days th { color: #555; font-weight: normal; border-bottom: .6pt solid #999 }
   table.days td.d, table.days th.d { text-align: left; color: #555 }
+  {% if not pdf %}
+  /* Bildschirmansicht (Handy/Tablet) – das PDF bleibt A4 */
+  body { padding: 0 12px; box-sizing: border-box; max-width: 190mm }
+  .tblwrap { overflow-x: auto }
+  svg { max-width: 100%; height: auto }
+  @media (max-width: 640px) {
+    body { font-size: 13px; margin: 12px auto }
+    table.head > tbody > tr > td { display: block; text-align: left !important }
+    .ids { margin: 2mm 0 0 !important } .ids td { padding-left: 0; padding-right: 3mm }
+    table.pos th, table.pos td { padding: 1.2mm .8mm }
+    table.pos td:first-child { overflow-wrap: anywhere }
+    table.pos th:nth-child(3), table.pos td:nth-child(3) { display: none }  /* Einzelpreis steht auch in der Notiz */
+    table.days { font-size: 10px }
+  }
+  {% endif %}
 </style>
 </head>
 <body>
@@ -94,11 +111,11 @@ MwSt. weitergegeben. PV-, Batterie- und Graustrom, Umlagen und sonstige Position
   Arbeitspreis netto {{ b.energy_cost_net|eur }} → Ø {{ (r.price_net*100)|num(2) }} ct/kWh netto
   bzw. {{ (r.price_gross*100)|num(2) }} ct/kWh inkl. {{ (b.vat_rate*100)|num(0) }} % MwSt.;
   Ø Börsenpreis {{ (r.spot_price*100)|num(2) }} ct/kWh netto. Ihr Stromverbrauch: {{ p.kwh|num(2) }} kWh, aufgeteilt nach dem Energiemix des Hauses:
-  <table>
+  <div class="tblwrap"><table>
   <tr><th>Herkunft</th>{% for src in r.sources %}{% if src.share > 0 or src.key == 'grid' %}<th class="r">{{ src.label }}</th>{% endif %}{% endfor %}</tr>
   <tr><td>Anteil</td>{% for src in r.sources %}{% if src.share > 0 or src.key == 'grid' %}<td class="r">{{ (src.share*100)|num(1) }} %</td>{% endif %}{% endfor %}</tr>
   <tr><td>Preis</td>{% for src in r.sources %}{% if src.share > 0 or src.key == 'grid' %}<td class="r">{{ (src.price*100)|num(2) }} ct/kWh {{ 'brutto' if src.key == 'grid' else 'netto' }}</td>{% endif %}{% endfor %}</tr>
-  </table>
+  </table></div>
 </div>
 
 <div class="foot">Bitte überweisen Sie den Betrag von <b>{{ p.total|eur }}</b> bis zum {{ due.strftime('%d.%m.%Y') }}{% if ll.landlord_iban %} auf das Konto {{ ll.landlord_iban }}{% endif %}.
@@ -134,14 +151,14 @@ Verwendungszweck: Nebenkosten {{ b.period_start.strftime('%m/%Y') }} {{ p.unit_i
   {% endif %}
   {% if mine %}
   {% set n = dly.days|length %}{% set rows = ((n + 3) // 4) %}
-  <table class="days">
+  <div class="tblwrap"><table class="days">
     <tr>{% for c in range(4) %}<th class="d">Tag</th><th>kWh</th>{% endfor %}</tr>
     {% for r_ in range(rows) %}
     <tr>{% for c in range(4) %}{% set i = c * rows + r_ %}
       {% if i < n %}<td class="d">{{ dly.days[i][8:10] }}.{{ dly.days[i][5:7] }}.</td><td>{{ mine[i]|num(2) }}</td>{% else %}<td></td><td></td>{% endif %}
     {% endfor %}</tr>
     {% endfor %}
-  </table>
+  </table></div>
   {% endif %}
   {% endif %}
 
