@@ -58,6 +58,7 @@
   });
   </script>
   <div class="check"><input type="checkbox" name="is_owner" id="o" {% if p.is_owner %}checked{% endif %}><label for="o" style="margin:0">Eigentümer / Hauptpartei – bekommt den Restverbrauch</label></div>
+  <div class="check"><input type="checkbox" name="portal" id="pt" {% if p.portal %}checked{% endif %}><label for="pt" style="margin:0">Mieterportal: veröffentlichte Abrechnungen einsehen (Zugänge unter „Benutzer“)</label></div>
   <div class="check"><input type="checkbox" name="active" id="a" {% if p.active %}checked{% endif %}><label for="a" style="margin:0">aktiv (wird abgerechnet)</label></div>
   <button>Speichern</button>
   {% if pid %}<button class="danger" name="delete" value="1" onclick="return confirm('Partei löschen?')">Löschen</button>{% endif %}

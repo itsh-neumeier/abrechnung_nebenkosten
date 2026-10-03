@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Meine Abrechnungen{% endblock %}
+{% block content %}
+{% set me = request.state.user %}
+<h1>{{ "Meine Abrechnungen" if me and not me.is_admin else "Mieterportal – Vorschau" }}</h1>
+{% if parties %}
+<form method="get" action="/portal" class="card">
+  <label>Ansicht als Mieter von</label>
+  <select name="party" onchange="this.form.submit()"><option value="">– Partei wählen –</option>
+    {% for p in parties %}<option value="{{ p.id }}" {% if party and party.id == p.id %}selected{% endif %}>{{ p.name }}{% if not p.portal %} (Portal nicht freigegeben){% endif %}</option>{% endfor %}
+  </select>
+</form>
+{% endif %}
+{% if party %}
+<div class="card scroll">
+  <p style="margin-top:0"><b>{{ party.name }}</b>{% if party.unit_id %} · {{ party.unit_id }}{% endif %}</p>
+  {% if not party.portal %}
+  <div class="warn">Für diese Partei ist das Mieterportal nicht freigegeben{% if me and not me.is_admin %} – bitte an die Hausverwaltung wenden{% endif %}.</div>
+  {% elif rows %}
+  <table>
+  <tr><th>Zeitraum</th><th class="r">Verbrauch</th><th class="r">Betrag</th><th></th></tr>
+  {% for b, p in rows %}
+  <tr>
+    <td>{{ period_text(b) }}</td>
+    <td class="r">{{ p.kwh|num(1) }} kWh</td>
+    <td class="r"><b>{{ p.total|eur }}</b></td>
+    <td class="r"><a href="/portal/{{ b.id }}{% if not (me and not me.is_admin) %}?party={{ party.id }}{% endif %}" target="_blank">Ansehen</a> ·
+      <a href="/portal/{{ b.id }}.pdf{% if not (me and not me.is_admin) %}?party={{ party.id }}{% endif %}" target="_blank">PDF</a></td>
+  </tr>
+  {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">Noch keine veröffentlichten Abrechnungen.</p>
+  {% endif %}
+</div>
+{% elif me and not me.is_admin %}
+<div class="warn">Dein Zugang ist keiner Partei zugeordnet – bitte an die Hausverwaltung wenden.</div>
+{% endif %}
+{% endblock %}

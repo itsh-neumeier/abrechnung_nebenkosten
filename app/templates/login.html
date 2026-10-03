@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Anmelden – Nebenkostenabrechnung{% endblock %}
+{% block content %}
+<div class="auth-box">
+<img src="/static/favicon.svg" alt="" class="logo-big">
+<h1>Anmelden</h1>
+<form method="post" action="/login" class="card">
+  <input type="hidden" name="next" value="{{ next }}">
+  <label>Benutzername oder E-Mail</label>
+  <input type="text" name="username" autocomplete="username" required autofocus>
+  <label>Passwort</label>
+  <input type="password" name="password" autocomplete="current-password" required>
+  <div class="check"><input type="checkbox" name="remember" id="rem"><label for="rem" style="margin:0">angemeldet bleiben (30 Tage)</label></div>
+  <button style="width:100%">Anmelden</button>
+  <div class="links"><a href="/password/forgot">Passwort vergessen?</a></div>
+</form>
+</div>
+{% endblock %}

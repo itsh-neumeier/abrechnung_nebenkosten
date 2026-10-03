@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import json
 import io
 import os
@@ -20,9 +19,10 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from . import invoice_import, mailbox, mailer, service, victron, vrm, wa_cloud, whatsapp
+from . import accounts, auth, invoice_import, mailbox, mailer, service, victron, vrm, wa_cloud, whatsapp
 from .config import config
-from .db import Allocation, Billing, FixedCost, Party, get_session, get_settings, init_db, save_settings
+from .db import (Allocation, Billing, FixedCost, Party, SessionLocal, get_session, get_settings, init_db,
+                 save_settings)
 from .ha import HAClient
 from .render import BASE, invoice_html, invoice_pdf, parse_float, party_result, pdf_name, templates
 
@@ -30,6 +30,9 @@ from .render import BASE, invoice_html, invoice_pdf, parse_float, party_result, 
 @asynccontextmanager
 async def lifespan(_app):
     init_db()
+    with SessionLocal() as s:
+        if name := auth.bootstrap(s):
+            print(f"Login aktiv: Verwalter „{name}“ aus APP_USER/APP_PASSWORD angelegt.")
     tasks = []
     if mailbox.configured():
         tasks.append(asyncio.create_task(mailbox.poll_forever()))
@@ -42,6 +45,7 @@ async def lifespan(_app):
 
 app = FastAPI(title="Nebenkostenabrechnung Hausparteien", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
+app.include_router(accounts.router)
 
 
 # --------------------------------------------------------------------------- Helfer
@@ -62,20 +66,51 @@ def redirect(url: str, msg: str = "") -> RedirectResponse:
     return RedirectResponse(url, status_code=303)
 
 
+PUBLIC = ("/login", "/logout", "/setup", "/password/", "/static/", "/healthz", "/favicon", "/apple-touch-icon",
+          "/api/n8n/", "/api/whatsapp/")
+TENANT_OK = ("/portal", "/account")
+
+
 @app.middleware("http")
-async def basic_auth(request: Request, call_next):
-    if config.app_user and config.app_password and not request.url.path.startswith(("/healthz", "/api/n8n/", "/api/whatsapp/")):
-        header = request.headers.get("authorization", "")
-        ok = False
-        if header.startswith("Basic "):
-            try:
-                user, _, pw = base64.b64decode(header[6:]).decode().partition(":")
-                ok = secrets.compare_digest(user, config.app_user) and secrets.compare_digest(pw, config.app_password)
-            except Exception:
-                ok = False
-        if not ok:
-            return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="Nebenkostenabrechnung"'})
+async def authenticate(request: Request, call_next):
+    """Anmeldung prüfen. Ohne angelegte Benutzer ist die App offen (Hinweis zur Einrichtung im Menü)."""
+    path = request.url.path
+    with SessionLocal() as s:
+        enabled = auth.has_users(s)
+        u = None
+        if enabled:
+            if cookie := request.cookies.get(auth.COOKIE):
+                u = auth.user_from_cookie(s, cookie)
+            if u is None and request.headers.get("authorization", "").startswith("Basic "):
+                u = auth.user_from_basic(s, request.headers["authorization"])
+        request.state.user = auth.snapshot(u) if u else None
+        request.state.auth_enabled = enabled
+    if not enabled or path.startswith(PUBLIC) or path == "/":
+        if enabled and path == "/" and request.state.user is None:
+            return RedirectResponse("/login", status_code=303)
+        if enabled and path == "/" and not request.state.user.is_admin:
+            return RedirectResponse("/portal", status_code=303)
+        return await call_next(request)
+    user = request.state.user
+    if user is None:
+        if path.startswith("/api/"):
+            return JSONResponse({"detail": "Anmeldung erforderlich"}, status_code=401)
+        return RedirectResponse(f"/login?next={quote(path)}", status_code=303)
+    if not user.is_admin and not path.startswith(TENANT_OK):
+        if request.method == "GET":
+            return RedirectResponse("/portal", status_code=303)
+        return Response("Nur für Verwalter", status_code=403)
     return await call_next(request)
+
+
+@app.get("/favicon.ico")
+def favicon():
+    return FileResponse(BASE / "static" / "favicon.ico", media_type="image/x-icon")
+
+
+@app.get("/apple-touch-icon.png")
+def apple_icon():
+    return FileResponse(BASE / "static" / "apple-touch-icon.png", media_type="image/png")
 
 
 @app.get("/healthz")
@@ -462,6 +497,7 @@ async def party_save(request: Request, pid: int, s: Session = Depends(get_sessio
     p.address = str(form.get("address", "")).strip()
     p.email = str(form.get("email", "")).strip()
     p.phone = str(form.get("phone", "")).strip()
+    p.portal = bool(form.get("portal"))
     p.channel = str(form.get("channel", "email")) if form.get("channel") in ("email", "whatsapp", "both") else "email"
     p.meters = [m for m in (normalize_spec(str(v)) for v in form.getlist("meters")) if m]
     p.is_owner = bool(form.get("is_owner"))
@@ -655,6 +691,11 @@ async def billing_save(request: Request, bid: int, s: Session = Depends(get_sess
         b.status = "draft"
         s.commit()
         return redirect(f"/billings/{bid}", "Wieder zur Bearbeitung geöffnet")
+    if action in ("publish", "unpublish"):
+        b.published = action == "publish"
+        s.commit()
+        return redirect(f"/billings/{bid}", "Im Mieterportal veröffentlicht" if b.published
+                        else "Aus dem Mieterportal zurückgezogen")
     if action.startswith("send"):
         if b.status != "final":
             return redirect(f"/billings/{bid}", "Bitte zuerst abschließen, dann versenden.")
@@ -686,6 +727,9 @@ async def billing_save(request: Request, bid: int, s: Session = Depends(get_sess
     if action == "finalize":
         b.status = "final"
         msg = "Abrechnung abgeschlossen"
+        if st["portal_auto_publish"]:
+            b.published = True
+            msg += " · im Mieterportal veröffentlicht"
         if st["mail_auto_send"] and service.can_send(st):
             s.commit()
             msg += " · " + _report_msg(service.send_invoices(s, b, only_unsent=True))

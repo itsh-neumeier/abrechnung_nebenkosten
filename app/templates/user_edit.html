@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Benutzer{% endblock %}
+{% block content %}
+<h1>{{ "Neuer Benutzer" if uid == 0 else u.username }}</h1>
+<form method="post" action="/users/{{ uid }}" class="card" style="max-width:640px">
+  <div class="grid">
+    <div><label>Benutzername</label><input type="text" name="username" value="{{ u.username or '' }}" required autocomplete="off"></div>
+    <div><label>Rolle</label><select name="role" id="role">
+      {% for k, v in roles.items() %}<option value="{{ k }}" {% if u.role == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+    </select></div>
+  </div>
+  <div id="party-row" {% if u.role == 'admin' %}hidden{% endif %}>
+    <label>Partei (sieht deren veröffentlichte Abrechnungen)</label>
+    <select name="party_id"><option value="">– bitte wählen –</option>
+      {% for p in parties %}<option value="{{ p.id }}" {% if u.party_id == p.id %}selected{% endif %}>{{ p.name }}{% if p.unit_id %} ({{ p.unit_id }}){% endif %}{% if not p.portal %} – Portal noch nicht freigegeben{% endif %}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="grid">
+    <div><label>Name</label><input type="text" name="name" value="{{ u.name or '' }}"></div>
+    <div><label>E-Mail (Einladung, Passwort vergessen)</label><input type="text" name="email" value="{{ u.email or '' }}"></div>
+  </div>
+  <label>Passwort {{ "(leer = Einladungslink per E-Mail)" if uid == 0 else "(leer = unverändert)" }}</label>
+  <input type="password" name="password" minlength="8" autocomplete="new-password">
+  {% if uid %}<div class="check"><input type="checkbox" name="invite" id="inv"><label for="inv" style="margin:0">Einladung / Link zum Passwort-Festlegen erneut senden (7 Tage gültig)</label></div>{% endif %}
+  <div class="check"><input type="checkbox" name="active" id="act" {% if u.active %}checked{% endif %}><label for="act" style="margin:0">aktiv (darf sich anmelden)</label></div>
+  {% if not mail_ok %}<p class="muted">E-Mail-Versand nicht eingerichtet – Passwort bitte direkt setzen.</p>{% endif %}
+  <button>Speichern</button>
+  {% if uid %}
+  <button class="sec" formaction="/users/{{ uid }}/reset" {% if not (u.email and mail_ok) %}disabled{% endif %}>Link „Passwort zurücksetzen“ senden</button>
+  <button class="danger" name="delete" value="1" onclick="return confirm('Benutzer löschen?')">Löschen</button>
+  {% endif %}
+</form>
+<script>
+document.getElementById('role').addEventListener('change', e => {
+  document.getElementById('party-row').hidden = e.target.value === 'admin';
+});
+</script>
+{% endblock %}

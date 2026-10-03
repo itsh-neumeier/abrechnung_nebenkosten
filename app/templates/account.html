@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Mein Konto{% endblock %}
+{% block content %}
+<h1>Mein Konto</h1>
+<form method="post" action="/account" class="card" style="max-width:560px">
+  <p class="muted" style="margin-top:0">Benutzername: <b>{{ u.username }}</b>{% if u.last_login %} · letzte Anmeldung {{ u.last_login.strftime('%d.%m.%Y %H:%M') }}{% endif %}</p>
+  <label>Name</label><input type="text" name="name" value="{{ u.name or '' }}">
+  <label>E-Mail (für „Passwort vergessen“)</label><input type="text" name="email" value="{{ u.email or '' }}">
+  <h2>Passwort ändern</h2>
+  <label>Aktuelles Passwort</label><input type="password" name="current" autocomplete="current-password">
+  <label>Neues Passwort (mind. 8 Zeichen, leer = unverändert)</label><input type="password" name="password" minlength="8" autocomplete="new-password">
+  <label>Neues Passwort wiederholen</label><input type="password" name="password2" minlength="8" autocomplete="new-password">
+  <button>Speichern</button>
+  <p class="muted">Nach einer Passwortänderung werden alle anderen Sitzungen abgemeldet.</p>
+</form>
+{% endblock %}

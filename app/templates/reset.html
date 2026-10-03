@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Neues Passwort – Nebenkostenabrechnung{% endblock %}
+{% block content %}
+<div class="auth-box">
+<h1>Neues Passwort</h1>
+<div class="card">
+{% if valid %}
+<form method="post" action="/password/reset">
+  <input type="hidden" name="token" value="{{ token }}">
+  <p class="muted" style="margin-top:0">Konto: <b>{{ user.username }}</b></p>
+  <input type="text" name="username" value="{{ user.username }}" autocomplete="username" hidden>
+  <label>Neues Passwort (mind. 8 Zeichen)</label><input type="password" name="password" required minlength="8" autocomplete="new-password" autofocus>
+  <label>Passwort wiederholen</label><input type="password" name="password2" required minlength="8" autocomplete="new-password">
+  <button style="width:100%">Passwort speichern</button>
+</form>
+{% else %}
+<p>Der Link ist ungültig oder abgelaufen.</p>
+<a class="btn" href="/password/forgot">Neuen Link anfordern</a>
+{% endif %}
+</div>
+</div>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Benutzer{% endblock %}
+{% block content %}
+<h1>Benutzer &amp; Mieterportal</h1>
+<a class="btn" href="/users/0">+ Benutzer anlegen</a>
+<div class="card scroll" style="margin-top:12px">
+<table>
+<tr><th>Benutzer</th><th>Rolle</th><th>Partei</th><th>E-Mail</th><th>Letzte Anmeldung</th><th>Status</th></tr>
+{% for u in users %}
+<tr>
+  <td><a href="/users/{{ u.id }}">{{ u.username }}</a>{% if u.name %}<br><span class="muted">{{ u.name }}</span>{% endif %}</td>
+  <td>{{ roles[u.role] }}</td>
+  <td>{{ parties[u.party_id].name if u.party_id in parties else '–' }}</td>
+  <td>{{ u.email or '–' }}</td>
+  <td>{{ u.last_login.strftime('%d.%m.%Y %H:%M') if u.last_login else '–' }}</td>
+  <td>{% if not u.active %}<span class="badge">gesperrt</span>{% elif not u.password_hash %}<span class="badge">Einladung offen</span>{% else %}aktiv{% endif %}</td>
+</tr>
+{% else %}<tr><td colspan="6" class="muted">Noch keine Benutzer – die App ist ohne Login erreichbar. <a href="/setup">Ersten Verwalter anlegen</a>.</td></tr>{% endfor %}
+</table>
+</div>
+
+<form method="post" action="/users/settings" class="card">
+  <h2 style="margin-top:0">Mieterportal</h2>
+  <p class="muted">Mieter-Benutzer sehen unter „Meine Abrechnungen“ die <b>abgeschlossenen und veröffentlichten</b> Abrechnungen
+  ihrer Partei (Ansicht und PDF) – aber nur, wenn das Portal für die Partei freigegeben ist.</p>
+  <div class="scroll"><table>
+  <tr><th>Partei</th><th>Portal freigegeben</th><th>Mieter-Zugänge</th><th></th></tr>
+  {% for p in parties.values() %}
+  {% set n = users|selectattr('party_id', 'equalto', p.id)|list|length %}
+  <tr>
+    <td>{{ p.name }}{% if p.unit_id %} <span class="muted">({{ p.unit_id }})</span>{% endif %}</td>
+    <td><input type="checkbox" name="portal_{{ p.id }}" {% if p.portal %}checked{% endif %} aria-label="Portal für {{ p.name }}"></td>
+    <td>{{ n }}</td>
+    <td class="r"><a href="/users/0?party={{ p.id }}">+ Zugang</a> · <a href="/portal?party={{ p.id }}">Ansicht als Mieter</a></td>
+  </tr>
+  {% endfor %}
+  </table></div>
+  <div class="check"><input type="checkbox" name="portal_auto_publish" id="pap" {% if st.portal_auto_publish %}checked{% endif %}>
+    <label for="pap" style="margin:0">Abrechnungen beim Abschließen automatisch veröffentlichen</label></div>
+  <p class="muted">Sonst in der Abrechnung über „Im Mieterportal veröffentlichen“. Einladungen und „Passwort vergessen“ laufen über den
+  E-Mail-Versand ({{ "eingerichtet ✔" if mail_ok else "nicht eingerichtet – SMTP in Portainer setzen" }}).</p>
+  <button>Speichern</button>
+</form>
+{% endblock %}

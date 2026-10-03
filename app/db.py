@@ -39,6 +39,26 @@ class Party(Base):
     is_owner: Mapped[bool] = mapped_column(Boolean, default=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     sort: Mapped[int] = mapped_column(Integer, default=0)
+    portal: Mapped[bool] = mapped_column(Boolean, default=False)  # Mieterportal: veröffentlichte Abrechnungen sichtbar
+
+
+class User(Base):
+    """Benutzer: Verwalter (admin) oder Mieter (tenant, an eine Partei gebunden)."""
+
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(100), unique=True)
+    name: Mapped[str] = mapped_column(String(200), default="")
+    email: Mapped[str] = mapped_column(String(200), default="")
+    password_hash: Mapped[str] = mapped_column(String(255), default="")
+    role: Mapped[str] = mapped_column(String(20), default="tenant")  # admin | tenant
+    party_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    session_version: Mapped[int] = mapped_column(Integer, default=1)  # erhöhen = alle Sitzungen abmelden
+    reset_hash: Mapped[str] = mapped_column(String(64), default="")
+    reset_expires: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 
 class FixedCost(Base):
@@ -94,6 +114,7 @@ class Billing(Base):
     amounts: Mapped[dict] = mapped_column(JSON, default=dict)  # allocation_id -> Betrag
     result: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | final
+    published: Mapped[bool] = mapped_column(Boolean, default=False)  # im Mieterportal sichtbar (nur wenn final)
     notes: Mapped[str] = mapped_column(Text, default="")
     fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
@@ -222,6 +243,9 @@ SETTING_DEFAULTS = {
     "wa_template_name": "nebenkostenabrechnung",
     "wa_template_lang": "de",
     "n8n_last_test": "",
+    # Login / Mieterportal
+    "session_secret": "",  # wird erzeugt (oder APP_SECRET_KEY)
+    "portal_auto_publish": "1",  # beim Abschließen im Mieterportal veröffentlichen
     # Rechnungsimport
     "import_mode": "review",  # review | auto_if_clean | auto_always
     "notify_email": "",

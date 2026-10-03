@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Einrichtung – Nebenkostenabrechnung{% endblock %}
+{% block content %}
+<div class="auth-box">
+<img src="/static/favicon.svg" alt="" class="logo-big">
+<h1>Verwalter anlegen</h1>
+<form method="post" action="/setup" class="card">
+  <p class="muted" style="margin-top:0">Danach ist die Anmeldung für alle Seiten aktiv. Weitere Verwalter und Mieter legst du unter
+  „Benutzer“ an.</p>
+  <label>Benutzername</label><input type="text" name="username" value="admin" required autocomplete="username">
+  <label>Name</label><input type="text" name="name" placeholder="Max Vermieter">
+  <label>E-Mail (für „Passwort vergessen“)</label><input type="text" name="email" placeholder="ich@example.de">
+  <label>Passwort (mind. 8 Zeichen)</label><input type="password" name="password" required minlength="8" autocomplete="new-password">
+  <label>Passwort wiederholen</label><input type="password" name="password2" required minlength="8" autocomplete="new-password">
+  <button style="width:100%">Anlegen und anmelden</button>
+</form>
+</div>
+{% endblock %}

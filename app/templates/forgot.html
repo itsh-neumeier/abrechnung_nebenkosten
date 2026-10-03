@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Passwort vergessen – Nebenkostenabrechnung{% endblock %}
+{% block content %}
+<div class="auth-box">
+<h1>Passwort vergessen</h1>
+<form method="post" action="/password/forgot" class="card">
+  {% if mail_ok %}
+  <p class="muted" style="margin-top:0">Gib deinen Benutzernamen oder deine E-Mail-Adresse ein. Du bekommst einen Link, über den du
+  ein neues Passwort festlegen kannst.</p>
+  <label>Benutzername oder E-Mail</label><input type="text" name="login" required autofocus>
+  <button style="width:100%">Link anfordern</button>
+  {% else %}
+  <p>Der E-Mail-Versand ist nicht eingerichtet. Bitte wende dich an die Hausverwaltung – dort kann das Passwort neu gesetzt werden.</p>
+  {% endif %}
+  <div class="links"><a href="/login">← zur Anmeldung</a></div>
+</form>
+</div>
+{% endblock %}

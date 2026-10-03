@@ -11,7 +11,8 @@ class Config:
     timezone: str = os.getenv("TZ", "Europe/Berlin")
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./data/abrechnung.db")
     app_user: str = os.getenv("APP_USER", "")
-    app_password: str = os.getenv("APP_PASSWORD", "")
+    app_password: str = os.getenv("APP_PASSWORD", "")  # legt beim ersten Start den ersten Verwalter an
+    app_secret_key: str = os.getenv("APP_SECRET_KEY", "").strip()  # optional: Schlüssel für Sitzungs-Cookies
     # E-Mail-Versand
     smtp_host: str = os.getenv("SMTP_HOST", "").strip()
     smtp_port: int = int(os.getenv("SMTP_PORT", "587") or 587)

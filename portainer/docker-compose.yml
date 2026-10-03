@@ -19,9 +19,10 @@ services:
       # Home Assistant
       HA_URL: ${HA_URL:-}
       HA_TOKEN: ${HA_TOKEN:-}
-      # Login Webinterface (leer = kein Login)
+      # Erster Verwalter beim ersten Start (danach Benutzer im Webinterface verwalten)
       APP_USER: ${APP_USER:-admin}
       APP_PASSWORD: ${APP_PASSWORD:-}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-}
       APP_BASE_URL: ${APP_BASE_URL:-}
       # E-Mail-Versand (SMTP)
       SMTP_HOST: ${SMTP_HOST:-}

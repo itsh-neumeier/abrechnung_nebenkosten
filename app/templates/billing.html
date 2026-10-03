@@ -51,6 +51,11 @@
 <tr><td class="muted" colspan="5">Differenz zur Rechnung des Stromanbieters (PV/Batterie, Umlagen, Rundung)</td><td class="r muted">{{ r.difference|eur }}</td><td></td><td></td></tr>
 </table>
 <a class="btn sec" href="/billings/{{ b.id }}/all.zip">Alle PDFs als ZIP</a>
+{% if b.status == 'final' %}
+  {% if b.published %}<span class="badge final">👁 im Mieterportal</span>
+  <button form="mailform" class="sec" name="action" value="unpublish">Aus dem Portal zurückziehen</button>
+  {% else %}<button form="mailform" class="sec" name="action" value="publish">Im Mieterportal veröffentlichen</button>{% endif %}
+{% endif %}
 {% set via = ('E-Mail' if mail_ok else '') ~ (' / ' if mail_ok and wa_ok else '') ~ ('WhatsApp' if wa_ok else '') %}
 {% if b.status == 'final' and send_ok %}<button form="mailform" name="action" value="send_all" onclick="return confirm('Abrechnungen an alle Parteien senden ({{ via }}, je nach Versandweg der Partei)?')">Alle senden ({{ via }})</button>
 {% elif b.status != 'final' %}<span class="muted">Versand ({{ via or 'E-Mail' }}) nach dem Abschließen{% if st.mail_auto_send %} (automatisch){% endif %}.</span>{% endif %}

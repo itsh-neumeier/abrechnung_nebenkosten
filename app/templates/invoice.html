@@ -2,6 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
+{% if not pdf %}<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">{% endif %}
 <title>{{ bld.building_title or 'Nebenkostenabrechnung' }} {{ p.name }} {{ b.period_start.strftime('%m/%Y') }}</title>
 <style>
   @page { size: A4; margin: 12mm 15mm 14mm 17mm;

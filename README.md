@@ -145,6 +145,20 @@ Bei den Parteien WhatsApp-Nummer und Versandweg (E-Mail / WhatsApp / beides) wä
 dieselben Knöpfe wie die E-Mail bzw. automatisch beim Abschließen. Die Endpunkte `/api/n8n/…` und `/api/whatsapp/webhook` sind ohne
 Basic-Auth erreichbar, aber durch Token, Signatur bzw. signierte Links geschützt.
 
+### Login, Benutzer und Mieterportal
+
+- **Erster Start:** Ist `APP_USER`/`APP_PASSWORD` gesetzt, wird daraus der erste **Verwalter** angelegt; sonst ist die App
+  offen und zeigt einen Hinweis mit Link zur Einrichtung (`/setup`). Danach ist für alle Seiten eine Anmeldung nötig.
+- **Benutzer** (Menü „Benutzer“): Verwalter (alles) und **Mieter** (an eine Partei gebunden). Neue Benutzer ohne Passwort
+  bekommen eine **Einladung** per E-Mail (Link 7 Tage gültig).
+- **Mieterportal:** je Partei freigeben; Mieter sehen unter „Meine Abrechnungen“ nur die **abgeschlossenen und
+  veröffentlichten** Abrechnungen ihrer Partei (Ansicht + PDF). Veröffentlichen automatisch beim Abschließen
+  (abschaltbar) oder je Abrechnung per Knopf. Verwalter können über „Ansicht als Mieter“ prüfen, was sichtbar ist.
+- **Passwort vergessen:** Link per E-Mail über den eingerichteten Mailversand (SMTP), 1 Stunde gültig, nur einmal nutzbar.
+- Sicherheit: Passwörter PBKDF2-SHA256 (600 000 Runden), signierte HttpOnly-Cookies (SameSite=Lax, „angemeldet bleiben“
+  30 Tage), Sperre nach 5 Fehlversuchen, Passwortänderung meldet andere Sitzungen ab. Optional `APP_SECRET_KEY` als
+  fester Cookie-Schlüssel (sonst automatisch erzeugt und in der Datenbank gespeichert).
+
 ## Entwicklung
 
 ```bash
