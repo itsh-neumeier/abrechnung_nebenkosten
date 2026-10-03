@@ -14,7 +14,8 @@
   Je Feld wahlweise <b>1 Entität (gesamt)</b> oder <b>3 Phasen (L1/L2/L3)</b> – Phasen werden addiert.
   Weitere Zähler lassen sich im Einzelfeld mit <code>+</code> verbinden.</p>
   <div class="hint-box">
-    <b>Victron (hass-victron):</b> Unter jedem Feld steht, welcher Sensor gemeint ist.
+    <b>Victron (hass-victron, lokal per Modbus TCP):</b> Unter jedem Feld steht, welcher Sensor gemeint ist.
+    Sensoren der Cloud-Integration „Victron Remote Monitoring“ werden nicht verwendet.
     „Victron-Vorschlag“ sucht ihn in deinem Home Assistant und trägt ihn ein.
     <div><button type="button" class="sec pick-btn" id="victron-all">Alle Victron-Vorschläge in leere Felder übernehmen</button>
     <span class="muted" id="victron-status"></span></div>
@@ -39,7 +40,9 @@
     }
     // Zu jedem Schlüssel die passende Entität: Victron-Entitäten bevorzugt, sonst erste Übereinstimmung
     function find(list, part) {
-      const hits = list.filter(e => e.entity_id.toLowerCase().includes(part.toLowerCase()));
+      // nur lokale hass-victron-Sensoren, nie die Cloud-Integration „Victron Remote Monitoring“ (VRM)
+      const hits = list.filter(e => e.entity_id.toLowerCase().includes(part.toLowerCase())
+                                 && !e.entity_id.includes('remote_monitoring'));
       hits.sort((a, b) => (b.entity_id.includes('victron') - a.entity_id.includes('victron')));
       return hits;
     }

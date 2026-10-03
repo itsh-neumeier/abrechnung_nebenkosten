@@ -38,15 +38,18 @@ def water_price_parts(st: dict[str, str]) -> list[tuple[str, float]]:
     return [("Wasser", _num(st["water_price_m3"])), ("Abwasser", _num(st["sewage_price_m3"]))]
 
 
-# Vorschläge für die Victron-Integration hass-victron (Modbus TCP), Verbraucher am AC-out.
+# Vorschläge für die lokale Victron-Integration hass-victron (Modbus TCP), Verbraucher am AC-out.
+# Sensoren der Cloud-Integration „Victron Remote Monitoring“ (VRM) werden bewusst nie vorgeschlagen.
 # "suggest": Teile der Entity-ID; mehrere Teile werden als Summe eingetragen.
 VICTRON_HINTS = {
     "entity_grid": {
-        "hint": "Dein Stromzähler in HA. Alternativ Victron-Netzzähler: grid_energy_forward_total.",
+        "hint": "Dein Stromzähler in HA (Bezug, saldierend über alle Phasen) – er muss zur Rechnung passen. "
+                "Alternativ Victron-Netzzähler: grid_energy_forward_total.",
         "suggest": ["grid_energy_forward_total"],
     },
     "entity_total": {
-        "hint": "Dein Victron-Verbrauchszähler. Alternativ (PV über MPPT): vebus_acin1toacout + vebus_invertertoacout.",
+        "hint": "vebus_acin1toacout + vebus_invertertoacout = alles, was am AC-out des MultiPlus ankommt "
+                "(Netz durchgereicht + Wechselrichter). Alternativ 3 Phasen Leistung: system_consumption_l1/l2/l3.",
         "suggest": ["vebus_acin1toacout", "vebus_invertertoacout"],
     },
     "entity_battery": {
