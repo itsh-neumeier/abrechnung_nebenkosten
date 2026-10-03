@@ -13,7 +13,7 @@
 | Layout | ohne Logo: „Nebenkostenabrechnung“, Objektanschrift, Wohneinheit, Gebäude-ID + Wohneinheiten-ID |
 | Entitäten | Auswahl live über die HA-API im Webinterface |
 | Rechnungseingang | aWATTar-PDF aus E-Mail (IMAP, nur lesend) oder Upload; Positionen in Cent/kWh → Arbeitspreis, Euro/Monat/Jahr → Fixkosten, „HOURLY“ → Börsenpreis |
-| Trinkwasser | m³ aus HA × (Wasser- + Abwasserpreis je m³ aus den Einstellungen), nach festen Prozenten |
+| Trinkwasser | monatsscharf: m³ des Abrechnungszeitraums aus HA × (Wasser- + Abwasserpreis je m³ aus den Einstellungen), nach festen Prozenten; kein Import der Wasserrechnung |
 | Nach dem Import | Standard: erst prüfen (Entwurf). Optional: automatisch abschließen + versenden, wenn keine Hinweise, oder immer (ohne Validierung) |
 | Warmwasserbereitung | kWh des Shelly × Hausstrom-Mix, nach festen Prozenten |
 | Fixkosten | gleichmäßig pro Partei (weitere Fixkosten optional nur für ausgewählte Parteien) |
@@ -28,4 +28,3 @@
    bestimmt; Energie, die Ende des Vormonats geladen und im neuen Monat entladen wird, wird nicht
    gesondert verfolgt (stündliche Berechnung wäre möglich).
 2. **Einspeisung**: Einspeisevergütung wird nicht berücksichtigt.
-3. **Wasserrechnung**: Soll die (jährliche) Wasserrechnung später ebenfalls importiert werden?
