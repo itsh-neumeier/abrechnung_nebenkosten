@@ -348,12 +348,14 @@ def send_invoices(s: Session, b: Billing, party_ids: list[int] | None = None,
             else:
                 try:
                     pdf = render.invoice_pdf(b, rp)
+                    body = st["mail_body"].format_map(fields)
                     mailer.send_mail(
                         to=to,
                         subject=st["mail_subject"].format_map(fields),
-                        body=st["mail_body"].format_map(fields),
+                        body=body,
                         attachments=[(render.pdf_name(b, rp), pdf)],
                         bcc=_split_addr(st["mail_bcc"]),
+                        html=invoice_mail_html(st, b, rp, party, body),
                     )
                     entry.update({"ok": True, "at": now, "to": ", ".join(to)})
                     entry.pop("error", None)
@@ -380,6 +382,39 @@ def send_invoices(s: Session, b: Billing, party_ids: list[int] | None = None,
             sent[str(pid)] = entry
     b.sent = sent
     return report
+
+
+def mail_footer(st: dict) -> str:
+    parts = [st.get("landlord_name", ""), (st.get("landlord_address") or "").replace("\n", ", "),
+             st.get("landlord_contact", "")]
+    line = " · ".join(p for p in parts if p)
+    obj = st.get("building_address", "")
+    return "\n".join(x for x in (line, f"Objekt: {obj}" if obj else "") if x)
+
+
+def paragraphs(text: str) -> list[str]:
+    return [p.strip() for p in re.split(r"\n\s*\n", text or "") if p.strip()]
+
+
+def invoice_mail_html(st: dict, b: Billing, rp: dict, party: Optional[Party], body: str) -> str:
+    """Formatierte Abrechnungs-Mail: Text aus der Vorlage + Übersicht (Betrag, Fälligkeit, Konto) + PDF-Hinweis."""
+    period = render.period_text(b)
+    unit = rp.get("unit_id", "")
+    facts = [("Wohneinheit", rp["name"] + (f" ({unit})" if unit else ""), False),
+             ("Zeitraum", period, False),
+             ("Betrag", render.fmt_eur(rp["total"]), True),
+             ("Zahlbar bis", render.fmt_date(render.due_date(b)), False)]
+    if st.get("landlord_iban"):
+        facts.append(("Konto (IBAN)", st["landlord_iban"], False))
+        facts.append(("Verwendungszweck", f"Nebenkosten {b.period_start:%m/%Y} {unit or rp['name']}", False))
+    portal = f"{config.app_base_url}/portal" if (party is not None and party.portal and config.app_base_url) else ""
+    return mailer.render_html(
+        title=f"Ihre Nebenkostenabrechnung {b.period_start:%m/%Y}",
+        preheader=f"{rp['name']}: {render.fmt_eur(rp['total'])} für {period}",
+        brand=st.get("building_title") or "Nebenkostenabrechnung", brand_sub=st.get("building_address", ""),
+        paragraphs=paragraphs(body), facts=facts, attachment=render.pdf_name(b, rp),
+        button_url=portal, button_label="Alle Abrechnungen im Mieterportal",
+        footer=mail_footer(st))
 
 
 def _send_whatsapp(s: Session, st: dict, b: Billing, rp: dict, party: Party, fields: dict, pdf: bytes,
@@ -562,8 +597,19 @@ async def import_invoice(s: Session, pdf: bytes, filename: str, message_id: str 
         body = (f"Neue Stromrechnung über {source} eingegangen.\n\n{text_msg}\n\n"
                 + ("Hinweise:\n- " + "\n- ".join(warnings) + "\n\n" if warnings else "")
                 + f"Abrechnung: {link}\n")
+        facts = [("Rechnung", b.invoice_no or "–", False), ("Zeitraum", render.period_text(b), False),
+                 ("Netzbezug", f"{render.fmt_num(b.grid_kwh or 0, 1)} kWh", False),
+                 ("Rechnungsbetrag brutto", render.fmt_eur(result.get("bill_gross", 0)), True),
+                 ("Status", text_msg, False)]
+        html = mailer.render_html(
+            title="Neue Stromrechnung eingegangen", preheader=text_msg,
+            paragraphs=[f"Über {source} ist eine neue Rechnung eingegangen und wurde importiert."],
+            facts=facts, notes=warnings, notes_title=f"{len(warnings)} Hinweis(e) – bitte prüfen",
+            button_url=link if config.app_base_url else "", button_label="Abrechnung öffnen",
+            footer="Automatische Nachricht der Nebenkostenabrechnung.")
         try:
-            mailer.send_mail(_split_addr(st["notify_email"]), f"Stromrechnung importiert: {b.title}", body, [])
+            mailer.send_mail(_split_addr(st["notify_email"]), f"Stromrechnung importiert: {b.title}", body, [],
+                             html=html)
         except Exception:  # noqa: BLE001
             pass
     return b, text_msg

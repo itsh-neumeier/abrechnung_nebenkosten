@@ -129,17 +129,33 @@ def send_reset_mail(request: Request, s: Session, u: User, invite: bool = False)
     link = f"{_base_url(request)}/password/reset?token={token}"
     st = get_settings(s)
     sender = st["landlord_name"] or "Ihre Hausverwaltung"
+    hello = f"Hallo {u.name or u.username},"
     if invite:
         subject = "Zugang zur Nebenkostenabrechnung"
-        body = (f"Hallo {u.name or u.username},\n\nfür Sie wurde ein Zugang zur Nebenkostenabrechnung eingerichtet.\n"
+        body = (f"{hello}\n\nfür Sie wurde ein Zugang zur Nebenkostenabrechnung eingerichtet.\n"
                 f"Benutzername: {u.username}\n\nBitte legen Sie über diesen Link Ihr Passwort fest (7 Tage gültig):\n"
                 f"{link}\n\nViele Grüße\n{sender}")
+        html = mailer.render_html(
+            title="Ihr Zugang zur Nebenkostenabrechnung", preheader="Passwort festlegen und Abrechnungen online ansehen",
+            paragraphs=[hello, "für Sie wurde ein Zugang eingerichtet. Dort finden Sie Ihre Nebenkostenabrechnungen "
+                               "jederzeit als Ansicht und PDF."],
+            facts=[("Benutzername", u.username, True)],
+            button_url=link, button_label="Passwort festlegen",
+            button_hint="Der Link ist 7 Tage gültig. Falls der Knopf nicht funktioniert, diese Adresse öffnen:",
+            closing=f"Viele Grüße\n{sender}", footer="Diese E-Mail wurde automatisch versendet.")
     else:
         subject = "Passwort zurücksetzen – Nebenkostenabrechnung"
-        body = (f"Hallo {u.name or u.username},\n\nüber diesen Link können Sie ein neues Passwort festlegen "
+        body = (f"{hello}\n\nüber diesen Link können Sie ein neues Passwort festlegen "
                 f"(1 Stunde gültig):\n{link}\n\nFalls Sie das nicht angefordert haben, ignorieren Sie diese E-Mail.\n\n"
                 f"Viele Grüße\n{sender}")
-    mailer.send_mail([u.email], subject, body, [])
+        html = mailer.render_html(
+            title="Passwort zurücksetzen", preheader="Link zum Festlegen eines neuen Passworts",
+            paragraphs=[hello, "über den Knopf unten können Sie ein neues Passwort festlegen.",
+                        "Falls Sie das nicht angefordert haben, ignorieren Sie diese E-Mail – Ihr Passwort bleibt unverändert."],
+            button_url=link, button_label="Neues Passwort festlegen",
+            button_hint="Der Link ist 1 Stunde gültig und nur einmal nutzbar. Alternativ diese Adresse öffnen:",
+            closing=f"Viele Grüße\n{sender}", footer="Diese E-Mail wurde automatisch versendet.")
+    mailer.send_mail([u.email], subject, body, [], html=html)
 
 
 @router.get("/password/forgot", response_class=HTMLResponse)

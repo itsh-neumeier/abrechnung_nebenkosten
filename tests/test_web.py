@@ -1,3 +1,4 @@
+import re
 import smtplib
 
 from fastapi.testclient import TestClient
@@ -109,6 +110,14 @@ def test_full_flow(monkeypatch):
         assert msg["Subject"] == "Abrechnung 01.09.2026 – 30.09.2026 – Familie Muster"
         att = [p for p in msg.iter_attachments()]
         assert att[0].get_filename() == "Nebenkostenabrechnung_2026-09_WE-001.pdf"
+        assert att[0].get_content()[:4] == b"%PDF"
+        html = msg.get_body(("html",)).get_content()
+        assert "Ihre Nebenkostenabrechnung 09/2026" in html and "Zahlbar bis" in html and "DE00 1234" in html
+        assert "max-width:600px" in html and "@media only screen" in html  # responsive
+        cid = re.search(r'src="cid:([^"]+)"', html).group(1)
+        logo = [p for p in msg.walk() if p.get("Content-ID") == f"<{cid}>"]
+        assert logo and logo[0].get_content_type() == "image/png"
+        assert "Hallo Familie Muster" in msg.get_body(("plain",)).get_content()
         assert "versendet" in c.get(url).text
 
         # manuell erneut senden

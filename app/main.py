@@ -220,9 +220,17 @@ async def settings_testmail(request: Request, s: Session = Depends(get_session))
     if not to:
         return redirect("/settings#mail", "Bitte eine Empfängeradresse für die Test-E-Mail eintragen.")
     try:
+        html = mailer.render_html(
+            title="Test-E-Mail", preheader="Der E-Mail-Versand funktioniert.",
+            paragraphs=["Der E-Mail-Versand der Nebenkostenabrechnung funktioniert. ✅",
+                        "So sehen formatierte Mails aus – Abrechnungen enthalten zusätzlich eine Übersicht mit Betrag, "
+                        "Fälligkeit und Konto sowie das PDF im Anhang."],
+            facts=[("Server", f"{config.smtp_host}:{config.smtp_port} ({config.smtp_security})", False),
+                   ("Absender", config.smtp_from, False)],
+            footer=service.mail_footer(get_settings(s)))
         mailer.send_mail([to], "Test Nebenkostenabrechnung",
                          f"Der E-Mail-Versand funktioniert.\n\nServer: {config.smtp_host}:{config.smtp_port} "
-                         f"({config.smtp_security})\nAbsender: {config.smtp_from}\n", [])
+                         f"({config.smtp_security})\nAbsender: {config.smtp_from}\n", [], html=html)
         return redirect("/settings#mail", f"Test-E-Mail an {to} verschickt – bitte Posteingang (und Spam) prüfen.")
     except Exception as e:  # noqa: BLE001
         return redirect("/settings#mail", f"E-Mail fehlgeschlagen: {mailer.explain(e)}")

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>{{ title }}</title>
+<style>
+  @media only screen and (max-width: 620px) {
+    .container { width: 100% !important; }
+    .pad { padding-left: 18px !important; padding-right: 18px !important; }
+    .fact-label, .fact-value { display: block !important; width: 100% !important; text-align: left !important;
+                               box-sizing: border-box !important; }
+    .fact-label { padding-bottom: 0 !important; border-bottom: 0 !important; }
+    .fact-value { padding-top: 2px !important; }
+    .btn a { display: block !important; }
+    h1 { font-size: 20px !important; }
+  }
+  a { color: #2563eb; }
+</style>
+</head>
+<body style="margin:0;padding:0;background:#f3f4f6;-webkit-text-size-adjust:100%;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:#f3f4f6;font-size:1px;line-height:1px;">{{ preheader or title }}&#8199;&#847;&#8199;&#847;&#8199;&#847;</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f3f4f6;">
+<tr><td align="center" style="padding:24px 10px;">
+  <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0"
+         style="width:600px;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+    <tr><td class="pad" style="background:#2563eb;padding:18px 28px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+        {% if logo_cid %}<td style="padding-right:12px;vertical-align:middle;"><img src="cid:{{ logo_cid }}" width="40" height="40" alt="" style="display:block;border:0;border-radius:9px;"></td>{% endif %}
+        <td style="vertical-align:middle;font-family:Arial,Helvetica,sans-serif;color:#ffffff;font-size:17px;font-weight:bold;">{{ brand or 'Nebenkostenabrechnung' }}
+          {% if brand_sub %}<div style="font-weight:normal;font-size:13px;opacity:.9;">{{ brand_sub }}</div>{% endif %}</td>
+      </tr></table>
+    </td></tr>
+    <tr><td class="pad" style="padding:26px 28px 8px;font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:15px;line-height:1.55;">
+      <h1 style="margin:0 0 14px;font-size:22px;line-height:1.3;color:#111827;">{{ title }}</h1>
+      {% for para in paragraphs %}<p style="margin:0 0 14px;">{{ para|replace('\n', '<br>'|safe) }}</p>{% endfor %}
+    </td></tr>
+    {% if facts %}
+    <tr><td class="pad" style="padding:4px 28px 6px;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;font-family:Arial,Helvetica,sans-serif;font-size:14px;">
+        {% for label, value, strong in facts %}
+        <tr>
+          <td class="fact-label" style="padding:9px 14px;color:#6b7280;width:42%;vertical-align:top;{% if not loop.last %}border-bottom:1px solid #eef0f3;{% endif %}">{{ label }}</td>
+          <td class="fact-value" style="padding:9px 14px;color:#111827;text-align:right;vertical-align:top;{% if strong %}font-weight:bold;font-size:17px;{% endif %}{% if not loop.last %}border-bottom:1px solid #eef0f3;{% endif %}">{{ value }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </td></tr>
+    {% endif %}
+    {% if notes %}
+    <tr><td class="pad" style="padding:12px 28px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+             style="background:#fff7e6;border-left:4px solid #d97706;border-radius:6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#78350f;">
+        <tr><td style="padding:10px 14px;"><b>{{ notes_title or 'Hinweise' }}</b>
+          <ul style="margin:6px 0 0;padding-left:18px;">{% for n in notes %}<li style="margin:3px 0;">{{ n }}</li>{% endfor %}</ul>
+        </td></tr>
+      </table>
+    </td></tr>
+    {% endif %}
+    {% if button_url %}
+    <tr><td class="pad" style="padding:20px 28px 4px;" align="left">
+      <table role="presentation" class="btn" cellpadding="0" cellspacing="0" border="0"><tr>
+        <td style="border-radius:8px;background:#2563eb;" align="center">
+          <a href="{{ button_url }}" style="display:inline-block;padding:12px 22px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;border-radius:8px;">{{ button_label }}</a>
+        </td></tr></table>
+      {% if button_hint %}<p style="margin:10px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;">{{ button_hint }}<br><a href="{{ button_url }}" style="color:#2563eb;word-break:break-all;">{{ button_url }}</a></p>{% endif %}
+    </td></tr>
+    {% endif %}
+    {% if attachment %}
+    <tr><td class="pad" style="padding:16px 28px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#374151;">
+      📎 Im Anhang: <b>{{ attachment }}</b>
+    </td></tr>
+    {% endif %}
+    <tr><td class="pad" style="padding:22px 28px 24px;font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#111827;line-height:1.55;">
+      {% if closing %}{{ closing|replace('\n', '<br>'|safe) }}{% endif %}
+    </td></tr>
+    {% if footer %}
+    <tr><td class="pad" style="padding:14px 28px;background:#f9fafb;border-top:1px solid #e5e7eb;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#6b7280;line-height:1.5;">
+      {{ footer|replace('\n', '<br>'|safe) }}
+    </td></tr>
+    {% endif %}
+  </table>
+</td></tr>
+</table>
+</body>
+</html>

@@ -6,6 +6,8 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
+from pathlib import Path
+from typing import Optional
 
 from .config import config
 
@@ -18,8 +20,20 @@ def configured() -> bool:
     return bool(config.smtp_host and config.smtp_from)
 
 
+LOGO = Path(__file__).parent / "static" / "icon-192.png"
+
+
+def render_html(**ctx) -> str:
+    """HTML-Mail aus ``templates/mail/base.html`` (responsive, Inline-Styles). ``logo_cid`` setzt send_mail."""
+    from .render import templates
+
+    ctx.setdefault("logo_cid", "{{LOGO_CID}}")
+    return templates.get_template("mail/base.html").render(**ctx)
+
+
 def send_mail(to: list[str], subject: str, body: str, attachments: list[tuple[str, bytes]],
-              bcc: list[str] | None = None) -> None:
+              bcc: list[str] | None = None, html: Optional[str] = None) -> None:
+    """Text-Mail bzw. – mit ``html`` – multipart/alternative (Text + HTML mit eingebettetem Logo) + PDF-Anhänge."""
     if not configured():
         raise MailError("SMTP ist nicht konfiguriert (SMTP_HOST / SMTP_FROM in .env).")
     if not to:
@@ -31,6 +45,13 @@ def send_mail(to: list[str], subject: str, body: str, attachments: list[tuple[st
     msg["Date"] = formatdate(localtime=True)
     msg["Message-ID"] = make_msgid()
     msg.set_content(body)
+    if html:
+        cid = make_msgid(domain="nebenkosten.local")
+        use_logo = "{{LOGO_CID}}" in html and LOGO.exists()
+        msg.add_alternative(html.replace("{{LOGO_CID}}", cid[1:-1]), subtype="html")
+        if use_logo:
+            msg.get_payload()[1].add_related(LOGO.read_bytes(), maintype="image", subtype="png", cid=cid,
+                                             filename="logo.png", disposition="inline")
     for name, data in attachments:
         msg.add_attachment(data, maintype="application", subtype="pdf", filename=name)
 

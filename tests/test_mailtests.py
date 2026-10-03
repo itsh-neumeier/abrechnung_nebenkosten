@@ -68,7 +68,7 @@ def test_testmail_and_imap_check(monkeypatch):
         assert "Test-E-Mail senden" in page and "Postfach testen" in page
         r = c.post("/settings/testmail", data={"test_to": "ich@test.de"})
         assert "Test-E-Mail an ich@test.de verschickt" in r.text
-        assert SENT[-1][1] == ["ich@test.de"] and "Absender:" in SENT[-1][0].get_content()
+        assert SENT[-1][1] == ["ich@test.de"] and "Absender:" in SENT[-1][0].get_body(("plain",)).get_content()
         assert "Empfängeradresse" in c.post("/settings/testmail", data={"test_to": ""}).text
 
         monkeypatch.setattr(smtplib, "SMTP", BadSMTP)

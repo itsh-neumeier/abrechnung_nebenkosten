@@ -128,7 +128,7 @@ def test_login_roles_portal_and_reset(monkeypatch):
         assert "Link zum Zurücksetzen" in r.text
         assert c.post("/password/forgot", data={"login": "gibtsnicht"}).text.count("Link zum Zurücksetzen") == 1
         assert len(MAILS) == 1 and MAILS[0]["To"] == "muster@test.de"
-        link = re.search(r"http\S+/password/reset\?token=(\S+)", MAILS[0].get_content()).group(0)
+        link = re.search(r"http\S+/password/reset\?token=(\S+)", MAILS[0].get_body(("plain",)).get_content()).group(0)
         token = link.split("token=")[1]
         assert "Neues Passwort" in c.get(f"/password/reset?token={token}").text
         r = c.post("/password/reset", data={"token": token, "password": "neues-pass-1", "password2": "neues-pass-1"})
@@ -145,7 +145,7 @@ def test_login_roles_portal_and_reset(monkeypatch):
         r = c.post("/users/0", data={"username": "neu", "role": "tenant", "party_id": "2", "email": "neu@test.de",
                                      "active": "1"})
         assert "Einladung an neu@test.de verschickt" in r.text
-        assert "Benutzername: neu" in MAILS[-1].get_content()
+        assert "Benutzername: neu" in MAILS[-1].get_body(("plain",)).get_content()
 
 
 def test_login_throttle():
