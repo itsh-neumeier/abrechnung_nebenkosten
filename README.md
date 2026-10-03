@@ -7,34 +7,41 @@ mit Messwerten aus **Home Assistant** (Shelly, Victron, Stromzähler), **Batteri
 ## Ablauf pro Monat
 
 1. Rechnung vom Stromanbieter kommt → im Webinterface **„Neue Stromrechnung erfassen“**.
-2. Zeitraum, Netzbezug (kWh), Arbeitspreis netto, Fixkosten netto, MwSt. eintragen.
+2. Zeitraum, Netzbezug (kWh), Arbeitspreis netto, Ø Börsenpreis netto, Fixkosten netto, MwSt. eintragen.
 3. Verbrauchswerte werden aus Home Assistant geladen (Langzeitstatistik, auch Monate rückwirkend).
 4. Prüfen, ggf. Werte korrigieren → **Abschließen** → PDFs je Partei bzw. alle als ZIP.
+5. Versand per E-Mail an alle Parteien mit hinterlegter Adresse – automatisch beim Abschließen
+   (Einstellung) oder per Knopf, mit Versandstatus je Partei.
 
 ## Berechnung
 
-| Schritt | Formel |
-|---|---|
-| Ø Preis netto | Arbeitspreis netto ÷ Netzbezug kWh (laut Rechnung) |
-| Ø Preis brutto | Ø Preis netto × (1 + MwSt.) |
-| Batterieanteil | Batterie-Entladung ÷ Gesamtverbrauch Haus (beides Victron, im Zeitraum) |
-| Verbrauch Partei | Summe ihrer Shelly-Zähler |
-| Verbrauch Eigentümer | Gesamtverbrauch − alle anderen Parteien − Strom-Umlagen (Restverbrauch) |
-| Netzstrom | Verbrauch × (1 − Batterieanteil) × Ø Preis **brutto** |
-| Batteriestrom | Verbrauch × Batterieanteil × (Ø Preis **netto** + Batterienutzungssatz), ohne MwSt. |
-| Fixkosten Anbieter | Fixkosten netto × (1 + MwSt.) ÷ Anzahl Parteien (centgenau) |
-| Weitere Fixkosten | z. B. IPTV: Betrag ÷ ausgewählte Parteien |
-| Umlagen | Energie (kWh aus HA, Preis wie Hausstrom) oder Betrag (€), verteilt nach Verbrauch je Partei (HA-Entität, z. B. Warmwasser-m³), festen Prozenten oder gleichmäßig |
+**Energiemix des Hauses** (je Abrechnungszeitraum, aus Victron + Stromzähler):
 
-Strom-Umlagen (z. B. Warmwasserbereitung über einen eigenen Shelly) werden vom Restverbrauch
-des Eigentümers abgezogen, damit nichts doppelt berechnet wird.
+| Quelle | Menge | Preis je kWh |
+|---|---|---|
+| Netzstrom direkt | Netzbezug − Netz→Batterie | Ø Arbeitspreis lt. Rechnung **brutto** |
+| PV-Strom direkt | Gesamtverbrauch − Netz direkt − Batterie-Entladung | Ø Börsenpreis netto + PV-Bereitstellungssatz |
+| Batteriestrom aus PV | Entladung × (1 − Netzladeanteil) | Ø Börsenpreis netto + PV-Bereitstellungssatz¹ + Batterieverschleißsatz |
+| Batteriestrom aus Netz (Graustrom, dyn. ESS) | Entladung × Netzladeanteil | Ø Börsenpreis netto + Batterieverschleißsatz |
+
+Netzladeanteil = Batterie aus Netz geladen ÷ Batterie geladen gesamt. Alles außer Netzstrom ohne MwSt.
+¹ abschaltbar („PV-Bereitstellungssatz auch auf Batteriestrom aus PV“).
+
+**Je Partei**: Verbrauch (Summe der Shelly-Zähler) × Mix-Anteile × Preis. Der Eigentümer bekommt den
+Restverbrauch (Gesamt − andere Parteien − Strom-Umlagen).
+
+| Weitere Positionen | Verteilung |
+|---|---|
+| Fixkosten Anbieter (Grundpreis, Messstelle) | brutto ÷ Anzahl Parteien (centgenau) |
+| Weitere Fixkosten (z. B. IPTV) | Betrag ÷ ausgewählte Parteien |
+| Umlagen (z. B. Warmwasser, Wasser) | Energie aus HA-Entität (Preis wie Hausstrom-Mix) oder Betrag, verteilt nach Verbrauch je Partei (HA-Entität), Prozent oder gleichmäßig |
 
 ## Installation (Docker)
 
 ```bash
 git clone https://github.com/itsh-neumeier/abrechnung_nebenkosten.git
 cd abrechnung_nebenkosten
-cp .env.example .env      # HA_TOKEN und APP_PASSWORD eintragen
+cp .env.example .env      # HA_TOKEN, APP_PASSWORD und SMTP_* eintragen
 docker compose up -d --build
 ```
 
@@ -56,10 +63,14 @@ abgefragt (HA rechnet um).
 
 ## Einrichtung im Webinterface
 
-1. **Einstellungen**: Entitäten für Netzbezug (Zähler), Gesamtverbrauch (Victron), Batterie-Entladung
-   (Victron); Batterienutzungssatz; Absenderdaten/IBAN für die PDFs.
-2. **Parteien**: je Partei Name, Anschrift und Shelly-Entitäten; eine Partei als *Eigentümer* markieren
-   (bekommt den Restverbrauch).
+Alle Entitätsfelder haben einen Knopf **„Aus HA wählen“**: Er lädt die Sensoren live über die
+HA-API (Suche, Filter Energie/Wasser, nur mit Langzeitstatistik, aktueller Zählerstand).
+
+1. **Einstellungen**: Entitäten für Netzbezug, Gesamtverbrauch, Batterie entladen/geladen,
+   Batterie aus Netz geladen (dyn. ESS), optional PV-Direktverbrauch; PV-Bereitstellungs- und
+   Batterieverschleißsatz; Objektanschrift und Gebäude-ID; Absender/IBAN; E-Mail-Vorlage.
+2. **Parteien**: Wohneinheit (Name), Wohneinheiten-ID, E-Mail, Shelly-Entitäten; eine Partei als
+   *Eigentümer* markieren (bekommt den Restverbrauch).
 3. **Fixkosten & Umlagen**: z. B. „IPTV-Bereitstellung“ (Betrag, Parteien) und „Warmwasserbereitung“
    (Quell-Entität kWh, Verteilung nach Warmwasserzählern je Partei).
 

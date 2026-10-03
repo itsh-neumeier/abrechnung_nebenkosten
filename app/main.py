@@ -6,24 +6,22 @@ import base64
 import io
 import re
 import secrets
+import time
 import zipfile
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
-from pathlib import Path
-from typing import Optional
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from . import service
+from . import mailer, service
 from .config import config
 from .db import Allocation, Billing, FixedCost, Party, get_session, get_settings, init_db, save_settings
-from .ha import HAClient, HAError
-
-BASE = Path(__file__).parent
+from .ha import HAClient
+from .render import BASE, invoice_html, invoice_pdf, parse_float, party_result, pdf_name, templates
 
 
 @asynccontextmanager
@@ -34,58 +32,21 @@ async def lifespan(_app):
 
 app = FastAPI(title="Stromabrechnung Hausparteien", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
-templates = Jinja2Templates(directory=BASE / "templates")
 
 
 # --------------------------------------------------------------------------- Helfer
-def parse_float(v, default: Optional[float] = 0.0) -> Optional[float]:
-    """Akzeptiert deutsche Schreibweise (1.234,56) und Punkt-Dezimal."""
-    if v is None:
-        return default
-    v = str(v).strip().replace(" ", "").replace("€", "")
-    if not v:
-        return default
-    if "," in v:
-        v = v.replace(".", "").replace(",", ".")
-    try:
-        return float(v)
-    except ValueError:
-        return default
-
-
-def fmt_num(v, digits: int = 2) -> str:
-    if v is None:
-        return ""
-    s = f"{float(v):,.{digits}f}"
-    return s.replace(",", "X").replace(".", ",").replace("X", ".")
-
-
-def fmt_eur(v) -> str:
-    return "" if v is None else f"{fmt_num(v, 2)} €"
-
-
-def fmt_date(d) -> str:
-    if isinstance(d, str):
-        d = date.fromisoformat(d)
-    return d.strftime("%d.%m.%Y") if d else ""
-
-
-templates.env.filters["num"] = fmt_num
-templates.env.filters["eur"] = fmt_eur
-templates.env.filters["de_date"] = fmt_date
-
-
 def split_entities(text: str) -> list[str]:
     return [e for e in re.split(r"[\s,;]+", text or "") if e]
 
 
 def render(request: Request, name: str, **ctx) -> HTMLResponse:
+    ctx.setdefault("ha_configured", bool(config.ha_url and config.ha_token))
     return templates.TemplateResponse(request, name, ctx)
 
 
 def redirect(url: str, msg: str = "") -> RedirectResponse:
     if msg:
-        url += ("&" if "?" in url else "?") + "msg=" + msg
+        url += ("&" if "?" in url else "?") + "msg=" + quote(msg)
     return RedirectResponse(url, status_code=303)
 
 
@@ -121,26 +82,29 @@ def index(request: Request, s: Session = Depends(get_session)):
     ]
     if not service.active_parties(s):
         setup_missing.append("Parteien")
-    return render(request, "index.html", billings=billings, setup_missing=setup_missing,
-                  ha_configured=bool(config.ha_url and config.ha_token))
+    return render(request, "index.html", billings=billings, setup_missing=setup_missing)
 
 
 # --------------------------------------------------------------------------- Einstellungen
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, s: Session = Depends(get_session)):
     return render(request, "settings.html", st=get_settings(s), ha_url=config.ha_url,
-                  ha_token_set=bool(config.ha_token))
+                  ha_token_set=bool(config.ha_token), house_entities=service.HOUSE_ENTITIES,
+                  smtp=config, mail_ok=mailer.configured())
 
 
 @app.post("/settings")
 async def settings_save(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
-    save_settings(s, {k: str(v).strip() for k, v in form.items()})
+    data = {k: str(v).strip() for k, v in form.items()}
+    for flag in ("pv_rate_on_battery", "mail_auto_send"):  # Checkboxen
+        data[flag] = "1" if form.get(flag) else ""
+    save_settings(s, data)
     return redirect("/settings", "Gespeichert")
 
 
 @app.post("/settings/test")
-async def settings_test(request: Request):
+async def settings_test():
     try:
         msg = await HAClient(config.ha_url, config.ha_token).check()
         return redirect("/settings", f"Verbindung OK: {msg}")
@@ -148,23 +112,46 @@ async def settings_test(request: Request):
         return redirect("/settings", f"Verbindung fehlgeschlagen: {e}")
 
 
-@app.get("/api/entities")
-async def api_entities():
-    """Energie-/Wasser-Sensoren aus HA für die Auswahllisten."""
+@app.post("/settings/testmail")
+async def settings_testmail(request: Request, s: Session = Depends(get_session)):
+    form = await request.form()
+    to = str(form.get("to", "")).strip()
     try:
-        states = await HAClient(config.ha_url, config.ha_token).states()
-    except Exception:  # noqa: BLE001
-        return []
-    out = []
-    for st in states:
-        attrs = st.get("attributes", {})
-        if attrs.get("state_class") in ("total", "total_increasing"):
+        mailer.send_mail([to], "Test Stromabrechnung", "Der E-Mail-Versand funktioniert.", [])
+        return redirect("/settings", f"Test-E-Mail an {to} verschickt")
+    except Exception as e:  # noqa: BLE001
+        return redirect("/settings", f"E-Mail fehlgeschlagen: {e}")
+
+
+_entity_cache: dict = {"at": 0.0, "data": None}
+
+
+@app.get("/api/entities")
+async def api_entities(refresh: bool = False):
+    """Zähler-Sensoren aus Home Assistant für die Entitäten-Auswahl."""
+    if not (config.ha_url and config.ha_token):
+        return JSONResponse({"error": "Home Assistant ist nicht konfiguriert (HA_URL / HA_TOKEN)."}, 503)
+    if refresh or _entity_cache["data"] is None or time.time() - _entity_cache["at"] > 60:
+        try:
+            states = await HAClient(config.ha_url, config.ha_token).states()
+        except Exception as e:  # noqa: BLE001
+            return JSONResponse({"error": f"Home Assistant nicht erreichbar: {e}"}, 502)
+        out = []
+        for st in states:
+            eid = st.get("entity_id", "")
+            if not eid.startswith("sensor."):
+                continue
+            attrs = st.get("attributes", {})
             out.append({
-                "entity_id": st["entity_id"],
+                "entity_id": eid,
                 "name": attrs.get("friendly_name", ""),
-                "unit": attrs.get("unit_of_measurement", ""),
+                "unit": attrs.get("unit_of_measurement", "") or "",
+                "state": st.get("state"),
+                "device_class": attrs.get("device_class", "") or "",
+                "statistics": attrs.get("state_class") in ("total", "total_increasing"),
             })
-    return sorted(out, key=lambda x: x["entity_id"])
+        _entity_cache.update(at=time.time(), data=sorted(out, key=lambda x: x["entity_id"]))
+    return _entity_cache["data"]
 
 
 # --------------------------------------------------------------------------- Parteien
@@ -196,6 +183,7 @@ async def party_save(request: Request, pid: int, s: Session = Depends(get_sessio
         raise HTTPException(404)
     p.name = str(form.get("name", "")).strip()
     p.unit = str(form.get("unit", "")).strip()
+    p.unit_id = str(form.get("unit_id", "")).strip()
     p.address = str(form.get("address", "")).strip()
     p.email = str(form.get("email", "")).strip()
     p.meters = split_entities(str(form.get("meters", "")))
@@ -296,31 +284,35 @@ async def alloc_save(request: Request, aid: int, s: Session = Depends(get_sessio
 
 
 # --------------------------------------------------------------------------- Abrechnungen
+def _apply_bill_form(b: Billing, form, st: dict) -> None:
+    """Übernimmt die Rechnungsfelder aus dem Formular."""
+    b.title = str(form.get("title", b.title or "")).strip()
+    b.invoice_no = str(form.get("invoice_no", b.invoice_no or "")).strip()
+    b.period_start = date.fromisoformat(str(form.get("period_start")))
+    b.period_end = date.fromisoformat(str(form.get("period_end")))
+    b.grid_kwh = parse_float(form.get("grid_kwh"), None)
+    b.energy_cost_net = parse_float(form.get("energy_cost_net")) or 0.0
+    b.fixed_cost_net = parse_float(form.get("fixed_cost_net")) or 0.0
+    b.spot_price_ct = parse_float(form.get("spot_price_ct")) or 0.0
+    b.vat_rate = (parse_float(form.get("vat_rate"), parse_float(st["vat_rate"])) or 0.0) / 100
+    b.battery_rate_ct = parse_float(form.get("battery_rate_ct"), parse_float(st["battery_rate_ct"])) or 0.0
+    b.pv_rate_ct = parse_float(form.get("pv_rate_ct"), parse_float(st["pv_rate_ct"])) or 0.0
+    b.pv_rate_on_battery = bool(form.get("pv_rate_on_battery"))
+
+
 @app.get("/billings/new", response_class=HTMLResponse)
 def billing_new(request: Request, s: Session = Depends(get_session)):
     st = get_settings(s)
-    first_this = date.today().replace(day=1)
-    end = first_this - timedelta(days=1)
-    start = end.replace(day=1)
-    return render(request, "billing_new.html", start=start, end=end, st=st)
+    end = date.today().replace(day=1) - timedelta(days=1)
+    return render(request, "billing_new.html", start=end.replace(day=1), end=end, st=st)
 
 
 @app.post("/billings")
 async def billing_create(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
     st = get_settings(s)
-    b = Billing(
-        title=str(form.get("title", "")).strip(),
-        invoice_no=str(form.get("invoice_no", "")).strip(),
-        period_start=date.fromisoformat(str(form["period_start"])),
-        period_end=date.fromisoformat(str(form["period_end"])),
-        grid_kwh=parse_float(form.get("grid_kwh"), None),
-        energy_cost_net=parse_float(form.get("energy_cost_net")) or 0.0,
-        fixed_cost_net=parse_float(form.get("fixed_cost_net")) or 0.0,
-        vat_rate=(parse_float(form.get("vat_rate"), parse_float(st["vat_rate"])) or 0.0) / 100,
-        battery_rate_ct=parse_float(form.get("battery_rate_ct"), parse_float(st["battery_rate_ct"])) or 0.0,
-        values={}, amounts={}, result={},
-    )
+    b = Billing(values={}, amounts={}, result={}, sent={})
+    _apply_bill_form(b, form, st)
     if not b.title:
         b.title = f"Strom {b.period_start.strftime('%m/%Y')}"
     s.add(b)
@@ -348,8 +340,15 @@ def _get_billing(s: Session, bid: int) -> Billing:
 def billing_view(request: Request, bid: int, s: Session = Depends(get_session)):
     b = _get_billing(s, bid)
     allocs = s.query(Allocation).filter(Allocation.active.is_(True), Allocation.source_type == "amount").all()
+    emails = {p.id: p.email for p in s.query(Party).all()}
     return render(request, "billing.html", b=b, r=b.result or {}, entities=service.required_entities(s),
-                  amount_allocs=allocs, ha_configured=bool(config.ha_url and config.ha_token))
+                  amount_allocs=allocs, st=get_settings(s), emails=emails, mail_ok=mailer.configured())
+
+
+def _report_msg(report: list[tuple[str, bool, str]]) -> str:
+    if not report:
+        return "Keine E-Mails verschickt (keine offenen Parteien mit E-Mail-Adresse)."
+    return "E-Mail: " + "; ".join(f"{n} {'✔' if ok else '✘ ' + m}" for n, ok, m in report)
 
 
 @app.post("/billings/{bid}")
@@ -357,6 +356,7 @@ async def billing_save(request: Request, bid: int, s: Session = Depends(get_sess
     b = _get_billing(s, bid)
     form = await request.form()
     action = form.get("action", "save")
+    st = get_settings(s)
 
     if action == "delete":
         s.delete(b)
@@ -366,20 +366,18 @@ async def billing_save(request: Request, bid: int, s: Session = Depends(get_sess
         b.status = "draft"
         s.commit()
         return redirect(f"/billings/{bid}", "Wieder zur Bearbeitung geöffnet")
+    if action.startswith("send"):
+        if b.status != "final":
+            return redirect(f"/billings/{bid}", "Bitte zuerst abschließen, dann versenden.")
+        ids = None if action == "send_all" else [int(action.split(":")[1])]
+        report = service.send_invoices(s, b, ids)
+        s.commit()
+        return redirect(f"/billings/{bid}", _report_msg(report))
     if b.status == "final":
         return redirect(f"/billings/{bid}", "Abrechnung ist abgeschlossen")
 
-    b.title = str(form.get("title", b.title)).strip()
-    b.invoice_no = str(form.get("invoice_no", b.invoice_no)).strip()
-    b.period_start = date.fromisoformat(str(form.get("period_start", b.period_start.isoformat())))
-    b.period_end = date.fromisoformat(str(form.get("period_end", b.period_end.isoformat())))
-    b.grid_kwh = parse_float(form.get("grid_kwh"), None)
-    b.energy_cost_net = parse_float(form.get("energy_cost_net")) or 0.0
-    b.fixed_cost_net = parse_float(form.get("fixed_cost_net")) or 0.0
-    b.vat_rate = (parse_float(form.get("vat_rate")) or 0.0) / 100
-    b.battery_rate_ct = parse_float(form.get("battery_rate_ct")) or 0.0
+    _apply_bill_form(b, form, st)
     b.notes = str(form.get("notes", "")).strip()
-
     values = {}
     for k, v in form.items():
         if k.startswith("val__"):
@@ -394,61 +392,46 @@ async def billing_save(request: Request, bid: int, s: Session = Depends(get_sess
         try:
             missing = await service.fetch_values(s, b)
             msg = "Werte aus Home Assistant geladen" + (f" (ohne Statistik: {', '.join(missing)})" if missing else "")
-        except (HAError, Exception) as e:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
             msg = f"Home Assistant: {e}"
     service.recompute(s, b)
     if action == "finalize":
         b.status = "final"
         msg = "Abrechnung abgeschlossen"
+        if st["mail_auto_send"] and mailer.configured():
+            s.commit()
+            msg += " · " + _report_msg(service.send_invoices(s, b, only_unsent=True))
     s.commit()
     return redirect(f"/billings/{bid}", msg)
 
 
-def _party_result(b: Billing, pid: int) -> dict:
-    for p in (b.result or {}).get("parties", []):
-        if p["id"] == pid:
-            return p
-    raise HTTPException(404, "Partei nicht in dieser Abrechnung")
-
-
-def _invoice_html(request: Request, b: Billing, pid: int, pdf: bool = False) -> str:
-    p = _party_result(b, pid)
-    ctx = {"b": b, "r": b.result, "p": p, "ll": b.result.get("landlord", {}), "pdf": pdf,
-           "due": b.created_at.date() + timedelta(days=int(parse_float(b.result.get("landlord", {}).get("payment_days"), 14) or 14))}
-    return templates.get_template("invoice.html").render(request=request, **ctx)
-
-
-def _pdf_name(b: Billing, p: dict) -> str:
-    safe = re.sub(r"[^A-Za-z0-9ÄÖÜäöüß_-]+", "_", p["name"]).strip("_")
-    return f"Stromabrechnung_{b.period_start:%Y-%m}_{safe}.pdf"
-
-
-def _render_pdf(html: str) -> bytes:
-    from weasyprint import HTML  # lazy: braucht System-Libs (pango)
-
-    return HTML(string=html, base_url=str(BASE)).write_pdf()
+def _party_or_404(b: Billing, pid: int) -> dict:
+    p = party_result(b, pid)
+    if p is None:
+        raise HTTPException(404, "Partei nicht in dieser Abrechnung")
+    return p
 
 
 @app.get("/billings/{bid}/invoice/{pid}.pdf")
-def invoice_pdf(request: Request, bid: int, pid: int, s: Session = Depends(get_session)):
+def invoice_pdf_view(bid: int, pid: int, s: Session = Depends(get_session)):
     b = _get_billing(s, bid)
-    p = _party_result(b, pid)
-    pdf = _render_pdf(_invoice_html(request, b, pid, pdf=True))
-    return Response(pdf, media_type="application/pdf",
-                    headers={"Content-Disposition": f'inline; filename="{_pdf_name(b, p)}"'})
+    p = _party_or_404(b, pid)
+    return Response(invoice_pdf(b, p), media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{pdf_name(b, p)}"'})
 
 
 @app.get("/billings/{bid}/invoice/{pid}", response_class=HTMLResponse)
-def invoice_view(request: Request, bid: int, pid: int, s: Session = Depends(get_session)):
-    return HTMLResponse(_invoice_html(request, _get_billing(s, bid), pid))
+def invoice_view(bid: int, pid: int, s: Session = Depends(get_session)):
+    b = _get_billing(s, bid)
+    return HTMLResponse(invoice_html(b, _party_or_404(b, pid)))
 
 
 @app.get("/billings/{bid}/all.zip")
-def invoices_zip(request: Request, bid: int, s: Session = Depends(get_session)):
+def invoices_zip(bid: int, s: Session = Depends(get_session)):
     b = _get_billing(s, bid)
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for p in b.result.get("parties", []):
-            z.writestr(_pdf_name(b, p), _render_pdf(_invoice_html(request, b, p["id"], pdf=True)))
+            z.writestr(pdf_name(b, p), invoice_pdf(b, p))
     return Response(buf.getvalue(), media_type="application/zip",
                     headers={"Content-Disposition": f'attachment; filename="Stromabrechnung_{b.period_start:%Y-%m}.zip"'})

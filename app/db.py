@@ -6,7 +6,7 @@ import os
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Float, Integer, String, Text, create_engine
+from sqlalchemy import JSON, Boolean, Date, DateTime, Float, Integer, String, Text, create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from .config import config
@@ -29,6 +29,7 @@ class Party(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(200))
     unit: Mapped[str] = mapped_column(String(200), default="")  # Wohnung / Lage
+    unit_id: Mapped[str] = mapped_column(String(50), default="")  # Wohneinheiten-ID, z. B. WE-001
     address: Mapped[str] = mapped_column(Text, default="")
     email: Mapped[str] = mapped_column(String(200), default="")
     meters: Mapped[list] = mapped_column(JSON, default=list)  # Shelly-Energie-Entitäten
@@ -76,7 +77,11 @@ class Billing(Base):
     energy_cost_net: Mapped[float] = mapped_column(Float, default=0.0)
     fixed_cost_net: Mapped[float] = mapped_column(Float, default=0.0)
     vat_rate: Mapped[float] = mapped_column(Float, default=0.19)
-    battery_rate_ct: Mapped[float] = mapped_column(Float, default=0.0)
+    battery_rate_ct: Mapped[float] = mapped_column(Float, default=0.0)  # Batterieverschleißsatz
+    spot_price_ct: Mapped[float] = mapped_column(Float, default=0.0)  # Ø Börsenpreis netto lt. Rechnung
+    pv_rate_ct: Mapped[float] = mapped_column(Float, default=0.0)  # PV-Bereitstellungssatz
+    pv_rate_on_battery: Mapped[bool] = mapped_column(Boolean, default=True)
+    sent: Mapped[dict] = mapped_column(JSON, default=dict)  # party_id -> Versandzeitpunkt / Fehler
     values: Mapped[dict] = mapped_column(JSON, default=dict)  # entity_id -> Verbrauch
     amounts: Mapped[dict] = mapped_column(JSON, default=dict)  # allocation_id -> Betrag
     result: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -95,6 +100,31 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 def init_db() -> None:
     Base.metadata.create_all(engine)
+    _add_missing_columns()
+
+
+def _add_missing_columns() -> None:
+    """Einfache Migration: neue Spalten in bestehenden Tabellen ergänzen."""
+    insp = inspect(engine)
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            existing = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in existing:
+                    continue
+                default = col.default.arg if col.default is not None and not callable(col.default.arg) else None
+                if isinstance(default, bool):
+                    literal = "1" if default else "0"
+                elif isinstance(default, (int, float)):
+                    literal = str(default)
+                elif isinstance(default, str):
+                    literal = "'" + default.replace("'", "''") + "'"
+                elif isinstance(col.type, JSON):
+                    literal = "'{}'" if col.name in ("sent", "values", "amounts", "result", "key") else "'[]'"
+                else:
+                    literal = "NULL"
+                coltype = col.type.compile(engine.dialect)
+                conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN "{col.name}" {coltype} DEFAULT {literal}'))
 
 
 def get_session():
@@ -103,17 +133,34 @@ def get_session():
 
 
 SETTING_DEFAULTS = {
+    # Entitäten
     "entity_grid": "",
     "entity_total": "",
-    "entity_battery": "",
-    "battery_rate_ct": "10",
+    "entity_battery": "",  # Batterie entladen
+    "entity_battery_charge": "",  # Batterie geladen gesamt
+    "entity_battery_charge_grid": "",  # Batterie aus Netz geladen (dyn. ESS)
+    "entity_pv_direct": "",  # optional
+    # Sätze
+    "battery_rate_ct": "8",  # Batterieverschleißsatz
+    "pv_rate_ct": "5",  # PV-Bereitstellungssatz
+    "pv_rate_on_battery": "1",
     "vat_rate": "19",
+    # Objekt
+    "building_title": "Nebenkostenabrechnung",
+    "building_address": "",
+    "building_id": "",
+    # E-Mail
+    "mail_auto_send": "",
+    "mail_subject": "Nebenkostenabrechnung Strom {zeitraum} – {wohneinheit}",
+    "mail_body": "Hallo {name},\n\nanbei die Nebenkostenabrechnung Strom für den Zeitraum {zeitraum}.\n"
+                 "Betrag: {betrag}\n\nViele Grüße\n{absender}",
+    "mail_bcc": "",
     "landlord_name": "",
     "landlord_address": "",
     "landlord_contact": "",
     "landlord_iban": "",
     "payment_days": "14",
-    "invoice_text": "Hiermit rechne ich die Stromkosten für den oben genannten Zeitraum ab.",
+    "invoice_text": "",
 }
 
 

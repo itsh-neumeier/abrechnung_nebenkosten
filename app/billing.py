@@ -1,22 +1,29 @@
 """Reine Berechnungslogik der Stromabrechnung (ohne Datenbank / Home Assistant).
 
-Grundidee
----------
-* Aus der Rechnung des Stromanbieters ergibt sich ein Durchschnittspreis je kWh
-  (Arbeitspreis netto / bezogene kWh), netto und brutto (inkl. MwSt.).
-* Der Gesamtverbrauch des Hauses kommt vom Victron-Zähler, die Batterie-Entladung
-  ebenfalls aus der Victron-Anlage. Daraus ergibt sich der Batterieanteil
-  ``batterie_kwh / gesamt_kwh`` für den Abrechnungszeitraum.
-* Der Verbrauch jeder Partei (Summe ihrer Shelly-Zähler) wird anteilig aufgeteilt:
-    - Netzanteil   -> kWh x Durchschnittspreis brutto
-    - Batterieanteil -> kWh x Durchschnittspreis netto (ohne MwSt.) + Batterienutzungssatz
-* Die Partei mit ``is_owner`` (Eigentümer/Hauptpartei) bekommt den Restverbrauch
-  (Gesamt - alle anderen Parteien - über Umlagen verteilte Energie).
-* Fixkosten des Anbieters (Grundpreis, Messstelle ...) werden brutto gleichmäßig
-  auf alle Parteien verteilt; weitere Fixkosten (z. B. IPTV) gleichmäßig auf die
-  ausgewählten Parteien.
-* Umlagen (z. B. Warmwasser, Wasser) verteilen eine Energiemenge oder einen
-  Betrag nach Verbrauchswerten je Partei (HA-Entitäten), gleich oder nach Prozent.
+Energiemix
+----------
+Der Gesamtverbrauch des Hauses (Victron) wird für den Abrechnungszeitraum in vier
+Quellen zerlegt:
+
+* **Netzstrom direkt**  = Netzbezug (Zähler) - Netz->Batterie
+* **Batterie aus Netz** (Graustrom, dynamisches ESS) = Batterie-Entladung x Anteil Netzladung
+* **Batterie aus PV**   = Batterie-Entladung x (1 - Anteil Netzladung)
+* **PV direkt**         = Rest (oder eigene Entität)
+
+Anteil Netzladung = Netz->Batterie / Batterie geladen gesamt.
+
+Preise je kWh
+-------------
+* Netzstrom: Ø Arbeitspreis lt. Rechnung **brutto**
+* PV direkt: Ø Börsenpreis netto lt. Rechnung + PV-Bereitstellungssatz (ohne MwSt.)
+* Batterie aus Netz: Ø Börsenpreis netto + Batterieverschleißsatz (ohne MwSt.)
+* Batterie aus PV: Ø Börsenpreis netto + PV-Bereitstellungssatz (optional)
+  + Batterieverschleißsatz (ohne MwSt.)
+
+Jede Partei (Summe ihrer Shelly-Zähler) bekommt denselben Mix. Der Eigentümer
+bekommt den Restverbrauch. Fixkosten des Anbieters werden gleichmäßig verteilt,
+weitere Fixkosten (z. B. IPTV) auf die ausgewählten Parteien, Umlagen (Warmwasser,
+Wasser) nach Verbrauch je Partei, Prozent oder gleichmäßig.
 """
 
 from __future__ import annotations
@@ -61,7 +68,29 @@ class BillCfg:
     energy_cost_net: float
     fixed_cost_net: float
     vat_rate: float  # z. B. 0.19
-    battery_rate_ct: float  # Batterienutzungssatz ct/kWh (ohne MwSt.)
+    wear_rate_ct: float = 0.0  # Batterieverschleißsatz ct/kWh (ohne MwSt.)
+    spot_price_ct: float = 0.0  # Ø Börsenpreis netto ct/kWh lt. Rechnung
+    pv_rate_ct: float = 0.0  # PV-Bereitstellungssatz ct/kWh (ohne MwSt.)
+    pv_rate_on_battery: bool = True  # PV-Satz auch auf Batteriestrom aus PV
+
+
+@dataclass
+class EnergyEntities:
+    total: str = ""  # Gesamtverbrauch Haus (Victron)
+    grid: str = ""  # Netzbezug Stromzähler
+    battery_discharge: str = ""  # Batterie entladen
+    battery_charge_total: str = ""  # Batterie geladen gesamt
+    battery_charge_grid: str = ""  # Batterie aus Netz geladen (dyn. ESS)
+    pv_direct: str = ""  # optional: PV -> Verbraucher
+
+
+# Energiequellen: Schlüssel, Bezeichnung
+SOURCES = [
+    ("grid", "Netzstrom"),
+    ("pv", "PV-Strom direkt"),
+    ("bat_pv", "Batteriestrom aus PV"),
+    ("bat_grid", "Batteriestrom aus Netz (Graustrom)"),
+]
 
 
 @dataclass
@@ -121,16 +150,62 @@ def missing_entities(required: list[str], values: dict[str, Optional[float]]) ->
     return [e for e in required if e and values.get(e) is None]
 
 
+def energy_mix(bill: BillCfg, ent: EnergyEntities, values: dict[str, Optional[float]],
+               warnings: list[str]) -> dict:
+    """Zerlegt den Gesamtverbrauch in die vier Quellen (kWh und Anteile)."""
+    total = values.get(ent.total) if ent.total else None
+    discharge = _val(values, ent.battery_discharge)
+    charge_total = _val(values, ent.battery_charge_total)
+    charge_grid = _val(values, ent.battery_charge_grid)
+    grid_meter = values.get(ent.grid) if ent.grid else None
+    grid_import = grid_meter if grid_meter is not None else bill.grid_kwh
+
+    if charge_total > 0:
+        grey_frac = min(1.0, max(0.0, charge_grid / charge_total))
+    elif charge_grid > 0:
+        grey_frac = 1.0
+        warnings.append("„Batterie geladen gesamt“ fehlt – Batteriestrom wird komplett als Graustrom gerechnet.")
+    else:
+        grey_frac = 0.0
+
+    kwh = {k: 0.0 for k, _ in SOURCES}
+    if total is None or total <= 0:
+        if ent.total:
+            warnings.append("Kein Gesamtverbrauch vorhanden – gesamter Verbrauch wird als Netzstrom gerechnet.")
+        return {"total": total, "kwh": kwh, "share": {"grid": 1.0, "pv": 0.0, "bat_pv": 0.0, "bat_grid": 0.0},
+                "grey_frac": grey_frac, "grid_import": grid_import, "grid_meter": grid_meter}
+
+    kwh["bat_grid"] = discharge * grey_frac
+    kwh["bat_pv"] = discharge * (1 - grey_frac)
+    kwh["grid"] = max(0.0, (grid_import or 0.0) - charge_grid)
+    if ent.pv_direct:
+        kwh["pv"] = _val(values, ent.pv_direct)
+    else:
+        kwh["pv"] = max(0.0, total - kwh["grid"] - discharge)
+
+    s = sum(kwh.values())
+    if s <= 0:
+        share = {"grid": 1.0, "pv": 0.0, "bat_pv": 0.0, "bat_grid": 0.0}
+    else:
+        if abs(s - total) / total > 0.05:
+            warnings.append(
+                f"Summe der Quellen ({_de(s, 1)} kWh) weicht vom Gesamtverbrauch ({_de(total, 1)} kWh) ab – "
+                "Anteile werden normiert. Entitäten prüfen."
+            )
+        share = {k: v / s for k, v in kwh.items()}
+    return {"total": total, "kwh": kwh, "share": share, "grey_frac": grey_frac,
+            "grid_import": grid_import, "grid_meter": grid_meter}
+
+
 def compute(
     bill: BillCfg,
     parties: list[PartyCfg],
     fixed_costs: list[FixedCostCfg],
     allocations: list[AllocationCfg],
     values: dict[str, Optional[float]],
-    total_entity: str = "",
-    battery_entity: str = "",
-    grid_entity: str = "",
+    ent: Optional[EnergyEntities] = None,
 ) -> dict:
+    ent = ent or EnergyEntities()
     warnings: list[str] = []
 
     # --- Preise aus der Rechnung -------------------------------------------------
@@ -140,36 +215,45 @@ def compute(
         price_net = 0.0
         warnings.append("Bezogene kWh laut Rechnung fehlen – Durchschnittspreis = 0.")
     price_gross = price_net * (1 + bill.vat_rate)
-    battery_rate = bill.battery_rate_ct / 100.0
+    spot = bill.spot_price_ct / 100.0
+    if not bill.spot_price_ct:
+        warnings.append("Ø Börsenpreis lt. Rechnung fehlt – PV- und Batteriestrom ohne Energiepreis gerechnet.")
+    pv_rate = bill.pv_rate_ct / 100.0
+    wear = bill.wear_rate_ct / 100.0
     bill_gross = (bill.energy_cost_net + bill.fixed_cost_net) * (1 + bill.vat_rate)
 
+    prices = {
+        "grid": price_gross,
+        "pv": spot + pv_rate,
+        "bat_grid": spot + wear,
+        "bat_pv": spot + (pv_rate if bill.pv_rate_on_battery else 0.0) + wear,
+    }
+    price_notes = {
+        "grid": "Ø Arbeitspreis lt. Rechnung inkl. MwSt.",
+        "pv": f"Ø Börsenpreis {_de(spot*100)} ct + PV-Bereitstellung {_de(pv_rate*100)} ct, ohne MwSt.",
+        "bat_grid": f"Ø Börsenpreis {_de(spot*100)} ct + Batterieverschleiß {_de(wear*100)} ct, ohne MwSt.",
+        "bat_pv": (f"Ø Börsenpreis {_de(spot*100)} ct"
+                   + (f" + PV-Bereitstellung {_de(pv_rate*100)} ct" if bill.pv_rate_on_battery else "")
+                   + f" + Batterieverschleiß {_de(wear*100)} ct, ohne MwSt."),
+    }
+
     # --- Messwerte ---------------------------------------------------------------
-    total_kwh = _val(values, total_entity) if total_entity else None
-    battery_kwh = _val(values, battery_entity) if battery_entity else 0.0
-    grid_meter_kwh = values.get(grid_entity) if grid_entity else None
+    mix = energy_mix(bill, ent, values, warnings)
+    total_kwh = mix["total"]
+    grid_meter_kwh = mix["grid_meter"]
+    share = mix["share"]
 
     if grid_meter_kwh is not None and bill.grid_kwh > 0:
         dev = abs(grid_meter_kwh - bill.grid_kwh) / bill.grid_kwh
         if dev > 0.05:
             warnings.append(
-                f"Netzbezug laut Zähler ({grid_meter_kwh:.1f} kWh) weicht um {dev:.0%} "
-                f"von der Rechnung ({bill.grid_kwh:.1f} kWh) ab."
+                f"Netzbezug laut Zähler ({_de(grid_meter_kwh, 1)} kWh) weicht um {_pct(dev)} "
+                f"von der Rechnung ({_de(bill.grid_kwh, 1)} kWh) ab."
             )
 
-    if total_kwh and total_kwh > 0:
-        battery_share = min(1.0, max(0.0, battery_kwh / total_kwh))
-        if battery_kwh > total_kwh:
-            warnings.append("Batterie-Entladung ist größer als der Gesamtverbrauch – Anteil auf 100 % begrenzt.")
-    else:
-        battery_share = 0.0
-        if battery_kwh:
-            warnings.append("Kein Gesamtverbrauch vorhanden – Batterieanteil kann nicht berechnet werden.")
-
-    def energy_cost(kwh: float) -> tuple[float, float, float, float, float]:
-        """-> (netz_kwh, netz_eur, batt_kwh, batt_energie_eur, batt_nutzung_eur)"""
-        g = kwh * (1 - battery_share)
-        b = kwh * battery_share
-        return g, g * price_gross, b, b * price_net, b * battery_rate
+    def energy_cost(kwh: float) -> dict[str, tuple[float, float]]:
+        """-> {quelle: (kWh, EUR)}"""
+        return {k: (kwh * share[k], kwh * share[k] * prices[k]) for k, _ in SOURCES}
 
     # --- Verbrauch je Partei -----------------------------------------------------
     party_kwh: dict[int, float] = {}
@@ -205,29 +289,23 @@ def compute(
     lines: dict[int, list[Line]] = {p.id: [] for p in parties}
 
     for p in parties:
-        kwh = party_kwh[p.id]
-        g, g_eur, b, b_eur, b_use = energy_cost(kwh)
-        label_suffix = " (Restverbrauch Haus)" if owner is not None and p.id == owner.id and rest_kwh is not None else ""
-        lines[p.id].append(
-            Line(f"Netzstrom{label_suffix}", _r(g_eur), _r(g, 3), "kWh", price_gross,
-                 note="Durchschnittspreis lt. Rechnung inkl. MwSt.")
-        )
-        if b > 0 or battery_share > 0:
+        cost = energy_cost(party_kwh[p.id])
+        is_rest = owner is not None and p.id == owner.id and rest_kwh is not None
+        for k, label in SOURCES:
+            q, eur = cost[k]
+            if k != "grid" and share[k] <= 0:
+                continue
             lines[p.id].append(
-                Line("Batteriestrom – Energie netto", _r(b_eur), _r(b, 3), "kWh", price_net,
-                     note="Durchschnittspreis ohne MwSt.", vat_included=False)
-            )
-            lines[p.id].append(
-                Line("Batteriestrom – Nutzungssatz", _r(b_use), _r(b, 3), "kWh", battery_rate,
-                     note="ohne MwSt.", vat_included=False)
+                Line(label + (" (Restverbrauch Haus)" if is_rest and k == "grid" else ""), _r(eur), _r(q, 3),
+                     "kWh", prices[k], note=price_notes[k], vat_included=(k == "grid"))
             )
 
     # --- Fixkosten Stromanbieter (Rechnung) --------------------------------------
     if parties and bill.fixed_cost_net:
         fixed_gross = bill.fixed_cost_net * (1 + bill.vat_rate)
-        for p, share in zip(parties, _split_equal(fixed_gross, len(parties))):
+        for p, part in zip(parties, _split_equal(fixed_gross, len(parties))):
             lines[p.id].append(
-                Line("Fixkosten Stromanbieter (Grundpreis/Messstelle) anteilig", share,
+                Line("Fixkosten Stromanbieter (Grundpreis/Messstelle) anteilig", part,
                      note=f"{_de(fixed_gross)} € / {len(parties)} Parteien")
             )
 
@@ -236,16 +314,15 @@ def compute(
         targets = [p for p in parties if not fc.party_ids or p.id in fc.party_ids]
         if not targets or not fc.amount_gross:
             continue
-        for p, share in zip(targets, _split_equal(fc.amount_gross, len(targets))):
+        for p, part in zip(targets, _split_equal(fc.amount_gross, len(targets))):
             note = f"{_de(fc.amount_gross)} € / {len(targets)} Parteien" if len(targets) > 1 else ""
-            lines[p.id].append(Line(fc.name, share, note=note))
+            lines[p.id].append(Line(fc.name, part, note=note))
 
     # --- Umlagen -----------------------------------------------------------------
     for a in allocations:
         if a.source_type == "energy":
             src_kwh = _val(values, a.source_entity)
-            g, g_eur, b, b_eur, b_use = energy_cost(src_kwh)
-            pot = g_eur + b_eur + b_use
+            pot = sum(eur for _, eur in energy_cost(src_kwh).values())
             pot_desc = f"{_de(src_kwh, 1)} kWh = {_de(pot)} €"
         else:
             pot = a.amount
@@ -274,13 +351,13 @@ def compute(
             wsum = float(len(targets))
 
         for p in targets:
-            share = weights[p.id] / wsum
+            frac = weights[p.id] / wsum
             if a.key_type == "entity":
                 qty = f"{_de(weights[p.id])} {a.key_unit} von {_de(wsum)} {a.key_unit}"
-                note = f"{qty} ({_pct(share)}) von {pot_desc}"
+                note = f"{qty} ({_pct(frac)}) von {pot_desc}"
             else:
-                note = f"{_pct(share)} von {pot_desc}"
-            lines[p.id].append(Line(a.name, _r(pot * share), note=note))
+                note = f"{_pct(frac)} von {pot_desc}"
+            lines[p.id].append(Line(a.name, _r(pot * frac), note=note))
 
     # --- Ergebnis ----------------------------------------------------------------
     result_parties = []
@@ -304,10 +381,14 @@ def compute(
     return {
         "price_net": price_net,
         "price_gross": price_gross,
-        "battery_rate": battery_rate,
-        "battery_share": battery_share,
+        "spot_price": spot,
+        "pv_rate": pv_rate,
+        "wear_rate": wear,
+        "prices": prices,
+        "sources": [{"key": k, "label": label, "kwh": _r(mix["kwh"][k], 3), "share": share[k],
+                     "price": prices[k]} for k, label in SOURCES],
+        "grey_frac": mix["grey_frac"],
         "total_kwh": total_kwh,
-        "battery_kwh": battery_kwh,
         "grid_meter_kwh": grid_meter_kwh,
         "bill_gross": _r(bill_gross),
         "charged_total": charged,

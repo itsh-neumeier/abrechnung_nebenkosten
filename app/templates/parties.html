@@ -4,17 +4,18 @@
 <a class="btn" href="/parties/0">+ Partei anlegen</a>
 <div class="card scroll" style="margin-top:12px">
 <table>
-<tr><th>Name</th><th>Wohnung</th><th>Shelly-Zähler</th><th>Rolle</th><th>Status</th></tr>
+<tr><th>Wohneinheit</th><th>WE-ID</th><th>E-Mail</th><th>Shelly-Zähler</th><th>Rolle</th><th>Status</th></tr>
 {% for p in parties %}
 <tr>
-  <td><a href="/parties/{{ p.id }}">{{ p.name }}</a></td>
-  <td>{{ p.unit }}</td>
+  <td><a href="/parties/{{ p.id }}">{{ p.name }}</a>{% if p.unit %}<br><span class="muted">{{ p.unit }}</span>{% endif %}</td>
+  <td>{{ p.unit_id or '' }}</td>
+  <td>{{ p.email or '–' }}</td>
   <td>{% for m in p.meters %}<code>{{ m }}</code><br>{% endfor %}</td>
-  <td>{% if p.is_owner %}<span class="badge">Eigentümer – bekommt Restverbrauch</span>{% endif %}</td>
+  <td>{% if p.is_owner %}<span class="badge">Eigentümer – Restverbrauch</span>{% endif %}</td>
   <td>{{ "aktiv" if p.active else "inaktiv" }}</td>
 </tr>
-{% else %}<tr><td colspan="5" class="muted">Noch keine Parteien.</td></tr>{% endfor %}
+{% else %}<tr><td colspan="6" class="muted">Noch keine Parteien.</td></tr>{% endfor %}
 </table>
 </div>
-<p class="muted">Der Eigentümer/Hauptpartei erhält den Restverbrauch: Gesamtverbrauch (Victron) minus alle anderen Parteien minus Energie-Umlagen. Eigene Shellys des Eigentümers werden dann nicht benötigt.</p>
+<p class="muted">Der Eigentümer/Hauptpartei erhält den Restverbrauch: Gesamtverbrauch (Victron) minus alle anderen Parteien minus Energie-Umlagen.</p>
 {% endblock %}

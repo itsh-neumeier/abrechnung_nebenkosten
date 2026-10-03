@@ -9,33 +9,65 @@
 </div>
 <form method="post" action="/settings">
 <div class="card">
-  <h2 style="margin-top:0">Haus-Entitäten</h2>
-  <p class="muted">Energie-Sensoren mit <code>state_class: total_increasing</code> (kWh). Vorschläge erscheinen beim Tippen, wenn HA verbunden ist.</p>
-  <label>Stromzähler Netzbezug (zur Kontrolle gegen die Rechnung)</label>
-  <input type="text" name="entity_grid" list="ha-entities" value="{{ st.entity_grid }}" placeholder="sensor.stromzaehler_bezug">
-  <label>Gesamtverbrauch Haus (Victron, hinter dem Zähler)</label>
-  <input type="text" name="entity_total" list="ha-entities" value="{{ st.entity_total }}" placeholder="sensor.victron_verbrauch_gesamt">
-  <label>Batterie-Entladung (Victron)</label>
-  <input type="text" name="entity_battery" list="ha-entities" value="{{ st.entity_battery }}" placeholder="sensor.victron_batterie_entladen">
+  <h2 style="margin-top:0">Haus-Entitäten (Energiemix)</h2>
+  <p class="muted">Zählersensoren (kWh) mit Langzeitstatistik. Über „Aus HA wählen“ direkt aus Home Assistant auswählen.</p>
+  {% for key, label in house_entities %}
+  <label>{{ label }}</label>
+  <input type="text" name="{{ key }}" value="{{ st[key] }}" data-entity>
+  {% endfor %}
+  <p class="muted">Aus diesen Werten wird der Mix berechnet:
+    Netz direkt = Netzbezug − Netz→Batterie · Batterie aus Netz = Entladung × (Netz→Batterie ÷ Batterie geladen) ·
+    Batterie aus PV = restliche Entladung · PV direkt = Gesamtverbrauch − Netz direkt − Entladung (oder eigene Entität).</p>
 </div>
 <div class="card">
-  <h2 style="margin-top:0">Standardwerte</h2>
+  <h2 style="margin-top:0">Sätze (Standardwerte für neue Abrechnungen)</h2>
   <div class="grid">
-    <div><label>Batterienutzungssatz (ct/kWh, ohne MwSt.)</label><input type="text" name="battery_rate_ct" value="{{ st.battery_rate_ct }}"></div>
+    <div><label>PV-Bereitstellungssatz (ct/kWh, netto)</label><input type="text" name="pv_rate_ct" value="{{ st.pv_rate_ct }}"></div>
+    <div><label>Batterieverschleißsatz (ct/kWh, netto)</label><input type="text" name="battery_rate_ct" value="{{ st.battery_rate_ct }}"></div>
     <div><label>MwSt.-Satz Stromrechnung (%)</label><input type="text" name="vat_rate" value="{{ st.vat_rate }}"></div>
     <div><label>Zahlungsziel (Tage)</label><input type="text" name="payment_days" value="{{ st.payment_days }}"></div>
   </div>
+  <div class="check"><input type="checkbox" name="pv_rate_on_battery" id="prb" {% if st.pv_rate_on_battery %}checked{% endif %}><label for="prb" style="margin:0">PV-Bereitstellungssatz auch auf Batteriestrom aus PV berechnen</label></div>
 </div>
 <div class="card">
-  <h2 style="margin-top:0">Absender auf der Abrechnung</h2>
+  <h2 style="margin-top:0">Objekt / Kopf der Abrechnung</h2>
+  <div class="grid">
+    <div><label>Titel</label><input type="text" name="building_title" value="{{ st.building_title }}"></div>
+    <div><label>Objektanschrift</label><input type="text" name="building_address" value="{{ st.building_address }}" placeholder="Straße Nr., PLZ Ort"></div>
+    <div><label>Gebäude-ID</label><input type="text" name="building_id" value="{{ st.building_id }}" placeholder="GID-01"></div>
+  </div>
+  <p class="muted">Die Wohneinheiten-ID (z. B. WE-001) wird je Partei hinterlegt.</p>
+</div>
+<div class="card">
+  <h2 style="margin-top:0">Absender &amp; Zahlung</h2>
   <div class="grid">
     <div><label>Name</label><input type="text" name="landlord_name" value="{{ st.landlord_name }}"></div>
     <div><label>IBAN / Bankverbindung</label><input type="text" name="landlord_iban" value="{{ st.landlord_iban }}"></div>
+    <div><label>Kontakt (Telefon / E-Mail)</label><input type="text" name="landlord_contact" value="{{ st.landlord_contact }}"></div>
   </div>
   <label>Anschrift</label><textarea name="landlord_address">{{ st.landlord_address }}</textarea>
-  <label>Kontakt (Telefon / E-Mail)</label><input type="text" name="landlord_contact" value="{{ st.landlord_contact }}">
-  <label>Einleitungstext</label><textarea name="invoice_text">{{ st.invoice_text }}</textarea>
+  <label>Zusatztext auf der Abrechnung (optional)</label><textarea name="invoice_text">{{ st.invoice_text }}</textarea>
+</div>
+<div class="card">
+  <h2 style="margin-top:0">E-Mail-Versand</h2>
+  {% if mail_ok %}
+  <p>SMTP: <code>{{ smtp.smtp_host }}:{{ smtp.smtp_port }}</code> ({{ smtp.smtp_security }}) · Absender <code>{{ smtp.smtp_from }}</code></p>
+  {% else %}
+  <div class="warn">SMTP ist nicht konfiguriert – <code>SMTP_HOST</code>, <code>SMTP_FROM</code> usw. in der <code>.env</code> setzen.</div>
+  {% endif %}
+  <div class="check"><input type="checkbox" name="mail_auto_send" id="mas" {% if st.mail_auto_send %}checked{% endif %}><label for="mas" style="margin:0">Beim Abschließen automatisch an alle Parteien mit E-Mail-Adresse versenden</label></div>
+  <label>BCC (z. B. eigene Adresse als Kopie)</label><input type="text" name="mail_bcc" value="{{ st.mail_bcc }}">
+  <label>Betreff</label><input type="text" name="mail_subject" value="{{ st.mail_subject }}">
+  <label>Text</label><textarea name="mail_body" rows="7">{{ st.mail_body }}</textarea>
+  <p class="muted">Platzhalter: {name}, {wohneinheit}, {we_id}, {zeitraum}, {betrag}, {absender}, {gebaeude}</p>
 </div>
 <button>Speichern</button>
 </form>
+{% if mail_ok %}
+<form method="post" action="/settings/testmail" class="card" style="margin-top:16px">
+  <label>Test-E-Mail senden an</label>
+  <input type="text" name="to" value="{{ st.mail_bcc }}" required>
+  <button class="sec">Test senden</button>
+</form>
+{% endif %}
 {% endblock %}

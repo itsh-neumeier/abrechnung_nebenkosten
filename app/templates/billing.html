@@ -5,31 +5,50 @@
 
 {% if r %}
 <div class="kpi">
-  <div><span>Ø Preis Netz brutto</span><b>{{ (r.price_gross*100)|num(2) }} ct/kWh</b></div>
-  <div><span>Ø Preis netto</span><b>{{ (r.price_net*100)|num(2) }} ct/kWh</b></div>
-  <div><span>Batterieanteil</span><b>{{ (r.battery_share*100)|num(1) }} %</b></div>
+  <div><span>Ø Arbeitspreis brutto</span><b>{{ (r.price_gross*100)|num(2) }} ct/kWh</b></div>
+  <div><span>Ø Börsenpreis netto</span><b>{{ (r.spot_price*100)|num(2) }} ct/kWh</b></div>
   <div><span>Gesamtverbrauch Haus</span><b>{{ r.total_kwh|num(1) if r.total_kwh is not none else '–' }} kWh</b></div>
   <div><span>Rechnung brutto</span><b>{{ r.bill_gross|eur }}</b></div>
   <div><span>Umgelegt gesamt</span><b>{{ r.charged_total|eur }}</b></div>
+</div>
+<div class="card scroll">
+<table>
+<tr><th>Energiemix im Zeitraum</th><th class="r">kWh</th><th class="r">Anteil</th><th class="r">Preis/kWh</th><th></th></tr>
+{% for src in r.sources %}
+<tr><td>{{ src.label }}</td><td class="r">{{ src.kwh|num(1) }}</td><td class="r">{{ (src.share*100)|num(1) }} %</td>
+<td class="r">{{ (src.price*100)|num(2) }} ct</td><td class="muted">{{ 'brutto' if src.key == 'grid' else 'netto' }}</td></tr>
+{% endfor %}
+</table>
+<p class="muted">Batterieladung aus dem Netz: {{ (r.grey_frac*100)|num(1) }} % der Ladung.</p>
 </div>
 {% for w in r.warnings %}<div class="warn">⚠ {{ w }}</div>{% endfor %}
 
 <h2>Ergebnis je Partei</h2>
 <div class="card scroll">
 <table>
-<tr><th>Partei</th><th class="r">kWh</th><th class="r">Betrag</th><th></th></tr>
+<tr><th>Partei</th><th class="r">kWh</th><th class="r">Betrag</th><th></th><th>E-Mail</th></tr>
 {% for p in r.parties %}
 <tr>
   <td>{{ p.name }}{% if p.is_owner %} <span class="muted">(Eigentümer, Rest)</span>{% endif %}</td>
   <td class="r">{{ p.kwh|num(1) }}</td>
   <td class="r"><b>{{ p.total|eur }}</b></td>
   <td class="r"><a href="/billings/{{ b.id }}/invoice/{{ p.id }}" target="_blank">Ansicht</a> · <a href="/billings/{{ b.id }}/invoice/{{ p.id }}.pdf" target="_blank">PDF</a></td>
+  <td>{% set sx = (b.sent or {}).get(p.id|string) %}
+    {% if sx and sx.ok %}<span class="badge final">versendet {{ sx.at[:16]|replace('T', ' ') }}</span>
+    {% elif sx %}<span class="badge" title="{{ sx.error }}" style="color:var(--danger)">Fehler</span>{% endif %}
+    {% if b.status == 'final' and mail_ok and emails.get(p.id) %}
+    <button form="mailform" class="sec pick-btn" name="action" value="send:{{ p.id }}">{{ 'erneut senden' if sx and sx.ok else 'senden' }}</button>
+    {% elif not emails.get(p.id) %}<span class="muted">keine Adresse</span>{% endif %}
+  </td>
 </tr>
 {% endfor %}
-<tr><td><b>Summe</b></td><td></td><td class="r"><b>{{ r.charged_total|eur }}</b></td><td></td></tr>
-<tr><td class="muted">Differenz zur Rechnung (Batterie-/PV-Effekt, Rundung)</td><td></td><td class="r muted">{{ r.difference|eur }}</td><td></td></tr>
+<tr><td><b>Summe</b></td><td></td><td class="r"><b>{{ r.charged_total|eur }}</b></td><td></td><td></td></tr>
+<tr><td class="muted">Differenz zur Rechnung (PV/Batterie, Rundung)</td><td></td><td class="r muted">{{ r.difference|eur }}</td><td></td><td></td></tr>
 </table>
 <a class="btn sec" href="/billings/{{ b.id }}/all.zip">Alle PDFs als ZIP</a>
+{% if b.status == 'final' and mail_ok %}<button form="mailform" name="action" value="send_all" onclick="return confirm('Abrechnungen an alle Parteien mit E-Mail-Adresse senden?')">Alle per E-Mail senden</button>
+{% elif b.status != 'final' %}<span class="muted">E-Mail-Versand nach dem Abschließen{% if st.mail_auto_send %} (automatisch){% endif %}.</span>{% endif %}
+<form method="post" id="mailform"></form>
 </div>
 {% endif %}
 

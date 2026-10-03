@@ -11,7 +11,7 @@
         <option value="amount" {% if a.source_type=='amount' %}selected{% endif %}>Betrag in € (je Abrechnung anpassbar)</option>
       </select>
     </div>
-    <div><label>Quell-Entität (bei Strom)</label><input type="text" name="source_entity" list="ha-entities" value="{{ a.source_entity }}" placeholder="sensor.warmwasser_energie"></div>
+    <div><label>Quell-Entität (bei Strom)</label><input type="text" name="source_entity" data-entity value="{{ a.source_entity }}" placeholder="sensor.warmwasser_energie"></div>
     <div><label>Standardbetrag (bei Betrag, brutto €)</label><input type="text" name="default_amount" value="{{ a.default_amount|num(2) }}"></div>
   </div>
   <p class="muted">Strom-Umlagen werden vom Restverbrauch des Eigentümers abgezogen, damit nichts doppelt berechnet wird.</p>
@@ -30,7 +30,7 @@
   <p class="muted">Bei „Verbrauch je Partei“: Entität eintragen. Bei „Prozente“: Zahl eintragen. Leer = Partei nimmt nicht teil.</p>
   {% for p in parties %}
   <label>{{ p.name }}</label>
-  <input type="text" name="key_{{ p.id }}" list="ha-entities" value="{{ (a.key or {}).get(p.id|string, '') }}">
+  <input type="text" name="key_{{ p.id }}" data-entity data-unit="volume" value="{{ (a.key or {}).get(p.id|string, '') }}">
   {% endfor %}
   <div class="check"><input type="checkbox" name="active" id="a" {% if a.active %}checked{% endif %}><label for="a" style="margin:0">aktiv</label></div>
   <button>Speichern</button>

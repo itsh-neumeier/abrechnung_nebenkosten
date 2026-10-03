@@ -1,6 +1,9 @@
 import pytest
 
-from app.billing import AllocationCfg, BillCfg, FixedCostCfg, PartyCfg, compute
+from app.billing import AllocationCfg, BillCfg, EnergyEntities, FixedCostCfg, PartyCfg, compute
+
+ENT = EnergyEntities(total="sensor.total", grid="sensor.grid", battery_discharge="sensor.dis",
+                     battery_charge_total="sensor.chg", battery_charge_grid="sensor.chg_grid")
 
 
 def amounts(party):
@@ -9,7 +12,9 @@ def amounts(party):
 
 @pytest.fixture
 def setup():
-    bill = BillCfg(grid_kwh=500, energy_cost_net=125.0, fixed_cost_net=20.0, vat_rate=0.19, battery_rate_ct=10)
+    # Ø Arbeitspreis 25 ct netto / 29,75 ct brutto, Börse 10 ct, PV 5 ct, Verschleiß 8 ct
+    bill = BillCfg(grid_kwh=500, energy_cost_net=125.0, fixed_cost_net=20.0, vat_rate=0.19,
+                   wear_rate_ct=8, spot_price_ct=10, pv_rate_ct=5)
     parties = [
         PartyCfg(1, "Eigentümer", is_owner=True),
         PartyCfg(2, "Mieter EG", meters=["sensor.eg"]),
@@ -17,32 +22,56 @@ def setup():
     ]
     values = {
         "sensor.total": 1000.0,
-        "sensor.batt": 250.0,  # 25 % Batterieanteil
-        "sensor.grid": 500.0,
-        "sensor.eg": 200.0,
+        "sensor.grid": 500.0,     # davon 100 kWh in die Batterie -> 400 kWh Netz direkt
+        "sensor.chg": 200.0,      # Batterie geladen gesamt
+        "sensor.chg_grid": 100.0,  # davon aus dem Netz -> 50 % Graustrom
+        "sensor.dis": 250.0,      # Batterie entladen -> 125 Grau + 125 PV
+        "sensor.eg": 200.0,       # PV direkt = 1000 - 400 - 250 = 350
         "sensor.og_a": 100.0,
         "sensor.og_b": 100.0,
     }
     return bill, parties, values
 
 
-def run(bill, parties, values, fixed=(), allocs=()):
-    return compute(bill, parties, list(fixed), list(allocs), values,
-                   total_entity="sensor.total", battery_entity="sensor.batt", grid_entity="sensor.grid")
+def run(bill, parties, values, fixed=(), allocs=(), ent=ENT):
+    return compute(bill, parties, list(fixed), list(allocs), values, ent)
 
 
-def test_prices_and_battery_split(setup):
+def test_energy_mix(setup):
     r = run(*setup)
-    assert r["price_net"] == pytest.approx(0.25)
-    assert r["price_gross"] == pytest.approx(0.2975)
-    assert r["battery_share"] == pytest.approx(0.25)
-    eg = r["parties"][1]
-    a = amounts(eg)
-    # 200 kWh: 150 Netz * 0.2975, 50 Batterie * 0.25 netto + 50 * 0.10
-    assert a["Netzstrom"] == pytest.approx(44.63)
-    assert a["Batteriestrom – Energie netto"] == pytest.approx(12.50)
-    assert a["Batteriestrom – Nutzungssatz"] == pytest.approx(5.00)
+    src = {s["key"]: s for s in r["sources"]}
+    assert src["grid"]["kwh"] == pytest.approx(400)
+    assert src["pv"]["kwh"] == pytest.approx(350)
+    assert src["bat_pv"]["kwh"] == pytest.approx(125)
+    assert src["bat_grid"]["kwh"] == pytest.approx(125)
+    assert r["grey_frac"] == pytest.approx(0.5)
     assert r["warnings"] == []
+
+
+def test_party_prices_per_source(setup):
+    r = run(*setup)
+    a = amounts(r["parties"][1])  # 200 kWh: 40 % / 35 % / 12,5 % / 12,5 %
+    assert a["Netzstrom"] == pytest.approx(80 * 0.2975)            # brutto
+    assert a["PV-Strom direkt"] == pytest.approx(70 * 0.15)        # Börse + PV
+    assert a["Batteriestrom aus PV"] == pytest.approx(25 * 0.23)   # Börse + PV + Verschleiß
+    assert a["Batteriestrom aus Netz (Graustrom)"] == pytest.approx(25 * 0.18)  # Börse + Verschleiß
+    vat = {l["label"]: l["vat_included"] for l in r["parties"][1]["lines"]}
+    assert vat["Netzstrom"] and not vat["PV-Strom direkt"]
+
+
+def test_pv_rate_on_battery_optional(setup):
+    bill, parties, values = setup
+    bill.pv_rate_on_battery = False
+    a = amounts(run(bill, parties, values)["parties"][1])
+    assert a["Batteriestrom aus PV"] == pytest.approx(25 * 0.18)
+
+
+def test_pv_direct_entity_and_normalisation(setup):
+    bill, parties, values = setup
+    values["sensor.pv"] = 700.0  # passt nicht zum Gesamtverbrauch -> Warnung + Normierung
+    r = run(bill, parties, values, ent=EnergyEntities(**{**ENT.__dict__, "pv_direct": "sensor.pv"}))
+    assert sum(s["share"] for s in r["sources"]) == pytest.approx(1.0)
+    assert any("normiert" in w for w in r["warnings"])
 
 
 def test_owner_gets_rest_and_fixed_costs_split_equally(setup):
@@ -69,9 +98,8 @@ def test_energy_allocation_by_water_meters(setup):
                           key={2: "sensor.w_eg", 3: "sensor.w_og"}, key_unit="m³")
     r = run(bill, parties, values, allocs=[alloc])
     owner, eg, og = r["parties"]
-    # Warmwasser-Strom wird vom Restverbrauch des Eigentümers abgezogen
-    assert owner["kwh"] == pytest.approx(500)
-    pot = 75 * 0.2975 + 25 * 0.25 + 25 * 0.10
+    assert owner["kwh"] == pytest.approx(500)  # Warmwasser-Strom vom Rest abgezogen
+    pot = 40 * 0.2975 + 35 * 0.15 + 12.5 * 0.23 + 12.5 * 0.18
     assert amounts(eg)["Warmwasser"] == pytest.approx(round(pot * 0.75, 2))
     assert amounts(og)["Warmwasser"] == pytest.approx(round(pot * 0.25, 2))
     assert "Warmwasser" not in amounts(owner)
@@ -83,11 +111,11 @@ def test_amount_allocation_percent(setup):
     assert [amounts(p)["Wasser"] for p in r["parties"]] == [50.0, 30.0, 20.0]
 
 
-def test_reconciliation_without_battery_matches_bill():
-    bill = BillCfg(grid_kwh=400, energy_cost_net=100.0, fixed_cost_net=30.0, vat_rate=0.19, battery_rate_ct=10)
+def test_grid_only_house_matches_bill():
+    bill = BillCfg(grid_kwh=400, energy_cost_net=100.0, fixed_cost_net=30.0, vat_rate=0.19)
     parties = [PartyCfg(1, "A", is_owner=True), PartyCfg(2, "B", meters=["m"])]
-    values = {"t": 400.0, "b": 0.0, "m": 150.0}
-    r = compute(bill, parties, [], [], values, total_entity="t", battery_entity="b")
+    values = {"t": 400.0, "g": 400.0, "m": 150.0}
+    r = compute(bill, parties, [], [], values, EnergyEntities(total="t", grid="g"))
     assert r["difference"] == pytest.approx(0.0, abs=0.02)
 
 

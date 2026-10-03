@@ -27,9 +27,19 @@ button.danger{background:transparent;border-color:var(--danger);color:var(--dang
 .badge{display:inline-block;padding:1px 8px;border-radius:99px;font-size:.78rem;border:1px solid var(--line)}
 .badge.final{border-color:var(--ok);color:var(--ok)}
 .kpi{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
-.kpi div{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
-.kpi b{display:block;font-size:1.25rem}
-.kpi span{color:var(--muted);font-size:.82rem}
+.kpi>div{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
+.kpi>div b{display:block;font-size:1.25rem}
+.kpi>div>span{color:var(--muted);font-size:.82rem}
 .check{display:flex;gap:8px;align-items:center;margin:10px 0}
 .check input{width:auto}
 code{font-size:.85em}
+dialog.picker{width:min(760px,96vw);max-height:86vh;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--fg);padding:0}
+dialog.picker::backdrop{background:rgba(0,0,0,.45)}
+.picker-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}
+.picker-filter{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center;padding:10px 16px}
+.picker-filter .check{margin:0;white-space:nowrap}
+@media (max-width:640px){.picker-filter{grid-template-columns:1fr 1fr}}
+.picker-list{overflow:auto;max-height:60vh;padding:0 16px 16px}
+.picker-list tr{cursor:pointer}.picker-list tr:hover{background:var(--bg)}
+.pick-btn{font-size:.82rem;padding:4px 10px;margin-top:4px}
+h3{font-size:.95rem;margin:1.2em 0 .2em;color:var(--muted)}
