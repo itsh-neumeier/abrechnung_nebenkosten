@@ -30,6 +30,14 @@ Leistungssensoren, in ruhigen Monaten nur ~1,5 %. Die Leistungssensoren hatten d
 
 Netzladeanteil = `vebus_acin1toinverter ÷ battery_history_chargedenergy` (jeweils Verbrauch im Monat).
 
+## Netzbezug: Rechnung maßgeblich, Zähler zur Kontrolle
+
+Gerechnet wird immer mit dem Netzbezug **laut Rechnung** – der amtliche Zähler ist maßgeblich, auch bei
+einem Zählerwechsel im Monat. Das Feld „Netzbezug“ dient nur der Kontrolle (Warnung ab 5 % Abweichung).
+Empfehlung, solange der neue Zähler nicht ausgelesen werden kann: `victron:grid_import` (Energiezähler über
+den eigenen Victron-Logger). Für Monate vor dem Zählerwechsel liegen die Werte des alten Zählers weiter in
+der HA-Statistik.
+
 ## Victron Energy Meter (VM-3P75CT o. Ä.) als Netzzähler
 
 Der Energiezähler hinter dem EVU-Zähler zählt Bezug und Einspeisung in kWh im Gerät. hass-victron liest ihn

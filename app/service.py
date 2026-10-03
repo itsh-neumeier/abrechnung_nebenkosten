@@ -43,7 +43,8 @@ def water_price_parts(st: dict[str, str]) -> list[tuple[str, float]]:
 # "suggest": Teile der Entity-ID; mehrere Teile werden als Summe eingetragen.
 VICTRON_HINTS = {
     "entity_grid": {
-        "hint": "Stromzähler in HA (Bezug in kWh) – er muss zur Rechnung passen. Victron Energy Meter: "
+        "hint": "Nur zur Kontrolle gegen die Rechnung – gerechnet wird immer mit dem Bezug laut Rechnung. "
+                "Stromzähler in HA (Bezug in kWh) oder Victron-Logger victron:grid_import. Victron Energy Meter: "
                 "grid_energy_forward_total (hass-victron) bzw. victron_netzzaehler_bezug (HA-Modbus, siehe "
                 "docs/ha-modbus-victron-netzzaehler.yaml). Leer lassen = kWh aus der Stromrechnung. Nicht die "
                 "Leistung system_grid_l1–l3 als 3 Phasen nehmen: durch den Phasenausgleich käme ein Vielfaches heraus.",

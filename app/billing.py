@@ -5,7 +5,7 @@ Energiemix
 Der Gesamtverbrauch des Hauses (Victron) wird für den Abrechnungszeitraum in vier
 Quellen zerlegt:
 
-* **Netzstrom direkt**  = Netzbezug (Zähler) - Netz->Batterie
+* **Netzstrom direkt**  = Netzbezug laut Rechnung (sonst Zähler) - Netz->Batterie
 * **Batterie aus Netz** (Graustrom, dynamisches ESS) = Batterie-Entladung x Anteil Netzladung
 * **Batterie aus PV**   = Batterie-Entladung x (1 - Anteil Netzladung)
 * **PV direkt**         = Rest (oder eigene Entität)
@@ -174,7 +174,9 @@ def energy_mix(bill: BillCfg, ent: EnergyEntities, values: dict[str, Optional[fl
     charge_total = _sum(values, ent.battery_charge_total) or 0.0
     charge_grid = _sum(values, ent.battery_charge_grid) or 0.0
     grid_meter = _sum(values, ent.grid) if ent.grid else None
-    grid_import = grid_meter if grid_meter is not None else bill.grid_kwh
+    # Maßgeblich ist der Netzbezug laut Rechnung (amtlicher Zähler, inkl. Zählerwechsel);
+    # ein Zähler aus HA / Victron dient nur zur Kontrolle und als Rückfall ohne Rechnungswert.
+    grid_import = bill.grid_kwh if bill.grid_kwh and bill.grid_kwh > 0 else grid_meter
 
     if charge_total > 0:
         grey_frac = min(1.0, max(0.0, charge_grid / charge_total))

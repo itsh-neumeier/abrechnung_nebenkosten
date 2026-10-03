@@ -162,3 +162,20 @@ def test_house_entities_can_be_summed(setup):
     ent = EnergyEntities(**{**ENT.__dict__, "battery_discharge": "sensor.inv_acout + sensor.inv_acin"})
     src = {s["key"]: s for s in run(bill, parties, values, ent=ent)["sources"]}
     assert src["bat_pv"]["kwh"] + src["bat_grid"]["kwh"] == pytest.approx(250)
+
+
+def test_bill_kwh_wins_over_incomplete_meter(setup):
+    """Zählerwechsel: der Zähler in HA deckt nur einen Teil des Monats ab -> Mix nutzt den Bezug laut Rechnung."""
+    bill, parties, values = setup
+    values["sensor.grid"] = 120.0  # alter Zähler nur bis zum Wechsel
+    r = run(bill, parties, values)
+    src = {s["key"]: s for s in r["sources"]}
+    assert src["grid"]["kwh"] == pytest.approx(500 - 100)  # Rechnung 500 kWh - Netz->Batterie 100
+    assert any("weicht" in w for w in r["warnings"])  # Kontrolle schlägt an
+
+
+def test_meter_used_when_bill_has_no_kwh(setup):
+    bill, parties, values = setup
+    bill.grid_kwh = 0
+    src = {s["key"]: s for s in run(bill, parties, values)["sources"]}
+    assert src["grid"]["kwh"] == pytest.approx(500 - 100)  # Zähler 500 kWh
