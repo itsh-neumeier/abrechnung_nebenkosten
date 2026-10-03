@@ -370,7 +370,7 @@ def create_from_invoice(s: Session, inv: invoice_import.ParsedInvoice, pdf: byte
     """Legt einen Abrechnungs-Entwurf aus einer importierten Rechnung an."""
     st = get_settings(s)
     b = Billing(
-        title=f"Strom {inv.period_start:%m/%Y}" if inv.period_start else "Strom",
+        title=f"Nebenkosten {inv.period_start:%m/%Y}" if inv.period_start else "Nebenkosten",
         invoice_no=inv.invoice_no,
         period_start=inv.period_start,
         period_end=inv.period_end,

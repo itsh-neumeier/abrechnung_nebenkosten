@@ -1,4 +1,4 @@
-"""Reine Berechnungslogik der Stromabrechnung (ohne Datenbank / Home Assistant).
+"""Reine Berechnungslogik der Nebenkostenabrechnung (ohne Datenbank / Home Assistant).
 
 Energiemix
 ----------

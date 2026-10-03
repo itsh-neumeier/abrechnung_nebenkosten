@@ -108,7 +108,7 @@ def test_full_flow(monkeypatch):
         assert rcpt == ["zweig@test.de", "ich@test.de"]
         assert msg["Subject"] == "Abrechnung 01.09.2026 – 30.09.2026 – Familie Muster"
         att = [p for p in msg.iter_attachments()]
-        assert att[0].get_filename() == "Nebenkostenabrechnung_Strom_2026-09_WE-001.pdf"
+        assert att[0].get_filename() == "Nebenkostenabrechnung_2026-09_WE-001.pdf"
         assert "versendet" in c.get(url).text
 
         # manuell erneut senden
@@ -231,3 +231,21 @@ def test_fetch_values_reasons_and_no_overwrite(monkeypatch):
             assert "umbenannt" in missing["sensor.leer"]
             r = service.recompute(s, b)
             assert any("umbenannt" in w for w in r["warnings"])
+
+
+def test_legacy_titles_renamed():
+    from datetime import date
+
+    from app import db
+
+    with db.SessionLocal() as s:
+        s.add(db.Billing(title="Strom 08/2026", period_start=date(2026, 8, 1), period_end=date(2026, 8, 31),
+                         energy_cost_net=1, values={}, amounts={}, result={}, sent={}))
+        s.add(db.Billing(title="Mein Titel", period_start=date(2026, 9, 1), period_end=date(2026, 9, 30),
+                         energy_cost_net=1, values={}, amounts={}, result={}, sent={}))
+        s.add(db.Setting(key="mail_subject", value="Nebenkostenabrechnung Strom {zeitraum} – {wohneinheit}"))
+        s.commit()
+    db.init_db()
+    with db.SessionLocal() as s:
+        assert sorted(b.title for b in s.query(db.Billing).all()) == ["Mein Titel", "Nebenkosten 08/2026"]
+        assert db.get_settings(s)["mail_subject"] == "Nebenkostenabrechnung {zeitraum} – {wohneinheit}"

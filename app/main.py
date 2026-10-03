@@ -40,7 +40,7 @@ async def lifespan(_app):
         t.cancel()
 
 
-app = FastAPI(title="Stromabrechnung Hausparteien", lifespan=lifespan)
+app = FastAPI(title="Nebenkostenabrechnung Hausparteien", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 
 
@@ -74,7 +74,7 @@ async def basic_auth(request: Request, call_next):
             except Exception:
                 ok = False
         if not ok:
-            return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="Stromabrechnung"'})
+            return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="Nebenkostenabrechnung"'})
     return await call_next(request)
 
 
@@ -156,7 +156,7 @@ async def settings_testmail(request: Request, s: Session = Depends(get_session))
     form = await request.form()
     to = str(form.get("to", "")).strip()
     try:
-        mailer.send_mail([to], "Test Stromabrechnung", "Der E-Mail-Versand funktioniert.", [])
+        mailer.send_mail([to], "Test Nebenkostenabrechnung", "Der E-Mail-Versand funktioniert.", [])
         return redirect("/settings", f"Test-E-Mail an {to} verschickt")
     except Exception as e:  # noqa: BLE001
         return redirect("/settings", f"E-Mail fehlgeschlagen: {e}")
@@ -440,7 +440,7 @@ async def billing_create(request: Request, s: Session = Depends(get_session)):
     b = Billing(values={}, amounts={}, result={}, sent={})
     _apply_bill_form(b, form, st)
     if not b.title:
-        b.title = f"Strom {b.period_start.strftime('%m/%Y')}"
+        b.title = f"Nebenkosten {b.period_start.strftime('%m/%Y')}"
     s.add(b)
     s.commit()
     msg = "Angelegt"
@@ -568,4 +568,4 @@ def invoices_zip(bid: int, s: Session = Depends(get_session)):
         for p in b.result.get("parties", []):
             z.writestr(pdf_name(b, p), invoice_pdf(b, p))
     return Response(buf.getvalue(), media_type="application/zip",
-                    headers={"Content-Disposition": f'attachment; filename="Stromabrechnung_{b.period_start:%Y-%m}.zip"'})
+                    headers={"Content-Disposition": f'attachment; filename="Nebenkostenabrechnung_{b.period_start:%Y-%m}.zip"'})

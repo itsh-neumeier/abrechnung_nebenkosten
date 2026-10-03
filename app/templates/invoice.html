@@ -82,7 +82,7 @@ Kosten und enthalten keine Mehrwertsteuer (Netzanteile von Strom-Umlagen enthalt
 
 <div class="foot">Bitte überweisen Sie den Betrag bis zum {{ due.strftime('%d.%m.%Y') }}{% if ll.landlord_iban %} auf folgendes Konto:
 {{ ll.landlord_iban }}{% else %}.{% endif %}
-Verwendungszweck: Strom {{ b.period_start.strftime('%m/%Y') }} {{ p.unit_id or p.name }}</div>
+Verwendungszweck: Nebenkosten {{ b.period_start.strftime('%m/%Y') }} {{ p.unit_id or p.name }}</div>
 {% if ll.landlord_name %}<div class="small">{{ ll.landlord_name }}{% if ll.landlord_address %}, {{ ll.landlord_address|replace('\n', ', ') }}{% endif %}{% if ll.landlord_contact %} · {{ ll.landlord_contact }}{% endif %}</div>{% endif %}
 {% set dly = r.daily or {} %}
 {% set mine = (dly.parties or {}).get(p.id|string) %}

@@ -88,4 +88,4 @@ def invoice_pdf(b: Billing, p: dict) -> bytes:
 
 def pdf_name(b: Billing, p: dict) -> str:
     safe = re.sub(r"[^A-Za-z0-9ÄÖÜäöüß_-]+", "_", p.get("unit_id") or p["name"]).strip("_")
-    return f"Nebenkostenabrechnung_Strom_{b.period_start:%Y-%m}_{safe}.pdf"
+    return f"Nebenkostenabrechnung_{b.period_start:%Y-%m}_{safe}.pdf"

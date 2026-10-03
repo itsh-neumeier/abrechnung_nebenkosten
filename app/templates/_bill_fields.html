@@ -1,5 +1,5 @@
 <div class="grid">
-  <div><label>Titel</label><input type="text" name="title" value="{{ b.title if b else '' }}" placeholder="Strom 09/2026" {{ ro }}></div>
+  <div><label>Titel</label><input type="text" name="title" value="{{ b.title if b else '' }}" placeholder="Nebenkosten 09/2026" {{ ro }}></div>
   <div><label>Rechnungsnummer Anbieter</label><input type="text" name="invoice_no" value="{{ b.invoice_no if b else '' }}" {{ ro }}></div>
   <div><label>Zeitraum von</label><input type="date" name="period_start" value="{{ (b.period_start if b else start).isoformat() }}" required {{ ro }}></div>
   <div><label>bis (inklusive)</label><input type="date" name="period_end" value="{{ (b.period_end if b else end).isoformat() }}" required {{ ro }}></div>

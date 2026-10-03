@@ -1,6 +1,6 @@
-# ⚡ Stromabrechnung Hausparteien
+# 🏠 Nebenkostenabrechnung Hausparteien
 
-Web-Tool zur monatlichen Weiterberechnung der Stromrechnung an die Parteien eines Hauses –
+Web-Tool für die monatliche Nebenkostenabrechnung der Parteien eines Hauses – Strom (inkl. PV/Batterie),
 mit Messwerten aus **Home Assistant** (Shelly, Victron, Stromzähler), **Batterie-Logik**,
 **Fixkosten** (Grundpreis, IPTV …) und **Umlagen** (Warmwasser, Wasser …). Ausgabe als PDF je Partei.
 

@@ -128,6 +128,29 @@ SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 def init_db() -> None:
     Base.metadata.create_all(engine)
     _add_missing_columns()
+    _rename_legacy_titles()
+
+
+def _rename_legacy_titles() -> None:
+    """Einmalige Umbenennung: „Strom MM/JJJJ“ -> „Nebenkosten MM/JJJJ“ und alte Standard-Mailtexte.
+    Selbst geänderte Titel und Texte bleiben unverändert."""
+    import re
+
+    with SessionLocal() as s:
+        for b in s.query(Billing).all():
+            m = re.fullmatch(r"Strom (\d{2}/\d{4})", b.title or "")
+            if m:
+                b.title = f"Nebenkosten {m.group(1)}"
+        old = {
+            "mail_subject": "Nebenkostenabrechnung Strom {zeitraum} – {wohneinheit}",
+            "mail_body": "Hallo {name},\n\nanbei die Nebenkostenabrechnung Strom für den Zeitraum {zeitraum}.\n"
+                         "Betrag: {betrag}\n\nViele Grüße\n{absender}",
+        }
+        for key, old_value in old.items():
+            row = s.get(Setting, key)
+            if row is not None and row.value == old_value:
+                row.value = SETTING_DEFAULTS[key]
+        s.commit()
 
 
 def _add_missing_columns() -> None:
@@ -180,8 +203,8 @@ SETTING_DEFAULTS = {
     "building_id": "",
     # E-Mail
     "mail_auto_send": "",
-    "mail_subject": "Nebenkostenabrechnung Strom {zeitraum} – {wohneinheit}",
-    "mail_body": "Hallo {name},\n\nanbei die Nebenkostenabrechnung Strom für den Zeitraum {zeitraum}.\n"
+    "mail_subject": "Nebenkostenabrechnung {zeitraum} – {wohneinheit}",
+    "mail_body": "Hallo {name},\n\nanbei die Nebenkostenabrechnung für den Zeitraum {zeitraum}.\n"
                  "Betrag: {betrag}\n\nViele Grüße\n{absender}",
     "mail_bcc": "",
     # Rechnungsimport
