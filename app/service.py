@@ -90,15 +90,18 @@ async def fetch_values(s: Session, b: Billing) -> list[str]:
     """Holt Verbrauchswerte aus HA. Gibt Entitäten ohne Statistik zurück."""
     ents = [e for e, _ in required_entities(s)]
     client = HAClient(config.ha_url, config.ha_token)
-    fetched = await client.consumption(ents, b.period_start, b.period_end, config.timezone)
+    fetched, meta = await client.consumption_detail(ents, b.period_start, b.period_end, config.timezone)
     values = dict(b.values or {})
+    values_meta = dict(b.values_meta or {})
     missing = []
     for e, v in fetched.items():
         if v is None:
             missing.append(e)
         else:
             values[e] = round(v, 4)
+            values_meta[e] = meta.get(e) or {}
     b.values = values
+    b.values_meta = values_meta
     st = get_settings(s)
     if not b.grid_kwh and st["entity_grid"] and values.get(st["entity_grid"]) is not None:
         b.grid_kwh = values[st["entity_grid"]]
@@ -142,6 +145,12 @@ def recompute(s: Session, b: Billing) -> dict:
         pv_rate_ct=b.pv_rate_ct or 0.0,
     )
     result = calc.compute(bill, parties, fixed, allocs, b.values or {}, energy_entities(st))
+    for e, m in (b.values_meta or {}).items():
+        if m.get("method") == "power" and m.get("coverage", 1) < 0.98 and e in (b.values or {}):
+            result["warnings"].append(
+                f"{e}: aus Leistung berechnet, aber nur für {m['hours']} von {m['expected_hours']} Stunden Daten "
+                f"({m['coverage']:.0%}) – Verbrauch fällt evtl. zu niedrig aus."
+            )
     missing = calc.missing_entities([e for e, _ in required_entities(s)], b.values or {})
     if missing:
         result["warnings"].insert(0, f"Fehlende Messwerte (als 0 gerechnet): {', '.join(missing)}")

@@ -77,11 +77,14 @@
 
 <h2>Verbrauchswerte im Zeitraum</h2>
 <div class="card scroll">
-  <p class="muted">{% if b.fetched_at %}Zuletzt aus Home Assistant geladen: {{ b.fetched_at.strftime('%d.%m.%Y %H:%M') }}. {% endif %}Werte können manuell korrigiert werden (Energie kWh, Wasser m³).</p>
+  <p class="muted">{% if b.fetched_at %}Zuletzt aus Home Assistant geladen: {{ b.fetched_at.strftime('%d.%m.%Y %H:%M') }}. {% endif %}Werte können manuell korrigiert werden (Energie kWh, Wasser m³). Zähler (kWh) werden als Differenz,
+  Leistungssensoren (W/kW) über die stündlichen Mittelwerte der HA-Langzeitstatistik berechnet.</p>
   <table>
   <tr><th>Rolle</th><th>Entität</th><th class="r">Verbrauch</th></tr>
   {% for e, role in entities %}
-  <tr><td>{{ role }}</td><td><code>{{ e }}</code></td>
+  {% set vm = (b.values_meta or {}).get(e, {}) %}
+  <tr><td>{{ role }}</td><td><code>{{ e }}</code>
+  {% if vm.method == 'power' %}<br><span class="muted">aus Leistung (Ø kW × h) · {{ (vm.coverage*100)|num(1) }} % der Stunden mit Daten</span>{% endif %}</td>
   <td class="r" style="width:160px"><input type="text" name="val__{{ e }}" value="{{ b.values.get(e)|num(3) if b.values.get(e) is not none else '' }}" {{ ro }} style="text-align:right"></td></tr>
   {% else %}<tr><td colspan="3" class="muted">Keine Entitäten konfiguriert.</td></tr>{% endfor %}
   </table>

@@ -95,10 +95,19 @@ Der Token wird nur aus der Umgebung gelesen, nie in der Datenbank oder im Repo g
 
 ### Anforderungen an die Entitäten
 
-Alle Zähler-Entitäten brauchen eine `state_class` `total_increasing` (oder `total`), damit HA
-**Langzeitstatistiken** führt – das ist bei Shelly-Energie-, Victron- und Zählersensoren normalerweise
-der Fall (gleiche Voraussetzung wie für das HA-Energie-Dashboard). Energie wird in kWh, Volumen in m³
-abgefragt (HA rechnet um).
+Das Tool liest ausschließlich die **Langzeitstatistik** von Home Assistant (bleibt dauerhaft erhalten,
+auch Monate rückwirkend). Zwei Arten von Sensoren funktionieren:
+
+| Sensor | Voraussetzung | Berechnung |
+|---|---|---|
+| **Zähler** (kWh, Wh, m³) | `state_class: total_increasing` oder `total` | Differenz im Zeitraum – Lücken unkritisch, der Zähler läuft im Gerät weiter |
+| **Leistung** (W, kW) | `state_class: measurement` | Σ stündlicher Mittelwert (kW) × 1 h = kWh; negative Stundenmittel (Rückspeisung) zählen als 0 |
+
+Bei Leistungssensoren zeigt die Abrechnung, für wie viel Prozent der Stunden HA Daten hatte, und warnt
+unter 98 % (z. B. HA war aus) – fehlende Stunden würden sonst Verbrauch unterschlagen. Für den
+Netzbezug und alles, was rechtlich sauber sein soll, sind Zähler vorzuziehen; für Shellys ohne
+Energiezähler oder rückwirkende Auswertungen sind Leistungswerte praktisch. Energie wird in kWh,
+Leistung in kW, Volumen in m³ abgefragt (HA rechnet um).
 
 ## Einrichtung im Webinterface
 

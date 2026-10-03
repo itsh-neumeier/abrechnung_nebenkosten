@@ -166,3 +166,28 @@ def test_three_phase_meters():
             r = s.get(Billing, int(url.rsplit("/", 1)[1])).result
         kwh = {p["name"]: p["kwh"] for p in r["parties"]}
         assert kwh["3EM"] == 65 and kwh["Eigentümer"] == 300 - 65 - 3
+
+
+def test_power_sensor_coverage_warning(monkeypatch):
+    import asyncio
+
+    from app import service
+    from app.db import Billing, Party, SessionLocal
+
+    async def detail(self, ids, start, end, tz):
+        return ({i: 50.0 for i in ids},
+                {i: {"method": "power", "hours": 600, "expected_hours": 720, "coverage": 600 / 720} for i in ids})
+
+    monkeypatch.setattr(ha.HAClient, "consumption_detail", detail)
+    from datetime import date
+    with TestClient(app):
+        with SessionLocal() as s:
+            s.add(Party(name="P", meters=["sensor.p_power"], active=True, is_owner=False, sort=0))
+            b = Billing(period_start=date(2026, 9, 1), period_end=date(2026, 9, 30), grid_kwh=100,
+                        energy_cost_net=25, values={}, amounts={}, result={}, sent={})
+            s.add(b)
+            s.commit()
+            asyncio.run(service.fetch_values(s, b))
+            r = service.recompute(s, b)
+            assert b.values["sensor.p_power"] == 50.0
+            assert any("600 von 720 Stunden" in w for w in r["warnings"])

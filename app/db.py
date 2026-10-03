@@ -87,6 +87,7 @@ class Billing(Base):
     import_info: Mapped[dict] = mapped_column(JSON, default=dict)  # Positionen / Prüfungen des Imports
     mail_message_id: Mapped[str] = mapped_column(String(255), default="")
     values: Mapped[dict] = mapped_column(JSON, default=dict)  # entity_id -> Verbrauch
+    values_meta: Mapped[dict] = mapped_column(JSON, default=dict)  # entity_id -> Methode/Abdeckung aus HA
     amounts: Mapped[dict] = mapped_column(JSON, default=dict)  # allocation_id -> Betrag
     result: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | final
@@ -124,7 +125,7 @@ def _add_missing_columns() -> None:
                 elif isinstance(default, str):
                     literal = "'" + default.replace("'", "''") + "'"
                 elif isinstance(col.type, JSON):
-                    literal = "'{}'" if col.name in ("sent", "values", "amounts", "result", "key", "import_info") else "'[]'"
+                    literal = "'{}'" if col.name in ("sent", "values", "amounts", "result", "key", "import_info", "values_meta") else "'[]'"
                 else:
                     literal = "NULL"
                 coltype = col.type.compile(engine.dialect)

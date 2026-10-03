@@ -56,3 +56,43 @@ def test_entities_falls_back_to_rest(monkeypatch):
     monkeypatch.setattr(HAClient, "_ws_calls", ws_fail)
     monkeypatch.setattr(HAClient, "states", rest_states)
     assert [e["entity_id"] for e in asyncio.run(HAClient("http://ha", "t").entities())] == ["sensor.a"]
+
+
+def test_power_sensor_integrates_hourly_means():
+    from app.ha import evaluate_rows
+
+    # 3 Stunden: 0,5 kW, 1,0 kW, -0,2 kW (Rückspeisung -> 0) => 1,5 kWh; 3 von 4 Stunden mit Daten
+    rows = [{"mean": 0.5}, {"mean": 1.0}, {"mean": -0.2}]
+    kwh, meta = evaluate_rows(rows, expected_hours=4)
+    assert kwh == 1.5
+    assert meta == {"method": "power", "hours": 3, "expected_hours": 4, "coverage": 0.75}
+
+
+def test_counter_rows_preferred_over_mean():
+    from app.ha import evaluate_rows
+
+    kwh, meta = evaluate_rows([{"change": 2.0, "mean": None}, {"change": 1.0}], 2)
+    assert kwh == 3.0 and meta["method"] == "counter"
+
+
+def test_consumption_detail_mixed(monkeypatch):
+    """Ein Zähler und ein Leistungssensor in einer Abfrage, Einheit kW angefordert, Monat mit Zeitumstellung."""
+    import asyncio
+    from datetime import date
+
+    from app.ha import HAClient
+
+    seen = {}
+
+    async def ws_call(self, payload):
+        seen.update(payload)
+        return {"sensor.zaehler": [{"change": 10.0}, {"change": 5.0}],
+                "sensor.leistung": [{"mean": 0.25}] * 744}
+
+    monkeypatch.setattr(HAClient, "_ws_call", ws_call)
+    vals, meta = asyncio.run(HAClient("http://ha", "t").consumption_detail(
+        ["sensor.zaehler", "sensor.leistung"], date(2026, 10, 1), date(2026, 10, 31), "Europe/Berlin"))
+    assert seen["units"]["power"] == "kW" and "mean" in seen["types"]
+    assert vals == {"sensor.leistung": 186.0, "sensor.zaehler": 15.0}
+    assert meta["sensor.leistung"]["expected_hours"] == 745  # Oktober mit Zeitumstellung
+    assert meta["sensor.zaehler"] == {"method": "counter"}

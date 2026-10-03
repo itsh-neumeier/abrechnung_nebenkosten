@@ -10,7 +10,7 @@ Zähler-Energiesensoren ist das in der Regel der Fall.
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -42,6 +42,31 @@ def sum_changes(rows: list[dict]) -> Optional[float]:
     if len(sums) < 2:
         return None
     return sums[-1] - sums[0]
+
+
+def evaluate_rows(rows: list[dict], expected_hours: float) -> tuple[Optional[float], dict]:
+    """Verbrauch aus stündlichen Statistikzeilen.
+
+    * Zähler (kWh, m³; state_class total/total_increasing): Summe der Änderungen.
+      Lücken sind unkritisch – der Zähler läuft im Gerät weiter.
+    * Leistung (W/kW; state_class measurement): stündlicher Mittelwert in kW x 1 h = kWh.
+      Negative Mittelwerte (Rückspeisung) zählen als 0. Stunden ohne Daten fehlen –
+      daher wird die Abdeckung mitgeliefert.
+    """
+    if not rows:
+        return None, {}
+    if any(r.get("change") is not None or r.get("sum") is not None for r in rows):
+        return sum_changes(rows), {"method": "counter"}
+    means = [float(r["mean"]) for r in rows if r.get("mean") is not None]
+    if not means:
+        return None, {}
+    hours = len(means)
+    return sum(max(0.0, m) for m in means), {
+        "method": "power",
+        "hours": hours,
+        "expected_hours": round(expected_hours),
+        "coverage": min(1.0, hours / expected_hours) if expected_hours else 1.0,
+    }
 
 
 class HAClient:
@@ -108,7 +133,7 @@ class HAClient:
         try:
             states, stats = await self._ws_calls([
                 {"type": "get_states"},
-                {"type": "recorder/list_statistic_ids", "statistic_type": "sum"},
+                {"type": "recorder/list_statistic_ids"},
             ])
         except Exception as e:  # noqa: BLE001  (z. B. WebSocket durch Proxy blockiert)
             errors.append(f"WebSocket: {e}")
@@ -130,10 +155,19 @@ class HAClient:
         self, entity_ids: list[str], start: date, end: date, tz: str
     ) -> dict[str, Optional[float]]:
         """Verbrauch je Entität im Zeitraum (Energie in kWh, Volumen in m³)."""
+        values, _ = await self.consumption_detail(entity_ids, start, end, tz)
+        return values
+
+    async def consumption_detail(
+        self, entity_ids: list[str], start: date, end: date, tz: str
+    ) -> tuple[dict[str, Optional[float]], dict[str, dict]]:
+        """Wie consumption(), zusätzlich je Entität die Methode (Zähler/Leistung) und Abdeckung."""
         ids = sorted({e for e in entity_ids if e})
         if not ids:
-            return {}
+            return {}, {}
         t0, t1 = period_bounds(start, end, tz)
+        # über UTC rechnen: bei gleicher tzinfo ignoriert Python sonst die Zeitumstellung
+        expected = (t1.astimezone(timezone.utc) - t0.astimezone(timezone.utc)).total_seconds() / 3600
         result = await self._ws_call(
             {
                 "type": "recorder/statistics_during_period",
@@ -141,11 +175,14 @@ class HAClient:
                 "end_time": t1.isoformat(),
                 "statistic_ids": ids,
                 "period": "hour",
-                "types": ["change", "sum"],
-                "units": {"energy": "kWh", "volume": "m³"},
+                "types": ["change", "sum", "mean"],
+                "units": {"energy": "kWh", "volume": "m³", "power": "kW"},
             }
         )
-        return {e: sum_changes(result.get(e, [])) for e in ids}
+        values, meta = {}, {}
+        for e in ids:
+            values[e], meta[e] = evaluate_rows(result.get(e, []), expected)
+        return values, meta
 
 
 def merge_entities(states: list[dict], stats: list[dict]) -> list[dict]:
@@ -163,7 +200,8 @@ def merge_entities(states: list[dict], stats: list[dict]) -> list[dict]:
             "unit": attrs.get("unit_of_measurement", "") or "",
             "state": st.get("state"),
             "device_class": attrs.get("device_class", "") or "",
-            "statistics": attrs.get("state_class") in ("total", "total_increasing") or eid in stat_by_id,
+            "statistics": attrs.get("state_class") in ("total", "total_increasing", "measurement")
+            or eid in stat_by_id,
         }
     for sid, st in stat_by_id.items():
         if sid in out:

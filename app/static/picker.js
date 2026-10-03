@@ -8,7 +8,7 @@
 (function () {
   let cache = null, target = null, dlg = null;
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
-  const UNITS = {energy: ['kWh', 'Wh', 'MWh'], volume: ['m³', 'L', 'l', 'gal', 'ft³']};
+  const UNITS = {energy: ['kWh', 'Wh', 'MWh', 'W', 'kW'], volume: ['m³', 'L', 'l', 'gal', 'ft³']};
   const split = (v) => (v || '').split(/[\s+,;]+/).filter(Boolean);
 
   // ------------------------------------------------------------------ Dialog
@@ -24,7 +24,7 @@
       <div class="picker-filter">
         <input type="text" placeholder="Suchen (Name oder entity_id) …" data-q>
         <select data-unit>
-          <option value="energy">Energie (kWh/Wh)</option>
+          <option value="energy">Energie / Leistung (kWh, W)</option>
           <option value="volume">Wasser/Volumen (m³/L)</option>
           <option value="">alle Sensoren</option>
         </select>
