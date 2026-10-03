@@ -118,10 +118,25 @@ HA-API (Suche, Filter Energie/Wasser, nur mit Langzeitstatistik, aktueller Zähl
 1. **Einstellungen**: Entitäten für Netzbezug, Gesamtverbrauch, Batterie entladen/geladen,
    Batterie aus Netz geladen (dyn. ESS), optional PV-Direktverbrauch; PV-Bereitstellungs- und
    Batterieverschleißsatz; Objektanschrift und Gebäude-ID; Absender/IBAN; E-Mail-Vorlage.
-2. **Parteien**: Wohneinheit (Name), Wohneinheiten-ID, E-Mail, Shelly-Entitäten; eine Partei als
+2. **Parteien**: Wohneinheit (Name), Wohneinheiten-ID, E-Mail, WhatsApp-Nummer und Versandweg, Shelly-Entitäten; eine Partei als
    *Eigentümer* markieren (bekommt den Restverbrauch).
 3. **Fixkosten & Umlagen**: „IPTV-Bereitstellung“ (Betrag, Parteien), „Trinkwasser“ (Menge × Preis,
    Wasserzähler-Entität, €/m³, Prozente) und „Warmwasserbereitung“ (Strom, Shelly-Entität, Prozente).
+
+### WhatsApp-Versand über n8n
+
+Menü **WhatsApp / n8n**: Die App schickt je Partei einen Webhook an n8n (Text, Nummer, PDF als Base64 und
+signierter Download-Link, 7 Tage gültig); der n8n-Flow stellt das PDF per WhatsApp zu und meldet das Ergebnis
+zurück (💬 *zugestellt* in der Abrechnung). Zwei fertige Flows zum Kopieren bzw. Herunterladen:
+
+- **Evolution API** (selbst gehostet, kostenlos, keine Vorlagen – inoffiziell, Sperrrisiko für die Nummer)
+- **WhatsApp Business Cloud API** (Meta, offiziell – braucht eine genehmigte Vorlage mit Dokument-Kopfzeile)
+
+Einrichtung: Flow kopieren → in n8n einfügen (Strg+V) → Knoten *Konfiguration* ausfüllen → aktivieren →
+Production-URL des Webhooks und die App-URL (wie n8n die App erreicht) eintragen → „Test senden“.
+Bei den Parteien WhatsApp-Nummer und Versandweg (E-Mail / WhatsApp / beides) wählen. Der Versand läuft über
+dieselben Knöpfe wie die E-Mail bzw. automatisch beim Abschließen. Die Endpunkte `/api/n8n/…` sind ohne
+Basic-Auth erreichbar, aber durch Token bzw. signierte Links geschützt.
 
 ## Entwicklung
 

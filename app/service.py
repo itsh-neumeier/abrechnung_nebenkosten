@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections import defaultdict
 from datetime import datetime
@@ -11,7 +12,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from . import billing as calc
-from . import invoice_import, mailer, render, victron, vrm
+from . import invoice_import, mailer, render, victron, vrm, whatsapp
 from .config import config
 from .db import Allocation, Billing, FixedCost, Party, get_settings
 from .ha import HAClient, HAError
@@ -299,49 +300,122 @@ def _split_addr(text: str) -> list[str]:
     return [a.strip() for a in (text or "").replace(";", ",").split(",") if a.strip()]
 
 
+def channels(party: Optional[Party]) -> tuple[bool, bool]:
+    """(per E-Mail, per WhatsApp) laut Partei."""
+    ch = (party.channel if party else "") or "email"
+    return ch in ("email", "both"), ch in ("whatsapp", "both")
+
+
+def can_send(st: dict) -> bool:
+    return mailer.configured() or whatsapp.configured(st)
+
+
 def send_invoices(s: Session, b: Billing, party_ids: list[int] | None = None,
                   only_unsent: bool = False) -> list[tuple[str, bool, str]]:
-    """Verschickt die PDFs per E-Mail. Ergebnis: (Partei, ok, Meldung)."""
+    """Verschickt die PDFs per E-Mail und/oder WhatsApp (über n8n). Ergebnis: (Partei, ok, Meldung).
+
+    ``b.sent[pid]``: E-Mail-Status in ``ok/at/to/error``, WhatsApp-Status unter ``wa``.
+    """
     st = get_settings(s)
     parties = {p.id: p for p in s.query(Party).all()}
-    sent = dict(b.sent or {})
+    sent = {k: dict(v) for k, v in (b.sent or {}).items()}
     report = []
     for rp in (b.result or {}).get("parties", []):
         pid = rp["id"]
         if party_ids is not None and pid not in party_ids:
             continue
-        if only_unsent and sent.get(str(pid), {}).get("ok"):
-            continue
         party = parties.get(pid)
-        to = _split_addr(party.email if party else "")
-        if not to:
-            if party_ids is not None:
-                report.append((rp["name"], False, "keine E-Mail-Adresse hinterlegt"))
-            continue
+        by_mail, by_wa = channels(party)
+        entry = sent.get(str(pid), {})
+        now = datetime.now().isoformat(timespec="seconds")
         fields = defaultdict(str, {
             "name": rp["name"],
             "wohneinheit": rp["name"],
             "we_id": rp.get("unit_id", ""),
             "zeitraum": render.period_text(b),
             "betrag": render.fmt_eur(rp["total"]),
+            "faellig": render.fmt_date(render.due_date(b)),
             "absender": st["landlord_name"],
             "gebaeude": st["building_address"],
         })
-        try:
-            mailer.send_mail(
-                to=to,
-                subject=st["mail_subject"].format_map(fields),
-                body=st["mail_body"].format_map(fields),
-                attachments=[(render.pdf_name(b, rp), render.invoice_pdf(b, rp))],
-                bcc=_split_addr(st["mail_bcc"]),
-            )
-            sent[str(pid)] = {"ok": True, "at": datetime.now().isoformat(timespec="seconds"), "to": ", ".join(to)}
-            report.append((rp["name"], True, ", ".join(to)))
-        except Exception as e:  # noqa: BLE001
-            sent[str(pid)] = {"ok": False, "at": datetime.now().isoformat(timespec="seconds"), "error": str(e)}
-            report.append((rp["name"], False, str(e)))
+        pdf = None
+
+        if by_mail and not (only_unsent and entry.get("ok")):
+            to = _split_addr(party.email if party else "")
+            if not to:
+                if party_ids is not None:
+                    report.append((rp["name"], False, "E-Mail: keine Adresse hinterlegt"))
+            else:
+                try:
+                    pdf = render.invoice_pdf(b, rp)
+                    mailer.send_mail(
+                        to=to,
+                        subject=st["mail_subject"].format_map(fields),
+                        body=st["mail_body"].format_map(fields),
+                        attachments=[(render.pdf_name(b, rp), pdf)],
+                        bcc=_split_addr(st["mail_bcc"]),
+                    )
+                    entry.update({"ok": True, "at": now, "to": ", ".join(to)})
+                    entry.pop("error", None)
+                    report.append((rp["name"], True, "E-Mail " + ", ".join(to)))
+                except Exception as e:  # noqa: BLE001
+                    entry.update({"ok": False, "at": now, "error": str(e)})
+                    report.append((rp["name"], False, f"E-Mail: {e}"))
+
+        if by_wa and not (only_unsent and (entry.get("wa") or {}).get("ok")):
+            phone = party.phone if party else ""
+            if not phone:
+                if party_ids is not None:
+                    report.append((rp["name"], False, "WhatsApp: keine Nummer hinterlegt"))
+            else:
+                try:
+                    secret = whatsapp.ensure_secret(s, st)
+                    pdf = pdf or render.invoice_pdf(b, rp)
+                    payload = whatsapp.build_payload(
+                        st, secret, bid=b.id, pid=pid, name=rp["name"], unit_id=rp.get("unit_id", ""), phone=phone,
+                        email=party.email if party else "", period=render.period_text(b), total=rp["total"],
+                        total_text=fields["betrag"], due=render.due_date(b).isoformat(),
+                        message=st["wa_message"].format_map(fields), filename=render.pdf_name(b, rp), pdf=pdf)
+                    state = whatsapp.post(st, secret, payload)
+                    entry["wa"] = {"ok": True, "at": now, "to": payload["phone"], "status": state}
+                    report.append((rp["name"], True, f"WhatsApp +{payload['phone']} {state}"))
+                except Exception as e:  # noqa: BLE001
+                    entry["wa"] = {"ok": False, "at": now, "error": str(e)}
+                    report.append((rp["name"], False, f"WhatsApp: {e}"))
+        if entry:
+            sent[str(pid)] = entry
     b.sent = sent
     return report
+
+
+def test_pdf() -> bytes:
+    return render.render_pdf("<html><body style='font-family:DejaVu Sans'><h1>Testdokument</h1>"
+                             "<p>WhatsApp-Versand der Nebenkostenabrechnung über n8n funktioniert.</p></body></html>")
+
+
+def wa_status(s: Session, data: dict) -> str:
+    """Rückmeldung des n8n-Flows (zugestellt / Fehler) an der Abrechnung vermerken."""
+    bid, pid = int(data.get("billing_id") or 0), int(data.get("party_id") or 0)
+    ok = bool(data.get("ok"))
+    info = {"ok": ok, "at": datetime.now().isoformat(timespec="seconds"),
+            "status": "zugestellt" if ok else "Fehler", "error": str(data.get("error") or "")[:300],
+            "provider": str(data.get("provider") or ""), "message_id": str(data.get("message_id") or "")}
+    if bid == 0:  # Testnachricht
+        from .db import save_settings
+
+        save_settings(s, {"n8n_last_test": json.dumps(info, ensure_ascii=False)})
+        s.commit()
+        return "test"
+    b = s.get(Billing, bid)
+    if b is None:
+        raise KeyError(bid)
+    sent = {k: dict(v) for k, v in (b.sent or {}).items()}
+    entry = sent.setdefault(str(pid), {})
+    prev = entry.get("wa") or {}
+    entry["wa"] = {**prev, **info, "to": prev.get("to", "")}
+    b.sent = sent
+    s.commit()
+    return "ok"
 
 
 # --------------------------------------------------------------------------- Rechnungsimport
@@ -420,13 +494,13 @@ async def import_invoice(s: Session, pdf: bytes, filename: str, message_id: str 
         # Vollautomatisch: ohne manuelle Prüfung abschließen und an alle Parteien mit Adresse senden
         b.status = "final"
         msgs.append("automatisch abgeschlossen" + (f" trotz {len(warnings)} Hinweis(en)" if warnings else ""))
-        if mailer.configured():
+        if can_send(st):
             s.commit()
             report = send_invoices(s, b, only_unsent=True)
             ok = sum(1 for _, good, _ in report if good)
             msgs.append(f"{ok} Abrechnung(en) versendet" + (f", {len(report) - ok} fehlgeschlagen" if len(report) > ok else ""))
         else:
-            msgs.append("nicht versendet: SMTP nicht konfiguriert")
+            msgs.append("nicht versendet: weder SMTP noch WhatsApp (n8n) eingerichtet")
     else:
         msgs.append(f"Entwurf – bitte prüfen ({len(warnings)} Hinweis(e))" if warnings else "Entwurf – bitte prüfen")
     s.commit()

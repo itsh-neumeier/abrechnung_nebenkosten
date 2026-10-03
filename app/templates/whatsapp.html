@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>WhatsApp-Versand über n8n</h1>
+<div class="card">
+  <p>Die Abrechnung schickt je Partei einen Webhook an <b>n8n</b>; der n8n-Flow stellt das PDF per WhatsApp zu und meldet
+  das Ergebnis zurück (💬 in der Abrechnung). Welche Partei WhatsApp bekommt, stellst du unter <a href="/parties">Parteien</a>
+  ein (Nummer + Versand „WhatsApp“ oder „E-Mail und WhatsApp“). Der Versand läuft über dieselben Knöpfe wie die E-Mail
+  („senden“ / „Alle senden“ bzw. automatisch beim Abschließen).</p>
+  <ol class="muted" style="margin:0;padding-left:20px">
+    <li>Unten den Flow für deine WhatsApp-Variante kopieren und in n8n in einen leeren Workflow einfügen (Strg+V).</li>
+    <li>Im Knoten <b>Konfiguration</b> Zugangsdaten eintragen, Workflow speichern und <b>aktivieren</b>.</li>
+    <li>Im Knoten <b>Webhook</b> die <b>Production URL</b> kopieren und hier eintragen, dann „Test senden“.</li>
+  </ol>
+</div>
+
+<form method="post" action="/whatsapp" class="card">
+  <h2 style="margin-top:0">Verbindung</h2>
+  <div class="grid">
+    <div><label>n8n-Webhook-URL (Production URL)</label>
+      <input type="text" name="n8n_webhook_url" value="{{ st.n8n_webhook_url }}" placeholder="http://n8n:5678/webhook/{{ path }}"></div>
+    <div><label>App-URL aus Sicht von n8n (für PDF-Link und Rückmeldung)</label>
+      <input type="text" name="n8n_app_url" value="{{ st.n8n_app_url }}" placeholder="http://192.168.x.x:8000"></div>
+    <div><label>WhatsApp-Variante</label><select name="wa_provider">
+      {% for k, v in providers.items() %}<option value="{{ k }}" {% if st.wa_provider == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+    </select></div>
+  </div>
+  {% if not app_url %}<div class="warn">App-URL fehlt – ohne sie kann n8n das PDF nicht laden und nicht zurückmelden.</div>{% endif %}
+  <label>Nachrichtentext (Evolution API) – Platzhalter {name} {zeitraum} {betrag} {faellig} {we_id} {absender}</label>
+  <textarea name="wa_message" rows="5">{{ st.wa_message }}</textarea>
+  <div class="grid">
+    <div><label>Vorlagenname (Cloud API)</label><input type="text" name="wa_template_name" value="{{ st.wa_template_name }}"></div>
+    <div><label>Vorlagensprache (Cloud API)</label><input type="text" name="wa_template_lang" value="{{ st.wa_template_lang }}"></div>
+  </div>
+  <div class="check"><input type="checkbox" name="n8n_pdf_base64" id="b64" {% if st.n8n_pdf_base64 %}checked{% endif %}><label for="b64" style="margin:0">PDF zusätzlich als Base64 im Webhook mitschicken (Evolution API braucht dann keinen Zugriff auf die App)</label></div>
+  <label>Token (Header <code>{{ header }}</code>) – steckt bereits im kopierten Flow</label>
+  <input type="text" value="{{ secret }}" readonly onclick="this.select()">
+  <button>Speichern</button>
+  <button class="sec" name="new_secret" value="1" onclick="return confirm('Neues Token erzeugen? Der Flow in n8n muss danach neu kopiert werden.')">Neues Token erzeugen</button>
+</form>
+
+<form method="post" action="/whatsapp/test" class="card">
+  <h2 style="margin-top:0">Test</h2>
+  <p class="muted">Schickt über n8n ein Test-PDF an die Nummer. Der Flow meldet das Ergebnis zurück.</p>
+  <div class="grid">
+    <div><label>Nummer</label><input type="text" name="phone" list="phones" placeholder="+49 151 23456789" required>
+      <datalist id="phones">{% for p in parties if p.phone %}<option value="{{ p.phone }}">{{ p.name }}</option>{% endfor %}</datalist></div>
+  </div>
+  <button {% if not st.n8n_webhook_url %}disabled title="Erst Webhook-URL speichern"{% endif %}>Test senden</button>
+  {% if last %}<p>Letzte Rückmeldung aus n8n ({{ last.at[:16]|replace('T', ' ') }}, {{ last.provider }}):
+    {% if last.ok %}<span class="badge final">✔ zugestellt</span>{% else %}<span class="badge" style="color:var(--danger)">✘ Fehler</span> <code>{{ last.error }}</code>{% endif %}</p>{% endif %}
+</form>
+
+{% for k, label in providers.items() %}
+<div class="card" id="flow-{{ k }}">
+  <h2 style="margin-top:0">n8n-Flow: {{ label }}</h2>
+  {% if k == 'evolution' %}
+  <p class="muted">Evolution API läuft als eigener Container (z. B. in Portainer, Image <code>atendai/evolution-api</code> v2) und
+  wird per QR-Code wie WhatsApp Web mit einer Nummer verbunden. Kostenlos und ohne Nachrichtenvorlagen, aber
+  <b>inoffiziell</b> (verstößt gegen die WhatsApp-Nutzungsbedingungen, Sperrrisiko – am besten eine eigene Nummer verwenden).
+  Im Knoten <b>Konfiguration</b>: <code>evolution_url</code>, <code>instance</code> (Name der Instanz) und <code>apikey</code>.
+  Die Nachricht ist der Text oben, das PDF hängt als Dokument dran.</p>
+  {% else %}
+  <p class="muted">Offizielle API von Meta: eigene Nummer im Meta-Business-Konto, App unter developers.facebook.com mit Produkt
+  „WhatsApp“, dauerhaftes Zugriffstoken (Systembenutzer). Nachrichten an Mieter müssen als <b>genehmigte Vorlage</b> starten:
+  Vorlage <code>{{ st.wa_template_name }}</code>, Sprache <code>{{ st.wa_template_lang }}</code>, Kategorie „Utility“,
+  Kopfzeile <b>Dokument</b>, Text z. B. <i>„Hallo {{ '{{1}}' }}, anbei Ihre Nebenkostenabrechnung für {{ '{{2}}' }}. Betrag:
+  {{ '{{3}}' }}.“</i> ({{ '{{1}}' }} Name, {{ '{{2}}' }} Zeitraum, {{ '{{3}}' }} Betrag). Im Knoten <b>Konfiguration</b>:
+  <code>phone_number_id</code> und <code>access_token</code>. n8n lädt das PDF über die App-URL.</p>
+  {% endif %}
+  <textarea id="flowtxt-{{ k }}" rows="10" readonly style="font-family:monospace;font-size:12px">{{ flows[k] }}</textarea>
+  <button type="button" onclick="copyFlow('{{ k }}', this)">📋 Flow kopieren</button>
+  <a class="btn sec" href="/whatsapp/flow/{{ k }}.json">Als Datei herunterladen</a>
+</div>
+{% endfor %}
+
+<div class="card">
+  <h2 style="margin-top:0">Webhook-Daten (für eigene Flows)</h2>
+  <p class="muted">POST an die Webhook-URL, Header <code>{{ header }}: &lt;Token&gt;</code>, JSON:</p>
+<pre style="white-space:pre-wrap;font-size:12px">{ "event": "invoice.send", "test": false, "billing_id": 12, "party_id": 2,
+  "name": "Familie Muster", "unit_id": "WE-001", "phone": "4915123456789", "email": "…",
+  "period": "August 2026", "total": 141.27, "total_text": "141,27 €", "due": "2026-10-17",
+  "message": "Hallo …", "filename": "Nebenkostenabrechnung_2026-08_WE-001.pdf",
+  "pdf_url": "{{ app_url or 'http://…' }}/api/n8n/invoice/12/2.pdf?exp=…&amp;sig=…   (7 Tage gültig)",
+  "pdf_base64": "JVBERi0…", "status_url": "{{ app_url or 'http://…' }}/api/n8n/status",
+  "template": { "name": "{{ st.wa_template_name }}", "language": "{{ st.wa_template_lang }}", "params": ["Name", "Zeitraum", "Betrag"] } }</pre>
+  <p class="muted">Rückmeldung: POST an <code>status_url</code> mit demselben Header und
+  <code>{"billing_id": 12, "party_id": 2, "ok": true, "error": "", "provider": "…", "message_id": "…"}</code>.</p>
+</div>
+<script>
+function copyFlow(k, btn) {
+  const ta = document.getElementById('flowtxt-' + k);
+  const done = () => { const t = btn.textContent; btn.textContent = '✔ kopiert – in n8n mit Strg+V einfügen'; setTimeout(() => btn.textContent = t, 2500); };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(ta.value).then(done);
+  } else {  // http im LAN: Clipboard-API nicht verfügbar
+    ta.focus(); ta.select(); document.execCommand('copy'); done();
+  }
+}
+</script>
+{% endblock %}

@@ -69,13 +69,16 @@ def period_text(b: Billing) -> str:
     return f"{fmt_date(b.period_start)} – {fmt_date(b.period_end)}"
 
 
+def due_date(b: Billing) -> date:
+    ll = (b.result or {}).get("landlord", {})
+    days = int(parse_float(ll.get("payment_days"), 14) or 14)
+    return b.created_at.date() + timedelta(days=days)
+
+
 def invoice_html(b: Billing, p: dict, pdf: bool = False) -> str:
     r = b.result or {}
-    ll = r.get("landlord", {})
-    days = int(parse_float(ll.get("payment_days"), 14) or 14)
     return templates.get_template("invoice.html").render(
-        b=b, r=r, p=p, ll=ll, bld=r.get("building", {}), pdf=pdf,
-        due=b.created_at.date() + timedelta(days=days),
+        b=b, r=r, p=p, ll=r.get("landlord", {}), bld=r.get("building", {}), pdf=pdf, due=due_date(b),
     )
 
 

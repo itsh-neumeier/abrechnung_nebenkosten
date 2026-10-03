@@ -33,6 +33,8 @@ class Party(Base):
     unit_id: Mapped[str] = mapped_column(String(50), default="")  # Wohneinheiten-ID, z. B. WE-001
     address: Mapped[str] = mapped_column(Text, default="")
     email: Mapped[str] = mapped_column(String(200), default="")
+    phone: Mapped[str] = mapped_column(String(50), default="")  # WhatsApp-Nummer
+    channel: Mapped[str] = mapped_column(String(20), default="email")  # email | whatsapp | both
     meters: Mapped[list] = mapped_column(JSON, default=list)  # Shelly-Energie-Entitäten
     is_owner: Mapped[bool] = mapped_column(Boolean, default=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -207,6 +209,17 @@ SETTING_DEFAULTS = {
     "mail_body": "Hallo {name},\n\nanbei die Nebenkostenabrechnung für den Zeitraum {zeitraum}.\n"
                  "Betrag: {betrag}\n\nViele Grüße\n{absender}",
     "mail_bcc": "",
+    # WhatsApp über n8n
+    "n8n_webhook_url": "",
+    "n8n_app_url": "",  # URL der App aus Sicht von n8n (PDF-Download, Statusmeldung)
+    "n8n_secret": "",
+    "n8n_pdf_base64": "1",
+    "wa_provider": "evolution",  # evolution | cloud
+    "wa_message": "Hallo {name},\nanbei die Nebenkostenabrechnung für {zeitraum}.\n"
+                  "Betrag: {betrag}, fällig bis {faellig}.\n\nViele Grüße\n{absender}",
+    "wa_template_name": "nebenkostenabrechnung",
+    "wa_template_lang": "de",
+    "n8n_last_test": "",
     # Rechnungsimport
     "import_mode": "review",  # review | auto_if_clean | auto_always
     "notify_email": "",

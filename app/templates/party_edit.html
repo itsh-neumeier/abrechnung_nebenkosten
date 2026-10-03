@@ -10,6 +10,13 @@
   </div>
   <label>E-Mail für den Versand (mehrere mit Komma trennen)</label>
   <input type="text" name="email" value="{{ p.email or '' }}" placeholder="familie@example.de">
+  <div class="grid">
+    <div><label>WhatsApp-Nummer</label><input type="text" name="phone" value="{{ p.phone or '' }}" placeholder="+49 151 23456789"></div>
+    <div><label>Versand der Abrechnung</label><select name="channel">
+      {% for k, v in [('email', 'E-Mail'), ('whatsapp', 'WhatsApp (über n8n)'), ('both', 'E-Mail und WhatsApp')] %}
+      <option value="{{ k }}" {% if (p.channel or 'email') == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+    </select></div>
+  </div>
   <label>Anschrift (optional, intern)</label><textarea name="address">{{ p.address or '' }}</textarea>
   <div id="owner-note" class="hint-box" {% if not p.is_owner %}hidden{% endif %}>
     <b>Restverbrauch:</b> Diese Partei bekommt alles, was nicht anderen Parteien oder Umlagen zugeordnet ist

@@ -35,12 +35,15 @@
   <td class="r">{{ gt.get('strom', 0)|eur }}</td><td class="r">{{ gt.get('fix', 0)|eur }}</td><td class="r">{{ gt.get('umlage', 0)|eur }}</td>
   <td class="r"><b>{{ p.total|eur }}</b></td>
   <td class="r"><a href="/billings/{{ b.id }}/invoice/{{ p.id }}" target="_blank">Ansicht</a> · <a href="/billings/{{ b.id }}/invoice/{{ p.id }}.pdf" target="_blank">PDF</a></td>
-  <td>{% set sx = (b.sent or {}).get(p.id|string) %}
-    {% if sx and sx.ok %}<span class="badge final">versendet {{ sx.at[:16]|replace('T', ' ') }}</span>
-    {% elif sx %}<span class="badge" title="{{ sx.error }}" style="color:var(--danger)">Fehler</span>{% endif %}
-    {% if b.status == 'final' and mail_ok and emails.get(p.id) %}
-    <button form="mailform" class="sec pick-btn" name="action" value="send:{{ p.id }}">{{ 'erneut senden' if sx and sx.ok else 'senden' }}</button>
-    {% elif not emails.get(p.id) %}<span class="muted">keine Adresse</span>{% endif %}
+  <td>{% set sx = (b.sent or {}).get(p.id|string) or {} %}{% set cx = contacts.get(p.id, {}) %}
+    {% if sx.get('at') and sx.ok %}<span class="badge final" title="{{ sx.to }}">✉️ versendet {{ sx.at[:16]|replace('T', ' ') }}</span>
+    {% elif sx.get('at') %}<span class="badge" title="{{ sx.error }}" style="color:var(--danger)">✉️ Fehler</span>{% endif %}
+    {% set wx = sx.get('wa') %}
+    {% if wx and wx.ok %}<span class="badge final" title="+{{ wx.to }} {{ wx.provider or '' }}">💬 {{ wx.status or 'übergeben' }} {{ wx.at[:16]|replace('T', ' ') }}</span>
+    {% elif wx %}<span class="badge" title="{{ wx.error }}" style="color:var(--danger)">💬 Fehler</span>{% endif %}
+    {% if b.status == 'final' and send_ok and ((cx.mail and mail_ok) or (cx.wa and wa_ok)) %}
+    <button form="mailform" class="sec pick-btn" name="action" value="send:{{ p.id }}">{{ 'erneut senden' if sx.ok or (wx and wx.ok) else 'senden' }}</button>
+    {% elif not cx.mail and not cx.wa %}<span class="muted">{{ 'keine Nummer' if cx.want_wa and not cx.want_mail else 'keine Adresse' }}</span>{% endif %}
   </td>
 </tr>
 {% endfor %}
@@ -48,8 +51,9 @@
 <tr><td class="muted" colspan="5">Differenz zur Rechnung des Stromanbieters (PV/Batterie, Umlagen, Rundung)</td><td class="r muted">{{ r.difference|eur }}</td><td></td><td></td></tr>
 </table>
 <a class="btn sec" href="/billings/{{ b.id }}/all.zip">Alle PDFs als ZIP</a>
-{% if b.status == 'final' and mail_ok %}<button form="mailform" name="action" value="send_all" onclick="return confirm('Abrechnungen an alle Parteien mit E-Mail-Adresse senden?')">Alle per E-Mail senden</button>
-{% elif b.status != 'final' %}<span class="muted">E-Mail-Versand nach dem Abschließen{% if st.mail_auto_send %} (automatisch){% endif %}.</span>{% endif %}
+{% set via = ('E-Mail' if mail_ok else '') ~ (' / ' if mail_ok and wa_ok else '') ~ ('WhatsApp' if wa_ok else '') %}
+{% if b.status == 'final' and send_ok %}<button form="mailform" name="action" value="send_all" onclick="return confirm('Abrechnungen an alle Parteien senden ({{ via }}, je nach Versandweg der Partei)?')">Alle senden ({{ via }})</button>
+{% elif b.status != 'final' %}<span class="muted">Versand ({{ via or 'E-Mail' }}) nach dem Abschließen{% if st.mail_auto_send %} (automatisch){% endif %}.</span>{% endif %}
 <form method="post" id="mailform"></form>
 </div>
 {% endif %}

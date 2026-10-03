@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from . import invoice_import, mailbox, mailer, service, victron, vrm
+from . import invoice_import, mailbox, mailer, service, victron, vrm, whatsapp
 from .config import config
 from .db import Allocation, Billing, FixedCost, Party, get_session, get_settings, init_db, save_settings
 from .ha import HAClient
@@ -64,7 +64,7 @@ def redirect(url: str, msg: str = "") -> RedirectResponse:
 
 @app.middleware("http")
 async def basic_auth(request: Request, call_next):
-    if config.app_user and config.app_password and not request.url.path.startswith("/healthz"):
+    if config.app_user and config.app_password and not request.url.path.startswith(("/healthz", "/api/n8n/")):
         header = request.headers.get("authorization", "")
         ok = False
         if header.startswith("Basic "):
@@ -160,6 +160,99 @@ async def settings_testmail(request: Request, s: Session = Depends(get_session))
         return redirect("/settings", f"Test-E-Mail an {to} verschickt")
     except Exception as e:  # noqa: BLE001
         return redirect("/settings", f"E-Mail fehlgeschlagen: {e}")
+
+
+# --------------------------------------------------------------------------- WhatsApp über n8n
+WA_KEYS = ("n8n_webhook_url", "n8n_app_url", "wa_provider", "wa_message", "wa_template_name", "wa_template_lang")
+
+
+@app.get("/whatsapp", response_class=HTMLResponse)
+def whatsapp_page(request: Request, s: Session = Depends(get_session)):
+    st = get_settings(s)
+    secret = whatsapp.ensure_secret(s, st)
+    flows = {k: whatsapp.flow_json(k, st, secret) for k in whatsapp.PROVIDERS}
+    last = json.loads(st["n8n_last_test"]) if st["n8n_last_test"] else None
+    return render(request, "whatsapp.html", st=st, secret=secret, flows=flows, providers=whatsapp.PROVIDERS,
+                  app_url=whatsapp.app_url(st), path=whatsapp.WEBHOOK_PATH, header=whatsapp.HEADER, last=last,
+                  parties=s.query(Party).order_by(Party.sort, Party.id).all())
+
+
+@app.post("/whatsapp")
+async def whatsapp_save(request: Request, s: Session = Depends(get_session)):
+    form = await request.form()
+    data = {k: str(form.get(k, "")).strip() for k in WA_KEYS}
+    data["n8n_app_url"] = data["n8n_app_url"].rstrip("/")
+    data["n8n_pdf_base64"] = "1" if form.get("n8n_pdf_base64") else ""
+    if form.get("new_secret"):
+        data["n8n_secret"] = secrets.token_urlsafe(24)
+    save_settings(s, data)
+    s.commit()
+    return redirect("/whatsapp", "Neues Token erzeugt – Flow in n8n neu kopieren!" if form.get("new_secret") else "Gespeichert")
+
+
+@app.post("/whatsapp/test")
+async def whatsapp_test(request: Request, s: Session = Depends(get_session)):
+    form = await request.form()
+    st = get_settings(s)
+    secret = whatsapp.ensure_secret(s, st)
+    phone = str(form.get("phone", "")).strip()
+    try:
+        payload = whatsapp.build_payload(
+            st, secret, bid=0, pid=0, name="Test", unit_id="TEST", phone=phone, email="", period="Test",
+            total=0.0, total_text="0,00 €", due=date.today().isoformat(),
+            message="Test der WhatsApp-Anbindung der Nebenkostenabrechnung ✅", filename="Test.pdf",
+            pdf=service.test_pdf(), test=True)
+        save_settings(s, {"n8n_last_test": ""})
+        s.commit()
+        msg = whatsapp.post(st, secret, payload)
+        return redirect("/whatsapp", f"Test an +{payload['phone']} {msg} – Rückmeldung erscheint unten (Seite neu laden).")
+    except Exception as e:  # noqa: BLE001
+        return redirect("/whatsapp", f"Test fehlgeschlagen: {e}")
+
+
+@app.get("/whatsapp/flow/{provider}.json")
+def whatsapp_flow(provider: str, s: Session = Depends(get_session)):
+    if provider not in whatsapp.PROVIDERS:
+        raise HTTPException(404)
+    st = get_settings(s)
+    return Response(whatsapp.flow_json(provider, st, whatsapp.ensure_secret(s, st)), media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="n8n-nebenkosten-whatsapp-{provider}.json"'})
+
+
+def _n8n_secret(s: Session) -> str:
+    return get_settings(s)["n8n_secret"]
+
+
+@app.get("/api/n8n/invoice/{bid}/{pid}.pdf")
+def n8n_invoice_pdf(bid: int, pid: int, exp: int = 0, sig: str = "", s: Session = Depends(get_session)):
+    if not whatsapp.verify(_n8n_secret(s), bid, pid, exp, sig):
+        raise HTTPException(403, "Link ungültig oder abgelaufen")
+    b = _get_billing(s, bid)
+    p = _party_or_404(b, pid)
+    return Response(invoice_pdf(b, p), media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{pdf_name(b, p)}"', "Cache-Control": "no-store"})
+
+
+@app.get("/api/n8n/test.pdf")
+def n8n_test_pdf(exp: int = 0, sig: str = "", s: Session = Depends(get_session)):
+    if not whatsapp.verify(_n8n_secret(s), 0, 0, exp, sig):
+        raise HTTPException(403, "Link ungültig oder abgelaufen")
+    return Response(service.test_pdf(), media_type="application/pdf")
+
+
+@app.post("/api/n8n/status")
+async def n8n_status(request: Request, s: Session = Depends(get_session)):
+    secret = _n8n_secret(s)
+    if not secret or not secrets.compare_digest(request.headers.get(whatsapp.HEADER, ""), secret):
+        raise HTTPException(403, "Token falsch")
+    try:
+        data = await request.json()
+    except Exception:  # noqa: BLE001
+        raise HTTPException(400, "JSON erwartet")
+    try:
+        return {"ok": True, "result": service.wa_status(s, data)}
+    except KeyError:
+        raise HTTPException(404, "Abrechnung unbekannt")
 
 
 _entity_cache: dict = {"at": 0.0, "data": None}
@@ -307,6 +400,8 @@ async def party_save(request: Request, pid: int, s: Session = Depends(get_sessio
     p.unit_id = str(form.get("unit_id", "")).strip()
     p.address = str(form.get("address", "")).strip()
     p.email = str(form.get("email", "")).strip()
+    p.phone = str(form.get("phone", "")).strip()
+    p.channel = str(form.get("channel", "email")) if form.get("channel") in ("email", "whatsapp", "both") else "email"
     p.meters = [m for m in (normalize_spec(str(v)) for v in form.getlist("meters")) if m]
     p.is_owner = bool(form.get("is_owner"))
     p.active = bool(form.get("active"))
@@ -466,16 +561,22 @@ def billing_view(request: Request, bid: int, s: Session = Depends(get_session)):
     b = _get_billing(s, bid)
     allocs = [a for a in s.query(Allocation).filter(Allocation.active.is_(True)).all()
               if a.source_type == "amount" or (a.source_type == "quantity" and a.price_source != "water")]
-    emails = {p.id: p.email for p in s.query(Party).all()}
+    st = get_settings(s)
+    contacts = {}
+    for p in s.query(Party).all():
+        by_mail, by_wa = service.channels(p)
+        contacts[p.id] = {"mail": by_mail and bool(p.email), "wa": by_wa and bool(p.phone),
+                          "want_mail": by_mail, "want_wa": by_wa}
     return render(request, "billing.html", b=b, r=b.result or {}, entities=service.required_entities(s),
-                  amount_allocs=allocs, st=get_settings(s), emails=emails, mail_ok=mailer.configured(),
+                  amount_allocs=allocs, st=st, contacts=contacts, mail_ok=mailer.configured(),
+                  wa_ok=whatsapp.configured(st), send_ok=service.can_send(st),
                   compare=service.victron_comparison(s, b))
 
 
 def _report_msg(report: list[tuple[str, bool, str]]) -> str:
     if not report:
-        return "Keine E-Mails verschickt (keine offenen Parteien mit E-Mail-Adresse)."
-    return "E-Mail: " + "; ".join(f"{n} {'✔' if ok else '✘ ' + m}" for n, ok, m in report)
+        return "Nichts verschickt (keine offenen Parteien mit E-Mail-Adresse bzw. WhatsApp-Nummer)."
+    return "Versand: " + "; ".join(f"{n} {'✔' if ok else '✘ ' + m}" for n, ok, m in report)
 
 
 @app.post("/billings/{bid}")
@@ -524,7 +625,7 @@ async def billing_save(request: Request, bid: int, s: Session = Depends(get_sess
     if action == "finalize":
         b.status = "final"
         msg = "Abrechnung abgeschlossen"
-        if st["mail_auto_send"] and mailer.configured():
+        if st["mail_auto_send"] and service.can_send(st):
             s.commit()
             msg += " · " + _report_msg(service.send_invoices(s, b, only_unsent=True))
     s.commit()
