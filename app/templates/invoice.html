@@ -4,52 +4,64 @@
 <meta charset="utf-8">
 <title>{{ bld.building_title or 'Nebenkostenabrechnung' }} {{ p.name }} {{ b.period_start.strftime('%m/%Y') }}</title>
 <style>
-  @page { size: A4; margin: 18mm 18mm 20mm 20mm;
-          @bottom-right { content: "Seite " counter(page) " von " counter(pages); font-size: 8pt; color: #777 } }
-  body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 10pt; color: #111; max-width: 190mm; margin: {{ '0' if pdf else '20px auto' }}; background:#fff }
-  h1 { font-size: 16pt; margin: 0 0 1mm }
-  .obj { font-size: 11pt; margin-bottom: 4mm }
-  .ids td { padding: .6mm 4mm .6mm 0; border: none; font-size: 10pt }
+  @page { size: A4; margin: 12mm 15mm 14mm 17mm;
+          @bottom-right { content: "Seite " counter(page) " von " counter(pages); font-size: 7.5pt; color: #777 } }
+  body { font-family: "DejaVu Sans", Arial, sans-serif; font-size: 8.8pt; line-height: 1.3; color: #111; max-width: 190mm; margin: {{ '0' if pdf else '20px auto' }}; background:#fff }
+  h1 { font-size: 14pt; margin: 0 }
+  .obj { font-size: 9.5pt; margin: .5mm 0 0; color: #333 }
+  table.head { width: 100%; border-collapse: collapse }
+  table.head > tbody > tr > td { vertical-align: top; padding: 0; border: none }
+  .ids td { padding: .3mm 0 .3mm 3mm; border: none; font-size: 8.3pt }
   .ids td:first-child { color: #555; white-space: nowrap }
-  hr { border: none; border-top: .8pt solid #333; margin: 4mm 0 }
-  table.pos { width: 100%; border-collapse: collapse; margin-top: 3mm }
-  table.pos th, table.pos td { padding: 2mm 1.5mm; border-bottom: .3pt solid #bbb; text-align: left; vertical-align: top }
-  table.pos th { font-size: 8.5pt; color: #444; border-bottom: .8pt solid #333 }
+  hr { border: none; border-top: .8pt solid #333; margin: 2.5mm 0 1.5mm }
+  .intro { margin: 1mm 0 }
+  table.pos { width: 100%; border-collapse: collapse; margin-top: 1mm }
+  table.pos th, table.pos td { padding: .9mm 1.2mm; border-bottom: .3pt solid #ccc; text-align: left; vertical-align: top }
+  table.pos th { font-size: 7.8pt; color: #444; border-bottom: .8pt solid #333 }
   .r { text-align: right; white-space: nowrap }
-  .note { font-size: 8pt; color: #666 }
-  tr.total td { border-top: 1pt solid #111; border-bottom: none; font-weight: bold; font-size: 11pt }
-  tr.sub td { border: none; font-size: 8.5pt; color: #444; padding-top: .5mm; padding-bottom: .5mm }
-  tr.grp td { font-weight: bold; font-size: 9.5pt; padding-top: 3.5mm; border-bottom: .8pt solid #333; color: #111 }
-  tr.subtotal td { font-size: 9pt; font-weight: bold; color: #333; border-bottom: none; padding-bottom: 1mm }
-  .box { margin-top: 6mm; padding: 3mm; background: #f3f4f6; font-size: 8.5pt; page-break-inside: avoid }
-  .foot, .small { page-break-inside: avoid }
+  .note { font-size: 7.3pt; color: #666; line-height: 1.2 }
+  tr.total td { border-top: 1pt solid #111; border-bottom: none; font-weight: bold; font-size: 10pt; padding-top: 1.5mm }
+  tr.sub td { border: none; font-size: 7.8pt; color: #444; padding-top: .2mm; padding-bottom: .2mm }
+  tr.grp td { font-weight: bold; font-size: 8.8pt; padding-top: 2.2mm; border-bottom: .8pt solid #333; color: #111 }
+  tr.subtotal td { font-size: 8.2pt; font-weight: bold; color: #333; border-bottom: none; padding-bottom: .5mm }
   tr.grp { page-break-after: avoid }
-  .box table { width: 100%; border-collapse: collapse; margin-top: 1.5mm }
-  .box td { padding: .5mm 1mm; border: none }
-  .foot { margin-top: 8mm; font-size: 9pt; white-space: pre-line }
-  .small { font-size: 8pt; color: #555; white-space: pre-line; margin-top: 6mm }
+  p.fn { font-size: 7pt; color: #666; margin: 1mm 0 0; line-height: 1.2 }
+  .box { margin-top: 2.5mm; padding: 2mm 2.5mm; background: #f3f4f6; font-size: 7.8pt; page-break-inside: avoid }
+  .box table { width: 100%; border-collapse: collapse; margin-top: 1mm }
+  .box td, .box th { padding: .3mm 1mm; border: none; text-align: left }
+  .box th { font-weight: normal; color: #555 }
+  .foot { margin-top: 3mm; font-size: 8.5pt; page-break-inside: avoid }
+  .foot .small { font-size: 7.5pt; color: #555; margin-top: 1.5mm }
   .page2 { {{ 'page-break-before: always;' if pdf else 'margin-top: 14mm; border-top: 1px dashed #bbb; padding-top: 6mm;' }} }
-  .page2 h2 { font-size: 13pt; margin: 0 0 1mm } .page2 h3 { font-size: 10.5pt; margin: 6mm 0 1mm }
-  .chart { margin: 2mm 0 1mm } .kpis { font-size: 8.5pt; color: #333; margin-bottom: 2mm }
-  table.days { width: 100%; border-collapse: collapse; font-size: 7.5pt; margin-top: 3mm }
-  table.days td, table.days th { padding: .6mm 1.5mm; border-bottom: .3pt solid #ddd; text-align: right }
+  .page2 h2 { font-size: 12pt; margin: 0 0 .5mm }
+  .page2 h3 { font-size: 10pt; margin: 3mm 0 .5mm; padding-bottom: .5mm; border-bottom: .8pt solid #333 }
+  .page2 h4 { font-size: 8.8pt; margin: 2mm 0 0 }
+  .chart { margin: .5mm 0 } .kpis { font-size: 7.8pt; color: #333 }
+  .sect { page-break-inside: avoid }
+  table.days { width: 100%; border-collapse: collapse; font-size: 7pt; margin-top: 1.5mm }
+  table.days td, table.days th { padding: .3mm 1.2mm; border-bottom: .3pt solid #ddd; text-align: right }
   table.days th { color: #555; font-weight: normal; border-bottom: .6pt solid #999 }
   table.days td.d, table.days th.d { text-align: left; color: #555 }
 </style>
 </head>
 <body>
-<h1>{{ bld.building_title or 'Nebenkostenabrechnung' }}</h1>
-{% if bld.building_address %}<div class="obj">({{ bld.building_address }})</div>{% endif %}
-<table class="ids">
+<table class="head"><tr>
+<td>
+  <h1>{{ bld.building_title or 'Nebenkostenabrechnung' }}</h1>
+  {% if bld.building_address %}<div class="obj">({{ bld.building_address }})</div>{% endif %}
+</td>
+<td style="text-align:right">
+<table class="ids" style="margin-left:auto">
   <tr><td>Wohneinheit:</td><td><b>{{ p.name }}</b></td></tr>
   {% if bld.building_id or p.unit_id %}
   <tr><td>Identifikation:</td><td>{% if bld.building_id %}Gebäude ID: {{ bld.building_id }}{% endif %}{% if bld.building_id and p.unit_id %} – {% endif %}{% if p.unit_id %}Wohneinheiten ID: {{ p.unit_id }}{% endif %}</td></tr>
   {% endif %}
-  <tr><td>Abrechnungszeitraum:</td><td>{{ b.period_start.strftime('%d.%m.%Y') }} – {{ b.period_end.strftime('%d.%m.%Y') }}</td></tr>
-  <tr><td>Abrechnungsdatum:</td><td>{{ b.created_at.strftime('%d.%m.%Y') }} · Nr. {{ b.period_start.strftime('%Y%m') }}-{{ p.unit_id or p.id }}</td></tr>
+  <tr><td>Zeitraum:</td><td>{{ b.period_start.strftime('%d.%m.%Y') }} – {{ b.period_end.strftime('%d.%m.%Y') }}</td></tr>
+  <tr><td>Datum / Nr.:</td><td>{{ b.created_at.strftime('%d.%m.%Y') }} · {{ b.period_start.strftime('%Y%m') }}-{{ p.unit_id or p.id }}</td></tr>
 </table>
+</td></tr></table>
 <hr>
-{% if ll.invoice_text %}<p>{{ ll.invoice_text }}</p>{% endif %}
+{% if ll.invoice_text %}<p class="intro">{{ ll.invoice_text }}</p>{% endif %}
 
 <table class="pos">
 <tr><th>Position</th><th class="r">Menge</th><th class="r">Einzelpreis</th><th class="r">Betrag</th></tr>
@@ -71,45 +83,53 @@
 <tr class="sub"><td>davon Weitergabe der Lieferantenrechnung (inkl. {{ (b.vat_rate*100)|num(0) }} % MwSt.)<sup>1</sup></td><td></td><td></td><td class="r">{{ ext|eur }}</td></tr>
 <tr class="sub"><td>davon interne Kosten (ohne MwSt.)</td><td></td><td></td><td class="r">{{ (p.total - ext)|eur }}</td></tr>
 </table>
-<p class="note"><sup>1</sup> Netzstrom und Fixkosten werden aus der Rechnung des Stromlieferanten einschließlich der dort
-berechneten Mehrwertsteuer weitergegeben. PV-, Batterie- und Graustrom, Umlagen und sonstige Positionen sind interne
-Kosten und enthalten keine Mehrwertsteuer (Netzanteile von Strom-Umlagen enthalten die MwSt. der Lieferantenrechnung).</p>
+<p class="fn"><sup>1</sup> Netzstrom und Fixkosten werden aus der Rechnung des Stromlieferanten inkl. der dort berechneten
+MwSt. weitergegeben. PV-, Batterie- und Graustrom, Umlagen und sonstige Positionen sind interne Kosten ohne MwSt.
+(Netzanteile von Strom-Umlagen enthalten die MwSt. der Lieferantenrechnung).</p>
 
 <div class="box">
-  <b>Berechnungsgrundlage</b><br>
+  <b>Berechnungsgrundlage</b> –
   Rechnung Stromanbieter{% if b.invoice_no %} Nr. {{ b.invoice_no }}{% endif %}: {{ b.grid_kwh|num(1) }} kWh Netzbezug,
   Arbeitspreis netto {{ b.energy_cost_net|eur }} → Ø {{ (r.price_net*100)|num(2) }} ct/kWh netto
   bzw. {{ (r.price_gross*100)|num(2) }} ct/kWh inkl. {{ (b.vat_rate*100)|num(0) }} % MwSt.;
-  Ø Börsenpreis {{ (r.spot_price*100)|num(2) }} ct/kWh netto.
-  Ihr Verbrauch: {{ p.kwh|num(2) }} kWh, aufgeteilt nach dem Energiemix des Hauses:
+  Ø Börsenpreis {{ (r.spot_price*100)|num(2) }} ct/kWh netto. Ihr Stromverbrauch: {{ p.kwh|num(2) }} kWh, aufgeteilt nach dem Energiemix des Hauses:
   <table>
-  {% for src in r.sources %}{% if src.share > 0 or src.key == 'grid' %}
-  <tr><td>{{ src.label }}</td><td class="r">{{ (src.share*100)|num(1) }} %</td><td class="r">{{ (src.price*100)|num(2) }} ct/kWh {{ 'inkl. MwSt.' if src.key == 'grid' else 'ohne MwSt.' }}</td></tr>
-  {% endif %}{% endfor %}
+  <tr><th>Herkunft</th>{% for src in r.sources %}{% if src.share > 0 or src.key == 'grid' %}<th class="r">{{ src.label }}</th>{% endif %}{% endfor %}</tr>
+  <tr><td>Anteil</td>{% for src in r.sources %}{% if src.share > 0 or src.key == 'grid' %}<td class="r">{{ (src.share*100)|num(1) }} %</td>{% endif %}{% endfor %}</tr>
+  <tr><td>Preis</td>{% for src in r.sources %}{% if src.share > 0 or src.key == 'grid' %}<td class="r">{{ (src.price*100)|num(2) }} ct/kWh {{ 'brutto' if src.key == 'grid' else 'netto' }}</td>{% endif %}{% endfor %}</tr>
   </table>
 </div>
 
-<div class="foot">Bitte überweisen Sie den Betrag bis zum {{ due.strftime('%d.%m.%Y') }}{% if ll.landlord_iban %} auf folgendes Konto:
-{{ ll.landlord_iban }}{% else %}.{% endif %}
-Verwendungszweck: Nebenkosten {{ b.period_start.strftime('%m/%Y') }} {{ p.unit_id or p.name }}</div>
+<div class="foot">Bitte überweisen Sie den Betrag von <b>{{ p.total|eur }}</b> bis zum {{ due.strftime('%d.%m.%Y') }}{% if ll.landlord_iban %} auf das Konto {{ ll.landlord_iban }}{% endif %}.
+Verwendungszweck: Nebenkosten {{ b.period_start.strftime('%m/%Y') }} {{ p.unit_id or p.name }}
 {% if ll.landlord_name %}<div class="small">{{ ll.landlord_name }}{% if ll.landlord_address %}, {{ ll.landlord_address|replace('\n', ', ') }}{% endif %}{% if ll.landlord_contact %} · {{ ll.landlord_contact }}{% endif %}</div>{% endif %}
+</div>
+
 {% set dly = r.daily or {} %}
 {% set mine = (dly.parties or {}).get(p.id|string) %}
-{% if mine or dly.mix %}
+{% set waters = [] %}
+{% for a in (dly.allocs or []) if a.type == 'quantity' and (a.parties or {}).get(p.id|string) is not none %}{% set _ = waters.append(a) %}{% endfor %}
+{% if mine or dly.mix or waters %}
 <div class="page2">
-  <h2>Detailaufstellung – Verbrauch je Tag</h2>
+  <h2>Detailansicht</h2>
   <div class="kpis">{{ p.name }}{% if p.unit_id %} ({{ p.unit_id }}){% endif %} · {{ b.period_start.strftime('%d.%m.%Y') }} – {{ b.period_end.strftime('%d.%m.%Y') }}</div>
+
+  {% if mine or dly.mix %}
+  <h3>Strom</h3>
   {% if mine %}
   {% set total = mine|sum %}
-  <h3>Ihr Stromverbrauch je Tag{% if p.is_owner %} (Restverbrauch Haus){% endif %}</h3>
+  <div class="sect">
+  <h4>Ihr Stromverbrauch je Tag{% if p.is_owner %} (Restverbrauch Haus){% endif %}</h4>
   <div class="kpis">Summe {{ total|num(2) }} kWh · Ø {{ (total / mine|length)|num(2) }} kWh/Tag · höchster Tag {{ mine|max|num(2) }} kWh</div>
-  <div class="chart">{{ chart_bar(dly.days, mine)|safe }}</div>
+  <div class="chart">{{ chart_bar(dly.days, mine, height=150)|safe }}</div>
+  </div>
   {% endif %}
   {% if dly.mix %}
-  <h3>Energiemix des Hauses je Tag</h3>
-  <div class="kpis">Herkunft des im Haus verbrauchten Stroms laut Messwerten (Netz, PV direkt, Batterie). Ihr Verbrauch
-  wird mit dem Mix des gesamten Abrechnungszeitraums berechnet (siehe Seite 1).</div>
-  <div class="chart">{{ chart_stacked(dly.days, dly.mix)|safe }}</div>
+  <div class="sect">
+  <h4>Energiemix des Hauses je Tag</h4>
+  <div class="kpis">Herkunft des im Haus verbrauchten Stroms laut Messwerten. Abgerechnet wird mit dem Mix des gesamten Zeitraums (Seite 1).</div>
+  <div class="chart">{{ chart_stacked(dly.days, dly.mix, height=150)|safe }}</div>
+  </div>
   {% endif %}
   {% if mine %}
   {% set n = dly.days|length %}{% set rows = ((n + 3) // 4) %}
@@ -122,6 +142,18 @@ Verwendungszweck: Nebenkosten {{ b.period_start.strftime('%m/%Y') }} {{ p.unit_i
     {% endfor %}
   </table>
   {% endif %}
+  {% endif %}
+
+  {% for a in waters %}
+  {% set share = a.parties[p.id|string] %}
+  {% set hsum = a.house|sum %}{% set msum = share|sum %}
+  <div class="sect">
+  <h3>{{ a.name }}</h3>
+  <div class="kpis">Haus gesamt {{ hsum|num(2) }} {{ a.unit }} (Ø {{ (hsum / a.house|length)|num(3) }} {{ a.unit }}/Tag, höchster Tag {{ a.house|max|num(3) }} {{ a.unit }})
+  · Ihr Anteil {{ msum|num(2) }} {{ a.unit }}{% if hsum > 0 %} ({{ (msum / hsum * 100)|num(1) }} %){% endif %}</div>
+  <div class="chart">{{ chart_share(dly.days, a.house, share, unit=a.unit, height=150)|safe }}</div>
+  </div>
+  {% endfor %}
 </div>
 {% endif %}
 </body>

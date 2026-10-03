@@ -14,3 +14,11 @@ def test_stacked_chart_svg():
     svg = charts.stacked_chart(DAYS, mix)
     assert svg.count('fill="#f59e0b"') == 32  # 31 Balken + Legende
     assert "Batterie aus Netz" in svg
+
+
+def test_share_chart():
+    from app.charts import share_chart
+    days = ["2026-08-01", "2026-08-02"]
+    svg = share_chart(days, [1.0, 2.0], [0.5, 1.0], unit="m³")
+    assert svg.startswith("<svg") and "Ihr Anteil" in svg and "m³" in svg
+    assert "Ihr Anteil" not in share_chart(days, [1.0, 2.0], None)

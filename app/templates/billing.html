@@ -76,10 +76,13 @@
 {% set dly = r.daily or {} %}
 <h2>Verbrauch je Tag</h2>
 <div class="card">
-{% if dly.mix or dly.parties %}
+{% if dly.mix or dly.parties or dly.allocs %}
   {% if dly.mix %}<h3 style="margin-top:0">Energiemix des Hauses je Tag</h3>{{ chart_stacked(dly.days, dly.mix)|safe }}{% endif %}
   {% for p in r.parties %}{% set mine = (dly.parties or {}).get(p.id|string) %}
     {% if mine %}<h3>{{ p.name }}{% if p.is_owner %} (Restverbrauch){% endif %} – {{ (mine|sum)|num(1) }} kWh</h3>{{ chart_bar(dly.days, mine)|safe }}{% endif %}
+  {% endfor %}
+  {% for a in (dly.allocs or []) if a.type == 'quantity' %}
+    <h3>{{ a.name }} – Haus {{ (a.house|sum)|num(2) }} {{ a.unit }}</h3>{{ chart_share(dly.days, a.house, none, unit=a.unit)|safe }}
   {% endfor %}
   <p class="muted">Diese Diagramme stehen auch auf Seite 2 jeder Abrechnung (PDF / Ansicht).</p>
 {% else %}

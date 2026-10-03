@@ -99,3 +99,30 @@ def stacked_chart(days: list[str], series: dict[str, list[float]], unit: str = "
         lx += 22 + 5.2 * len(label)
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="100%" '
             f'font-family="DejaVu Sans, Arial, sans-serif">{"".join(parts)}</svg>')
+
+
+def share_chart(days: list[str], house: list[Optional[float]], mine: Optional[list[Optional[float]]],
+                unit: str = "m³", width: int = 680, height: int = 170,
+                house_label: str = "Haus gesamt", mine_label: str = "Ihr Anteil") -> str:
+    """Balken je Tag: Hausverbrauch (hell) und darüber gelegt der Anteil der Partei (dunkel)."""
+    hv = [v or 0.0 for v in house]
+    vmax = _nice_max(max(hv) if hv else 0)
+    left, bottom, top = 34, 30, 14
+    parts, step, plot_h = _frame(days, vmax, unit, width, height, left, bottom, top)
+    bw = step * 0.7
+    for i, v in enumerate(hv):
+        x = left + step * i + (step - bw) / 2
+        h = plot_h * v / vmax
+        parts.append(f'<rect x="{x:.1f}" y="{top + plot_h - h:.1f}" width="{bw:.1f}" height="{h:.1f}" fill="#bae6fd" rx="1"/>')
+        if mine is not None:
+            m = min(mine[i] or 0.0, vmax)
+            hm = plot_h * m / vmax
+            parts.append(f'<rect x="{x:.1f}" y="{top + plot_h - hm:.1f}" width="{bw:.1f}" height="{hm:.1f}" fill="#0369a1" rx="1"/>')
+    legend = [("#bae6fd", house_label)] + ([("#0369a1", mine_label)] if mine is not None else [])
+    lx = left
+    for color, label in legend:
+        parts.append(f'<rect x="{lx}" y="{height - 10}" width="8" height="8" fill="{color}"/>')
+        parts.append(f'<text x="{lx + 11}" y="{height - 3}" font-size="7.5" fill="#374151">{escape(label)}</text>')
+        lx += 22 + 5.2 * len(label)
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="100%" '
+            f'font-family="DejaVu Sans, Arial, sans-serif">{"".join(parts)}</svg>')

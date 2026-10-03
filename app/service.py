@@ -580,4 +580,31 @@ def daily_report(s: Session, b: Billing, st: dict, db_parties: list, allocs: lis
             m = calc.energy_mix(day_bill, ent, vals, [])
             for k, _ in calc.SOURCES:
                 mix[k].append(round(m["kwh"][k], 3))
-    return {"days": days, "parties": {str(k): v for k, v in parties.items()}, "mix": mix}
+    # Umlagen mit Mengen-/Energiequelle (z. B. Trinkwasser m³): Haus je Tag und Anteil je Partei
+    alloc_rows = []
+    for a in allocs:
+        if a.source_type not in ("quantity", "energy") or not a.source_entity:
+            continue
+        house = daily_of(a.source_entity)
+        if house is None:
+            continue
+        house_list = [round(house.get(day, 0.0), 4) for day in days]
+        unit = a.source_unit if a.source_type == "quantity" else "kWh"
+        shares: dict[str, list] = {}
+        if a.key_type == "entity":
+            keyed = {pid: daily_of(str(spec)) for pid, spec in a.key.items()}
+            if keyed and all(x is not None for x in keyed.values()):
+                for pid, ser in keyed.items():
+                    shares[str(pid)] = [round(ser.get(day, 0.0), 4) for day in days]
+        else:
+            if a.key_type == "percent":
+                weights = {pid: float(v) for pid, v in a.key.items() if v}
+            else:
+                weights = {p.id: 1.0 for p in db_parties}
+            wsum = sum(weights.values())
+            if wsum > 0:
+                for pid, w in weights.items():
+                    shares[str(pid)] = [round(v * w / wsum, 4) for v in house_list]
+        alloc_rows.append({"id": a.id, "name": a.name, "type": a.source_type, "unit": unit,
+                           "house": house_list, "parties": shares})
+    return {"days": days, "parties": {str(k): v for k, v in parties.items()}, "mix": mix, "allocs": alloc_rows}

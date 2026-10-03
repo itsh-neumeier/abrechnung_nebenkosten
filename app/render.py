@@ -53,6 +53,7 @@ templates.env.filters["eur"] = fmt_eur
 templates.env.filters["de_date"] = fmt_date
 templates.env.globals["chart_bar"] = charts.bar_chart
 templates.env.globals["chart_stacked"] = charts.stacked_chart
+templates.env.globals["chart_share"] = charts.share_chart
 
 
 def party_result(b: Billing, pid: int) -> Optional[dict]:
