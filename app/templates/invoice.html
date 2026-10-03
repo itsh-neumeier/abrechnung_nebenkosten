@@ -19,7 +19,11 @@
   .note { font-size: 8pt; color: #666 }
   tr.total td { border-top: 1pt solid #111; border-bottom: none; font-weight: bold; font-size: 11pt }
   tr.sub td { border: none; font-size: 8.5pt; color: #444; padding-top: .5mm; padding-bottom: .5mm }
-  .box { margin-top: 6mm; padding: 3mm; background: #f3f4f6; font-size: 8.5pt }
+  tr.grp td { font-weight: bold; font-size: 9.5pt; padding-top: 3.5mm; border-bottom: .8pt solid #333; color: #111 }
+  tr.subtotal td { font-size: 9pt; font-weight: bold; color: #333; border-bottom: none; padding-bottom: 1mm }
+  .box { margin-top: 6mm; padding: 3mm; background: #f3f4f6; font-size: 8.5pt; page-break-inside: avoid }
+  .foot, .small { page-break-inside: avoid }
+  tr.grp { page-break-after: avoid }
   .box table { width: 100%; border-collapse: collapse; margin-top: 1.5mm }
   .box td { padding: .5mm 1mm; border: none }
   .foot { margin-top: 8mm; font-size: 9pt; white-space: pre-line }
@@ -49,13 +53,18 @@
 
 <table class="pos">
 <tr><th>Position</th><th class="r">Menge</th><th class="r">Einzelpreis</th><th class="r">Betrag</th></tr>
-{% for l in p.lines %}
+{% set groups = p.groups or [{'key': none, 'label': '', 'total': p.total}] %}
+{% for g in groups %}
+{% if g.label %}<tr class="grp"><td colspan="4">{{ g.label }}</td></tr>{% endif %}
+{% for l in p.lines if (g.key is none or (l.group or 'strom') == g.key) %}
 <tr>
   <td>{{ l.label }}{% if l.note %}<div class="note">{{ l.note }}</div>{% endif %}</td>
   <td class="r">{% if l.quantity is not none %}{{ l.quantity|num(2) }} {{ l.unit }}{% endif %}</td>
   <td class="r">{% if l.unit_price is not none %}{{ (l.unit_price*100)|num(2) }} ct{% endif %}</td>
   <td class="r">{{ l.amount|eur }}{% if l.vat_included %}<sup>1</sup>{% endif %}</td>
 </tr>
+{% endfor %}
+{% if g.label and groups|length > 1 %}<tr class="subtotal"><td>Summe {{ g.label }}</td><td></td><td></td><td class="r">{{ g.total|eur }}</td></tr>{% endif %}
 {% endfor %}
 <tr class="total"><td>Gesamtbetrag</td><td></td><td></td><td class="r">{{ p.total|eur }}</td></tr>
 {% set ext = p.lines|selectattr('vat_included')|sum(attribute='amount') %}

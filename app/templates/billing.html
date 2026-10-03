@@ -26,11 +26,13 @@
 <h2>Ergebnis je Partei</h2>
 <div class="card scroll">
 <table>
-<tr><th>Partei</th><th class="r">kWh</th><th class="r">Betrag</th><th></th><th>E-Mail</th></tr>
+<tr><th>Partei</th><th class="r">kWh</th><th class="r">Strom</th><th class="r">Fixkosten</th><th class="r">Umlagen</th><th class="r">Betrag</th><th></th><th>E-Mail</th></tr>
 {% for p in r.parties %}
 <tr>
   <td>{{ p.name }}{% if p.is_owner %} <span class="muted">(Eigentümer, Rest)</span>{% endif %}</td>
   <td class="r">{{ p.kwh|num(1) }}</td>
+  {% set gt = {} %}{% for g in (p.groups or []) %}{% set _ = gt.update({g.key: g.total}) %}{% endfor %}
+  <td class="r">{{ gt.get('strom', 0)|eur }}</td><td class="r">{{ gt.get('fix', 0)|eur }}</td><td class="r">{{ gt.get('umlage', 0)|eur }}</td>
   <td class="r"><b>{{ p.total|eur }}</b></td>
   <td class="r"><a href="/billings/{{ b.id }}/invoice/{{ p.id }}" target="_blank">Ansicht</a> · <a href="/billings/{{ b.id }}/invoice/{{ p.id }}.pdf" target="_blank">PDF</a></td>
   <td>{% set sx = (b.sent or {}).get(p.id|string) %}
@@ -42,8 +44,8 @@
   </td>
 </tr>
 {% endfor %}
-<tr><td><b>Summe</b></td><td></td><td class="r"><b>{{ r.charged_total|eur }}</b></td><td></td><td></td></tr>
-<tr><td class="muted">Differenz zur Rechnung (PV/Batterie, Rundung)</td><td></td><td class="r muted">{{ r.difference|eur }}</td><td></td><td></td></tr>
+<tr><td><b>Summe</b></td><td></td><td></td><td></td><td></td><td class="r"><b>{{ r.charged_total|eur }}</b></td><td></td><td></td></tr>
+<tr><td class="muted" colspan="5">Differenz zur Rechnung des Stromanbieters (PV/Batterie, Umlagen, Rundung)</td><td class="r muted">{{ r.difference|eur }}</td><td></td><td></td></tr>
 </table>
 <a class="btn sec" href="/billings/{{ b.id }}/all.zip">Alle PDFs als ZIP</a>
 {% if b.status == 'final' and mail_ok %}<button form="mailform" name="action" value="send_all" onclick="return confirm('Abrechnungen an alle Parteien mit E-Mail-Adresse senden?')">Alle per E-Mail senden</button>
@@ -70,6 +72,22 @@
   </table></details>
 </div>
 {% endif %}
+
+{% set dly = r.daily or {} %}
+<h2>Verbrauch je Tag</h2>
+<div class="card">
+{% if dly.mix or dly.parties %}
+  {% if dly.mix %}<h3 style="margin-top:0">Energiemix des Hauses je Tag</h3>{{ chart_stacked(dly.days, dly.mix)|safe }}{% endif %}
+  {% for p in r.parties %}{% set mine = (dly.parties or {}).get(p.id|string) %}
+    {% if mine %}<h3>{{ p.name }}{% if p.is_owner %} (Restverbrauch){% endif %} – {{ (mine|sum)|num(1) }} kWh</h3>{{ chart_bar(dly.days, mine)|safe }}{% endif %}
+  {% endfor %}
+  <p class="muted">Diese Diagramme stehen auch auf Seite 2 jeder Abrechnung (PDF / Ansicht).</p>
+{% else %}
+  <div class="warn">Noch keine Tageswerte vorhanden. {% if b.status == 'final' %}Abrechnung unten „Wieder öffnen“, dann{% else %}Unten{% endif %}
+  <b>„Werte laden“</b> klicken – erst dabei werden die Tageswerte aus Home Assistant / VRM / Victron geholt
+  („Speichern &amp; neu berechnen“ nutzt nur die bereits gespeicherten Werte).</div>
+{% endif %}
+</div>
 
 {% if compare %}
 <h2>Vergleich mit Victron direkt</h2>

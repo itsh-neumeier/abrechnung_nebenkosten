@@ -108,6 +108,7 @@ class Line:
     unit_price: Optional[float] = None
     note: str = ""
     vat_included: bool = False  # nur Posten der Lieferantenrechnung (Netzstrom, Fixkosten) enthalten MwSt.
+    group: str = "strom"  # strom | fix | umlage – Gliederung der Abrechnung
 
     def as_dict(self) -> dict:
         return {
@@ -118,7 +119,16 @@ class Line:
             "unit_price": self.unit_price,
             "note": self.note,
             "vat_included": self.vat_included,
+            "group": self.group,
         }
+
+
+# Gliederung der Abrechnung (Reihenfolge = Reihenfolge auf der Rechnung)
+GROUPS = [
+    ("strom", "Strom"),
+    ("fix", "Fixkosten"),
+    ("umlage", "Umlagen"),
+]
 
 
 def _r(x: float, digits: int = 2) -> float:
@@ -337,7 +347,7 @@ def compute(
         fixed_gross = bill.fixed_cost_net * (1 + bill.vat_rate)
         for p, part in zip(parties, _split_equal(fixed_gross, len(parties))):
             lines[p.id].append(
-                Line("Fixkosten Stromanbieter (Grundpreis/Messstelle) anteilig", part,
+                Line("Fixkosten Stromanbieter (Grundpreis/Messstelle) anteilig", part, group="fix",
                      note=f"{_de(fixed_gross)} € inkl. MwSt. lt. Rechnung / {len(parties)} Parteien",
                      vat_included=True)
             )
@@ -349,7 +359,7 @@ def compute(
             continue
         for p, part in zip(targets, _split_equal(fc.amount_gross, len(targets))):
             note = f"{_de(fc.amount_gross)} € / {len(targets)} Parteien" if len(targets) > 1 else ""
-            lines[p.id].append(Line(fc.name, part, note=note))
+            lines[p.id].append(Line(fc.name, part, note=note, group="fix"))
 
     # --- Umlagen -----------------------------------------------------------------
     for a in allocations:
@@ -409,13 +419,16 @@ def compute(
             if pot_owner is not None and p.id == owner.id:
                 amount = pot_owner * frac
                 note += f" – Eigentümer: nur Netzanteil {_de(pot_owner)} €"
-            lines[p.id].append(Line(a.name, _r(amount), note=note))
+            lines[p.id].append(Line(a.name, _r(amount), note=note, group="umlage"))
 
     # --- Ergebnis ----------------------------------------------------------------
     result_parties = []
     for p in parties:
-        pl = lines[p.id]
+        order = {g: i for i, (g, _) in enumerate(GROUPS)}
+        pl = sorted(lines[p.id], key=lambda l: order.get(l.group, 99))  # stabil: Reihenfolge innerhalb bleibt
         total = _r(sum(l.amount for l in pl))
+        groups = [{"key": g, "label": label, "total": _r(sum(l.amount for l in pl if l.group == g))}
+                  for g, label in GROUPS if any(l.group == g for l in pl)]
         result_parties.append(
             {
                 "id": p.id,
@@ -425,6 +438,7 @@ def compute(
                 "is_owner": p.is_owner,
                 "kwh": _r(party_kwh[p.id], 3),
                 "lines": [l.as_dict() for l in pl],
+                "groups": groups,
                 "total": total,
             }
         )
