@@ -40,6 +40,12 @@ Netzladeanteil = `vebus_acin1toinverter ÷ battery_history_chargedenergy` (jewei
   Phasen beziehen, zählt `vebus_invertertoacin1` diese Einspeisung (kann hunderte kWh im Monat sein)
   und `vebus_acin1toacout` den Bezug der anderen Phasen. Ein saldierender Zähler verrechnet beides –
   für die Abrechnung zählt nur der saldierte Bezug des Stromzählers. `invertertoacin1` wird nicht verwendet.
+- **Netzbezug nicht aus Victron-Leistung bilden**: Es gibt per Modbus keinen Victron-Netzzähler in kWh
+  (nur mit Victron-Energiezähler: `grid_energy_forward_total`). Aus der Leistung `system_grid_l1–l3` bzw.
+  `vebus_activein_l1–l3` ergibt sich je Phase einzeln ein Vielfaches des echten Bezugs (Phasenausgleich),
+  und selbst stündlich saldiert lag der Wert in einem Praxistest 3–34 % unter dem saldierenden Zähler,
+  weil sich Bezug und Einspeisung innerhalb einer Stunde in den HA-Stundenmitteln aufheben.
+  Daher: eigenen Stromzähler verwenden oder das Feld leer lassen – dann gilt der Bezug laut Rechnung.
 - **Dynamic ESS verkauft ins Netz**: auch das läuft über `vebus_invertertoacin1` und ist nicht Teil des
   Hausverbrauchs.
 - `battery_history_*energy` sind 16-Bit-Register (max. 6553,5 kWh) und können überlaufen;

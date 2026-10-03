@@ -44,7 +44,8 @@ def water_price_parts(st: dict[str, str]) -> list[tuple[str, float]]:
 VICTRON_HINTS = {
     "entity_grid": {
         "hint": "Dein Stromzähler in HA (Bezug, saldierend über alle Phasen) – er muss zur Rechnung passen. "
-                "Alternativ Victron-Netzzähler: grid_energy_forward_total.",
+                "Leer lassen = kWh aus der Stromrechnung. Nicht die Victron-Leistung system_grid_l1–l3 / "
+                "vebus_activein_l1–l3 als 3 Phasen nehmen: durch den Phasenausgleich käme ein Vielfaches heraus.",
         "suggest": ["grid_energy_forward_total"],
     },
     "entity_total": {
