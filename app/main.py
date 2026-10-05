@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from . import accounts, auth, invoice_import, mailbox, mailer, service, victron, vrm, wa_cloud, whatsapp
+from . import accounts, auth, invoice_import, mailbox, mailer, notify, service, victron, vrm, wa_cloud, whatsapp
 from .config import config
 from .db import (Allocation, Billing, FixedCost, Party, SessionLocal, get_session, get_settings, init_db,
                  save_settings)
@@ -69,7 +69,7 @@ def redirect(url: str, msg: str = "") -> RedirectResponse:
 
 PUBLIC = ("/login", "/logout", "/setup", "/password/", "/static/", "/healthz", "/favicon", "/apple-touch-icon",
           "/api/n8n/", "/api/whatsapp/", "/manifest.webmanifest", "/sw.js", "/offline", "/app")
-TENANT_OK = ("/portal", "/account")
+TENANT_OK = ("/portal", "/account", "/api/push/")
 
 
 @app.middleware("http")
@@ -747,8 +747,10 @@ async def billing_save(request: Request, bid: int, s: Session = Depends(get_sess
     if action in ("publish", "unpublish"):
         b.published = action == "publish"
         s.commit()
-        return redirect(f"/billings/{bid}", "Im Mieterportal veröffentlicht" if b.published
-                        else "Aus dem Mieterportal zurückgezogen")
+        if not b.published:
+            return redirect(f"/billings/{bid}", "Aus dem Mieterportal zurückgezogen")
+        n = notify.billing_published(s, b)
+        return redirect(f"/billings/{bid}", "Im Mieterportal veröffentlicht" + (f" · {n} Mieter per Push benachrichtigt" if n else ""))
     if action.startswith("send"):
         if b.status != "final":
             return redirect(f"/billings/{bid}", "Bitte zuerst abschließen, dann versenden.")
@@ -787,6 +789,9 @@ async def billing_save(request: Request, bid: int, s: Session = Depends(get_sess
             s.commit()
             msg += " · " + _report_msg(service.send_invoices(s, b, only_unsent=True))
     s.commit()
+    if action == "finalize" and b.published:
+        if n := notify.billing_published(s, b):
+            msg += f" · {n} Mieter per Push benachrichtigt"
     return redirect(f"/billings/{bid}", msg)
 
 

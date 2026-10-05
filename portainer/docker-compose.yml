@@ -23,6 +23,7 @@ services:
       APP_USER: ${APP_USER:-admin}
       APP_PASSWORD: ${APP_PASSWORD:-}
       APP_SECRET_KEY: ${APP_SECRET_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       APP_BASE_URL: ${APP_BASE_URL:-}
       # E-Mail-Versand (SMTP)
       SMTP_HOST: ${SMTP_HOST:-}

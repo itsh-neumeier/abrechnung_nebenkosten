@@ -61,6 +61,21 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 
+class PushSubscription(Base):
+    """Web-Push-Abo eines Geräts (PWA/Browser) für einen Benutzer."""
+
+    __tablename__ = "push_subscriptions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)  # None = ohne Login (Verwalter)
+    endpoint: Mapped[str] = mapped_column(String(1000), unique=True)
+    p256dh: Mapped[str] = mapped_column(String(200))
+    auth: Mapped[str] = mapped_column(String(100))
+    user_agent: Mapped[str] = mapped_column(String(300), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    last_ok: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    failures: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class FixedCost(Base):
     """Weitere Fixkosten je Abrechnung, z. B. IPTV-Bereitstellung."""
 
@@ -115,6 +130,7 @@ class Billing(Base):
     result: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | final
     published: Mapped[bool] = mapped_column(Boolean, default=False)  # im Mieterportal sichtbar (nur wenn final)
+    notified: Mapped[list] = mapped_column(JSON, default=list)  # Benutzer-IDs, die per Push benachrichtigt wurden
     notes: Mapped[str] = mapped_column(Text, default="")
     fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
@@ -245,6 +261,7 @@ SETTING_DEFAULTS = {
     "n8n_last_test": "",
     # Login / Mieterportal
     "session_secret": "",  # wird erzeugt (oder APP_SECRET_KEY)
+    "vapid_private": "",  # Web-Push-Schlüssel (wird erzeugt, oder VAPID_PRIVATE_KEY)
     "portal_auto_publish": "1",  # beim Abschließen im Mieterportal veröffentlichen
     # Rechnungsimport
     "imap_senders": "",  # leer = IMAP_SENDER aus der .env (Standard awattar.de)

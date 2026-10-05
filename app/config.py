@@ -13,6 +13,7 @@ class Config:
     app_user: str = os.getenv("APP_USER", "")
     app_password: str = os.getenv("APP_PASSWORD", "")  # legt beim ersten Start den ersten Verwalter an
     app_secret_key: str = os.getenv("APP_SECRET_KEY", "").strip()  # optional: Schlüssel für Sitzungs-Cookies
+    vapid_private_key: str = os.getenv("VAPID_PRIVATE_KEY", "").strip()  # optional: fester Web-Push-Schlüssel
     # E-Mail-Versand
     smtp_host: str = os.getenv("SMTP_HOST", "").strip()
     smtp_port: int = int(os.getenv("SMTP_PORT", "587") or 587)

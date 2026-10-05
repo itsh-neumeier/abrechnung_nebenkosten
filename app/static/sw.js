@@ -39,3 +39,46 @@ self.addEventListener("fetch", (event) => {
     );
   }
 });
+
+/* ---- Push-Benachrichtigungen ---- */
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = { body: event.data && event.data.text() }; }
+  const title = data.title || "Nebenkostenabrechnung";
+  event.waitUntil(self.registration.showNotification(title, {
+    body: data.body || "",
+    icon: "/static/icon-192.png",
+    badge: "/static/badge-96.png",
+    tag: data.tag || undefined,
+    renotify: !!data.tag,
+    data: { url: data.url || "/" },
+    lang: "de",
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = new URL((event.notification.data && event.notification.data.url) || "/", self.location.origin).href;
+  event.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const w of wins) {
+      if (w.url.startsWith(self.location.origin) && "focus" in w) {
+        await w.focus();
+        if ("navigate" in w) return w.navigate(url);
+        return;
+      }
+    }
+    return self.clients.openWindow(url);
+  })());
+});
+
+self.addEventListener("pushsubscriptionchange", (event) => {
+  // Browser hat das Abo erneuert → beim Server neu anmelden
+  event.waitUntil((async () => {
+    const cfg = await fetch("/api/push/config", { credentials: "include" }).then((r) => r.json());
+    const sub = await self.registration.pushManager.subscribe({
+      userVisibleOnly: true, applicationServerKey: cfg.publicKey });
+    await fetch("/api/push/subscribe", { method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(sub) });
+  })());
+});

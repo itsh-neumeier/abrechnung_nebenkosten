@@ -7,3 +7,4 @@ websockets==17.1
 python-multipart==0.0.32
 weasyprint==70.0
 pypdf==6.19.0
+cryptography==49.0.0

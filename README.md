@@ -159,6 +159,14 @@ Basic-Auth erreichbar, aber durch Token, Signatur bzw. signierte Links geschütz
   30 Tage), Sperre nach 5 Fehlversuchen, Passwortänderung meldet andere Sitzungen ab. Optional `APP_SECRET_KEY` als
   fester Cookie-Schlüssel (sonst automatisch erzeugt und in der Datenbank gespeichert).
 
+### Push-Benachrichtigungen (PWA)
+
+Unter „Mein Konto“, im Mieterportal und auf der Seite „📲 App“: **„Auf diesem Gerät aktivieren“**. Mieter werden
+benachrichtigt, sobald eine Abrechnung ihrer Partei veröffentlicht wird (je Abrechnung nur einmal), Verwalter bei einer
+neu eingegangenen Stromrechnung. Ein Tipp auf die Benachrichtigung öffnet die Abrechnung. Web Push nach RFC 8291/8292
+(Ende-zu-Ende verschlüsselt, VAPID-Schlüssel erzeugt die App selbst – kein Firebase-Konto nötig, optional fester
+Schlüssel über `VAPID_PRIVATE_KEY`). Voraussetzung: HTTPS; auf dem iPhone nur in der installierten App (iOS 16.4+).
+
 ## Entwicklung
 
 ```bash

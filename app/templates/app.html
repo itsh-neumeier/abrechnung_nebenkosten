@@ -22,6 +22,9 @@
   <p class="muted" id="st-hint" hidden>Chrome bietet die Installation gerade nicht direkt an – nutze das Menü wie unten beschrieben.</p>
 </div>
 
+{% if request.state.user or not request.state.auth_enabled %}{% set me_ = request.state.user %}
+{% with push_text = ("Benachrichtigung auf diesem Gerät, sobald eine neue Abrechnung für dich veröffentlicht wird." if me_ and not me_.is_admin else "Benachrichtigung auf diesem Gerät, sobald eine neue Stromrechnung eingegangen ist.") %}{% include "_push.html" %}{% endwith %}{% endif %}
+
 <div class="grid-cards">
   <div class="card">
     <h2 style="margin-top:0">🤖 Android (Chrome)</h2>

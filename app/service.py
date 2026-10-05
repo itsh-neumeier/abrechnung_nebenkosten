@@ -12,7 +12,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from . import billing as calc
-from . import invoice_import, mailer, render, victron, vrm, wa_cloud, whatsapp
+from . import invoice_import, mailer, notify, render, victron, vrm, wa_cloud, whatsapp
 from .config import config
 from .db import Allocation, Billing, FixedCost, Party, get_settings
 from .ha import HAClient, HAError
@@ -581,6 +581,9 @@ async def import_invoice(s: Session, pdf: bytes, filename: str, message_id: str 
         # Vollautomatisch: ohne manuelle Prüfung abschließen und an alle Parteien mit Adresse senden
         b.status = "final"
         msgs.append("automatisch abgeschlossen" + (f" trotz {len(warnings)} Hinweis(en)" if warnings else ""))
+        if st["portal_auto_publish"]:
+            b.published = True
+            msgs.append("im Mieterportal veröffentlicht")
         if can_send(st):
             s.commit()
             report = send_invoices(s, b, only_unsent=True)
@@ -612,6 +615,13 @@ async def import_invoice(s: Session, pdf: bytes, filename: str, message_id: str 
                              html=html)
         except Exception:  # noqa: BLE001
             pass
+    # Push-Benachrichtigungen (Fehler dürfen den Import nie stören)
+    try:
+        if not source.startswith("Upload"):
+            notify.invoice_imported(s, b, text_msg)
+        notify.billing_published(s, b)
+    except Exception:  # noqa: BLE001
+        pass
     return b, text_msg
 
 

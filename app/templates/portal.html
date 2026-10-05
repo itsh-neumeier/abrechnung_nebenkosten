@@ -33,6 +33,7 @@
   <p class="muted">Noch keine veröffentlichten Abrechnungen.</p>
   {% endif %}
 </div>
+{% if me and not me.is_admin and party.portal %}{% with push_text = "Benachrichtigung auf diesem Gerät, sobald eine neue Abrechnung für dich veröffentlicht wird." %}{% include "_push.html" %}{% endwith %}{% endif %}
 {% elif me and not me.is_admin %}
 <div class="warn">Dein Zugang ist keiner Partei zugeordnet – bitte an die Hausverwaltung wenden.</div>
 {% endif %}

@@ -10,9 +10,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
-from . import auth, mailer
+from . import auth, mailer, notify
 from .config import config
-from .db import Billing, Party, User, get_session, get_settings, save_settings
+from .db import Billing, Party, PushSubscription, User, get_session, get_settings, save_settings
 from .render import invoice_html, invoice_pdf, party_result, pdf_name, period_text, templates
 
 router = APIRouter()
@@ -395,3 +395,59 @@ def portal_pdf(request: Request, bid: int, party: Optional[int] = None, s: Sessi
 def portal_view(request: Request, bid: int, party: Optional[int] = None, s: Session = Depends(get_session)):
     b, pr = _portal_billing(request, s, bid, party)
     return HTMLResponse(invoice_html(b, pr))
+
+
+# --------------------------------------------------------------------------- Push-Benachrichtigungen
+def _push_user(request: Request) -> tuple[bool, Optional[int]]:
+    """(erlaubt, user_id) – ohne Login-System gehört das Abo dem Verwalter (user_id None)."""
+    me = current(request)
+    if me is not None:
+        return True, me.id
+    return not getattr(request.state, "auth_enabled", False), None
+
+
+@router.get("/api/push/config")
+def push_config(request: Request, s: Session = Depends(get_session)):
+    allowed, uid = _push_user(request)
+    if not allowed:
+        raise HTTPException(401)
+    devices = s.query(PushSubscription).filter(
+        PushSubscription.user_id == uid if uid is not None else PushSubscription.user_id.is_(None)).count()
+    return {"publicKey": notify.public_key(s), "devices": devices}
+
+
+@router.post("/api/push/subscribe")
+async def push_subscribe(request: Request, s: Session = Depends(get_session)):
+    allowed, uid = _push_user(request)
+    if not allowed:
+        raise HTTPException(401)
+    try:
+        notify.subscribe(s, uid, await request.json(), request.headers.get("user-agent", ""))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True}
+
+
+@router.post("/api/push/unsubscribe")
+async def push_unsubscribe(request: Request, s: Session = Depends(get_session)):
+    allowed, uid = _push_user(request)
+    if not allowed:
+        raise HTTPException(401)
+    data = await request.json()
+    sub = s.query(PushSubscription).filter(PushSubscription.endpoint == str(data.get("endpoint", ""))).first()
+    if sub is not None and sub.user_id == uid:
+        notify.unsubscribe(s, sub.endpoint)
+    return {"ok": True}
+
+
+@router.post("/api/push/test")
+def push_test(request: Request, s: Session = Depends(get_session)):
+    allowed, uid = _push_user(request)
+    if not allowed:
+        raise HTTPException(401)
+    me = current(request)
+    url = "/portal" if (me is not None and not me.is_admin) else "/"
+    ok, errors = notify.send_to(s, notify.subs_for_users(s, [uid]), {
+        "title": "Test-Benachrichtigung", "body": "Benachrichtigungen der Nebenkostenabrechnung funktionieren ✅",
+        "url": url, "tag": "test"})
+    return {"ok": ok, "errors": errors}
