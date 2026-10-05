@@ -20,6 +20,18 @@ from .db import Billing, Party, PushSubscription, User, get_settings, save_setti
 
 log = logging.getLogger("notify")
 MAX_FAILURES = 5
+# Globale Schalter (Einstellungen → Benutzer): Schlüssel → (Beschriftung, Standard)
+EVENTS = {
+    "push_tenant_published": ("Mieter: neue Abrechnung im Portal veröffentlicht (mit Betrag)", "1"),
+    "push_admin_import": ("Verwalter: neue Stromrechnung eingegangen (mit Betrag, Zeitraum, kWh)", "1"),
+    "push_admin_sent": ("Verwalter: Abrechnungen versendet (E-Mail / WhatsApp)", "1"),
+    "push_admin_errors": ("Verwalter: Fehler (Versand, Postfach-Abruf, WhatsApp-Zustellung)", "1"),
+    "push_admin_delivery": ("Verwalter: WhatsApp zugestellt / gelesen", ""),
+}
+
+
+def enabled(s: Session, key: str) -> bool:
+    return bool(get_settings(s).get(key, EVENTS[key][1]))
 
 
 def vapid_key(s: Session) -> str:
@@ -108,7 +120,7 @@ def admin_ids(s: Session) -> list[Optional[int]]:
 
 def billing_published(s: Session, b: Billing) -> int:
     """Mieter benachrichtigen, deren Partei die (veröffentlichte, abgeschlossene) Abrechnung sehen darf."""
-    if not (b.published and b.status == "final"):
+    if not (b.published and b.status == "final") or not enabled(s, "push_tenant_published"):
         return 0
     already = set(b.notified or [])
     parties = {p.id: p for p in s.query(Party).filter(Party.portal.is_(True)).all()}
@@ -131,8 +143,48 @@ def billing_published(s: Session, b: Billing) -> int:
     return len(sent_to)
 
 
-def invoice_imported(s: Session, b: Billing, text: str) -> int:
-    data = {"title": "Neue Stromrechnung eingegangen", "body": f"{b.title}: {text}"[:180],
-            "url": f"/billings/{b.id}", "tag": f"import-{b.id}"}
-    ok, _ = send_to(s, subs_for_users(s, admin_ids(s)), data)
+def to_admins(s: Session, key: str, title: str, body: str, url: str = "/", tag: str = "") -> int:
+    """Benachrichtigung an alle Verwalter-Geräte, wenn der globale Schalter ``key`` an ist."""
+    if not enabled(s, key):
+        return 0
+    ok, _ = send_to(s, subs_for_users(s, admin_ids(s)), {"title": title, "body": body[:240], "url": url,
+                                                          "tag": tag or key})
     return ok
+
+
+def invoice_imported(s: Session, b: Billing, status: str, gross: Optional[float] = None, warnings: int = 0) -> int:
+    """Eingang einer Stromrechnung – mit Inhalt: Betrag, Zeitraum, Netzbezug, Status."""
+    amount = render.fmt_eur(gross) if gross is not None else ""
+    title = f"Neue Stromrechnung{': ' + amount if amount else ''}"
+    lines = [f"{render.period_text(b)} · {render.fmt_num(b.grid_kwh or 0, 1)} kWh Netzbezug"
+             + (f" · Nr. {b.invoice_no}" if b.invoice_no else "")]
+    if warnings:
+        lines.append(f"⚠ {warnings} Hinweis(e) – bitte prüfen")
+    lines.append(status)
+    return to_admins(s, "push_admin_import", title, "\n".join(lines), f"/billings/{b.id}", f"import-{b.id}")
+
+
+def sent_report(s: Session, b: Billing, report: list[tuple[str, bool, str]]) -> None:
+    """Nach dem Versand: Zusammenfassung bzw. Fehler an die Verwalter."""
+    if not report:
+        return
+    bad = [f"{n}: {m}" for n, ok, m in report if not ok]
+    good = [n for n, ok, _ in report if ok]
+    period = f"{b.period_start:%m/%Y}"
+    if bad:
+        to_admins(s, "push_admin_errors", f"Versand {period}: {len(bad)} Fehler",
+                  "; ".join(bad), f"/billings/{b.id}", f"senderr-{b.id}")
+    if good:
+        to_admins(s, "push_admin_sent", f"Abrechnung {period} versendet",
+                  f"{len(good)} erfolgreich: " + ", ".join(sorted(set(good))), f"/billings/{b.id}", f"sent-{b.id}")
+
+
+def wa_delivery(s: Session, b: Billing, pid: int, ok: bool, status: str, error: str = "") -> None:
+    """WhatsApp-Zustellstatus einer Abrechnung (Fehler → Fehler-Schalter, sonst Zustell-Schalter)."""
+    name = next((p["name"] for p in (b.result or {}).get("parties", []) if p["id"] == pid), f"Partei {pid}")
+    if ok:
+        to_admins(s, "push_admin_delivery", f"WhatsApp {status}: {name}", f"Abrechnung {b.period_start:%m/%Y}",
+                  f"/billings/{b.id}", f"wa-{b.id}-{pid}")
+    else:
+        to_admins(s, "push_admin_errors", f"WhatsApp-Fehler: {name}", f"Abrechnung {b.period_start:%m/%Y}: {error}",
+                  f"/billings/{b.id}", f"waerr-{b.id}-{pid}")

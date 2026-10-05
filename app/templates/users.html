@@ -5,7 +5,7 @@
 <a class="btn" href="/users/0">+ Benutzer anlegen</a>
 <div class="card scroll" style="margin-top:12px">
 <table>
-<tr><th>Benutzer</th><th>Rolle</th><th>Partei</th><th>E-Mail</th><th>Letzte Anmeldung</th><th>Status</th></tr>
+<tr><th>Benutzer</th><th>Rolle</th><th>Partei</th><th>E-Mail</th><th>Letzte Anmeldung</th><th>🔔 Geräte</th><th>Status</th></tr>
 {% for u in users %}
 <tr>
   <td><a href="/users/{{ u.id }}">{{ u.username }}</a>{% if u.name %}<br><span class="muted">{{ u.name }}</span>{% endif %}</td>
@@ -13,9 +13,10 @@
   <td>{{ parties[u.party_id].name if u.party_id in parties else '–' }}</td>
   <td>{{ u.email or '–' }}</td>
   <td>{{ u.last_login.strftime('%d.%m.%Y %H:%M') if u.last_login else '–' }}</td>
+  <td>{{ devices.get(u.id, 0) or '–' }}</td>
   <td>{% if not u.active %}<span class="badge">gesperrt</span>{% elif not u.password_hash %}<span class="badge">Einladung offen</span>{% else %}aktiv{% endif %}</td>
 </tr>
-{% else %}<tr><td colspan="6" class="muted">Noch keine Benutzer – die App ist ohne Login erreichbar. <a href="/setup">Ersten Verwalter anlegen</a>.</td></tr>{% endfor %}
+{% else %}<tr><td colspan="7" class="muted">Noch keine Benutzer – die App ist ohne Login erreichbar. <a href="/setup">Ersten Verwalter anlegen</a>.</td></tr>{% endfor %}
 </table>
 </div>
 
@@ -40,5 +41,19 @@
   <p class="muted">Sonst in der Abrechnung über „Im Mieterportal veröffentlichen“. Einladungen und „Passwort vergessen“ laufen über den
   E-Mail-Versand ({{ "eingerichtet ✔" if mail_ok else "nicht eingerichtet – SMTP in Portainer setzen" }}).</p>
   <button>Speichern</button>
+</form>
+<form method="post" action="/users/settings" class="card">
+  <input type="hidden" name="push_form" value="1">
+  <h2 style="margin-top:0">🔔 Benachrichtigungen (global)</h2>
+  <p class="muted">Gilt für alle Geräte, auf denen Benachrichtigungen aktiviert sind („Mein Konto“, Mieterportal oder Seite
+  „📲 App“). Hier legst du fest, bei welchen Ereignissen überhaupt benachrichtigt wird.</p>
+  {% for key, (label, default) in events.items() %}
+  <div class="check"><input type="checkbox" name="{{ key }}" id="{{ key }}" {% if st.get(key, default) %}checked{% endif %}>
+    <label for="{{ key }}" style="margin:0">{{ label }}</label></div>
+  {% endfor %}
+  <p class="muted">Registrierte Geräte: Verwalter {{ (devices.get(none, 0) + (users|selectattr('role', 'equalto', 'admin')|map(attribute='id')|map('string')|list|length * 0)) }}
+  ohne Login-Zuordnung · Details je Benutzer in der Tabelle oben.</p>
+  <button>Speichern</button>
+  <a class="btn sec" href="/account#push-card">Dieses Gerät aktivieren / testen</a>
 </form>
 {% endblock %}

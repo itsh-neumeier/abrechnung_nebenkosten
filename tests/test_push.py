@@ -126,3 +126,57 @@ def test_push_on_publish(monkeypatch):
         with SessionLocal() as s:
             ok, errors = notify.send_to(s, s.query(PushSubscription).all(), {"title": "x"})
             assert ok == 0 and errors and s.query(PushSubscription).count() == 0
+
+
+def test_admin_notifications_with_amount_and_global_switches(monkeypatch):
+    import asyncio
+    import smtplib
+
+    from app import service
+    from app.db import SessionLocal
+    from tests.test_import import AWATTAR_TEXT, make_pdf
+
+    posted = []
+    monkeypatch.setattr(webpush.httpx, "post",
+                        lambda url, content=None, headers=None, timeout=None: posted.append(content) or httpx.Response(201))
+
+    class FailSMTP:
+        def __init__(self, *a, **kw):
+            raise ConnectionRefusedError("Verbindung abgelehnt")
+
+    monkeypatch.setattr(smtplib, "SMTP", FailSMTP)
+    priv, pub, sub = device()
+
+    with TestClient(app) as c:
+        c.post("/setup", data={"username": "admin", "password": "admin-pass-1", "password2": "admin-pass-1"})
+        assert c.post("/api/push/subscribe", json=sub).json()["ok"]
+        page = c.get("/users").text
+        assert "Benachrichtigungen (global)" in page and "neue Stromrechnung eingegangen" in page
+
+        # Eingang per Postfach → Verwalter bekommt Betrag, Zeitraum und kWh
+        with SessionLocal() as s:
+            b, _ = asyncio.run(service.import_invoice(s, make_pdf(), "r.pdf", "<m1@x>", source="E-Mail „Rechnung“"))
+            bid = b.id
+        msg = decrypt(posted[-1], priv, pub)
+        assert msg["title"].startswith("Neue Stromrechnung: ") and msg["title"].endswith("€")
+        assert "01.08.2026" in msg["body"] and "74,8 kWh" in msg["body"] and msg["url"] == f"/billings/{bid}"
+
+        # Versand schlägt fehl → Fehler-Benachrichtigung
+        c.post("/parties/0", data={"name": "Familie Muster", "meters": "sensor.eg", "active": "1", "email": "m@test.de"})
+        with SessionLocal() as s:
+            from app.db import Billing
+            b = s.get(Billing, bid)
+            b.result = service.recompute(s, b)
+            b.status = "final"
+            s.commit()
+            service.send_invoices(s, b)
+        err = decrypt(posted[-1], priv, pub)
+        assert "Fehler" in err["title"] and "Familie Muster" in err["body"]
+
+        # global abgeschaltet → keine Benachrichtigung mehr beim Eingang
+        c.post("/users/settings", data={"push_form": "1", "push_tenant_published": "1"})
+        n = len(posted)
+        with SessionLocal() as s:
+            asyncio.run(service.import_invoice(s, make_pdf(AWATTAR_TEXT.replace("2026000001", "2026000009")),
+                                               "r2.pdf", "<m2@x>", source="E-Mail „Rechnung“"))
+        assert len(posted) == n

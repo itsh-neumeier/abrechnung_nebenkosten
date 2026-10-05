@@ -261,7 +261,12 @@ SETTING_DEFAULTS = {
     "n8n_last_test": "",
     # Login / Mieterportal
     "session_secret": "",  # wird erzeugt (oder APP_SECRET_KEY)
-    "vapid_private": "",  # Web-Push-Schlüssel (wird erzeugt, oder VAPID_PRIVATE_KEY)
+    "vapid_private": "",
+    "push_tenant_published": "1",
+    "push_admin_import": "1",
+    "push_admin_sent": "1",
+    "push_admin_errors": "1",
+    "push_admin_delivery": "",  # Web-Push-Schlüssel (wird erzeugt, oder VAPID_PRIVATE_KEY)
     "portal_auto_publish": "1",  # beim Abschließen im Mieterportal veröffentlichen
     # Rechnungsimport
     "imap_senders": "",  # leer = IMAP_SENDER aus der .env (Standard awattar.de)

@@ -244,16 +244,22 @@ async def account_save(request: Request, s: Session = Depends(get_session)):
 def users_page(request: Request, s: Session = Depends(get_session)):
     users = s.query(User).order_by(User.role, User.username).all()
     parties = {p.id: p for p in s.query(Party).order_by(Party.sort, Party.id).all()}
+    devices: dict = {}
+    for sub in s.query(PushSubscription).all():
+        devices[sub.user_id] = devices.get(sub.user_id, 0) + 1
     return _page(request, "users.html", users=users, parties=parties, roles=auth.ROLES, st=get_settings(s),
-                 mail_ok=mailer.configured())
+                 mail_ok=mailer.configured(), devices=devices, events=notify.EVENTS)
 
 
 @router.post("/users/settings", dependencies=[Depends(require_admin)])
 async def users_settings(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
-    save_settings(s, {"portal_auto_publish": "1" if form.get("portal_auto_publish") else ""})
-    for p in s.query(Party).all():
-        p.portal = bool(form.get(f"portal_{p.id}"))
+    if form.get("push_form"):  # Formular „Benachrichtigungen (global)“
+        save_settings(s, {k: "1" if form.get(k) else "" for k in notify.EVENTS})
+    else:  # Formular „Mieterportal“
+        save_settings(s, {"portal_auto_publish": "1" if form.get("portal_auto_publish") else ""})
+        for p in s.query(Party).all():
+            p.portal = bool(form.get(f"portal_{p.id}"))
     s.commit()
     return _redirect("/users", "Gespeichert")
 

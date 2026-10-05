@@ -381,6 +381,10 @@ def send_invoices(s: Session, b: Billing, party_ids: list[int] | None = None,
         if entry:
             sent[str(pid)] = entry
     b.sent = sent
+    try:
+        notify.sent_report(s, b, report)
+    except Exception:  # noqa: BLE001 – Benachrichtigung darf den Versand nie stören
+        pass
     return report
 
 
@@ -460,18 +464,27 @@ def wa_cloud_status(s: Session, items: list[dict]) -> int:
         if last.get("message_id") in pending:
             save_settings(s, {"n8n_last_test": json.dumps(apply(last, pending[last["message_id"]]), ensure_ascii=False)})
             hits += 1
+    events = []
     for b in s.query(Billing).order_by(Billing.id.desc()).limit(60).all():
         changed = False
         sent = {k: dict(v) for k, v in (b.sent or {}).items()}
-        for entry in sent.values():
+        for pid, entry in sent.items():
             wa = entry.get("wa") or {}
             if wa.get("message_id") in pending:
-                entry["wa"] = apply(wa, pending[wa["message_id"]])
+                new = apply(wa, pending[wa["message_id"]])
+                if new.get("raw_status") != wa.get("raw_status"):
+                    events.append((b, int(pid), new))
+                entry["wa"] = new
                 changed = True
                 hits += 1
         if changed:
             b.sent = sent
     s.commit()
+    for b, pid, wa in events:
+        try:
+            notify.wa_delivery(s, b, pid, wa["ok"], wa["status"], wa.get("error", ""))
+        except Exception:  # noqa: BLE001
+            pass
     return hits
 
 
@@ -502,6 +515,10 @@ def wa_status(s: Session, data: dict) -> str:
     entry["wa"] = {**prev, **info, "to": prev.get("to", "")}
     b.sent = sent
     s.commit()
+    try:
+        notify.wa_delivery(s, b, pid, ok, info["status"], info["error"])
+    except Exception:  # noqa: BLE001
+        pass
     return "ok"
 
 
@@ -618,7 +635,7 @@ async def import_invoice(s: Session, pdf: bytes, filename: str, message_id: str 
     # Push-Benachrichtigungen (Fehler dürfen den Import nie stören)
     try:
         if not source.startswith("Upload"):
-            notify.invoice_imported(s, b, text_msg)
+            notify.invoice_imported(s, b, msgs[-1], result.get("bill_gross"), len(warnings))
         notify.billing_published(s, b)
     except Exception:  # noqa: BLE001
         pass

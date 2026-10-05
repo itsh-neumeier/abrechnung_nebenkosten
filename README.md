@@ -163,7 +163,9 @@ Basic-Auth erreichbar, aber durch Token, Signatur bzw. signierte Links geschütz
 
 Unter „Mein Konto“, im Mieterportal und auf der Seite „📲 App“: **„Auf diesem Gerät aktivieren“**. Mieter werden
 benachrichtigt, sobald eine Abrechnung ihrer Partei veröffentlicht wird (je Abrechnung nur einmal), Verwalter bei einer
-neu eingegangenen Stromrechnung. Ein Tipp auf die Benachrichtigung öffnet die Abrechnung. Web Push nach RFC 8291/8292
+neu eingegangenen Stromrechnung – mit Inhalt (Betrag, Zeitraum, kWh, Hinweise). Unter „Benutzer → Benachrichtigungen
+(global)“ legt der Verwalter fest, welche Ereignisse melden: neue Abrechnung (Mieter), Rechnungseingang, Versand,
+Fehler (Versand, Postfach, WhatsApp) und optional WhatsApp zugestellt/gelesen. Ein Tipp öffnet die Abrechnung. Web Push nach RFC 8291/8292
 (Ende-zu-Ende verschlüsselt, VAPID-Schlüssel erzeugt die App selbst – kein Firebase-Konto nötig, optional fester
 Schlüssel über `VAPID_PRIVATE_KEY`). Voraussetzung: HTTPS; auf dem iPhone nur in der installierten App (iOS 16.4+).
 

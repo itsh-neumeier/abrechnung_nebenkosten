@@ -136,11 +136,22 @@ async def check_mailbox() -> str:
                     except invoice_import.ImportError_ as e:
                         results.append(f"{name}: {e}")
                 known.add(mid)
+        status["error_notified"] = False
         result = "; ".join(results) if results else (
             f"Keine neuen Rechnungen ({len(raws)} Mail(s) geprüft, {matched} neue mit passendem Absender und PDF).")
     except Exception as e:  # noqa: BLE001
         log.exception("Postfach-Abruf fehlgeschlagen")
         result = f"Fehler beim Postfach-Abruf: {e}"
+        try:
+            from . import notify
+
+            if not status.get("error_notified"):  # nur einmal bis zum nächsten erfolgreichen Abruf
+                with SessionLocal() as s2:
+                    notify.to_admins(s2, "push_admin_errors", "Postfach-Abruf fehlgeschlagen", str(e),
+                                     "/settings#eingang", "mailbox-error")
+                status["error_notified"] = True
+        except Exception:  # noqa: BLE001
+            pass
     finally:
         status["running"] = False
     status.update(last_run=datetime.now().isoformat(timespec="seconds"), last_result=result)
