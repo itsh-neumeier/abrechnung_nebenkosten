@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import quote
 
@@ -381,10 +381,12 @@ def portal(request: Request, party: Optional[int] = None, s: Session = Depends(g
     parties = s.query(Party).order_by(Party.sort, Party.id).all() if (me is None or me.is_admin) else []
     msgs = notify.messages_for_party(s, p.id, limit=30) if p else []
     current_ = sorted([m for m in msgs if notify.is_current(m)], key=notify.sort_key)
-    history = [m for m in msgs if m not in current_ and not m.archived][:10]
+    recent = datetime.now() - timedelta(days=14)
+    done = [m for m in msgs if notify.is_done(m) and notify.visible_until(m) >= recent]  # kürzlich vorbei
+    history = [m for m in msgs if m not in current_ and m not in done and not m.archived][:10]
     return _page(request, "portal.html", party=p, rows=rows, parties=parties, period_text=period_text,
-                 current=current_, history=history, cats=notify.CATEGORIES, when=notify.when_text,
-                 prios=notify.PRIORITIES)
+                 current=current_, history=history, done=done, cats=notify.CATEGORIES, when=notify.when_text,
+                 prios=notify.PRIORITIES, is_done=notify.is_done)
 
 
 def _portal_billing(request: Request, s: Session, bid: int, party: Optional[int]):
@@ -483,7 +485,7 @@ def messages_page(request: Request, edit: int = 0, s: Session = Depends(get_sess
     m = s.get(Message, edit) if edit else None
     return _page(request, "messages.html", msgs=msgs, current=current_, parties=parties, cats=notify.CATEGORIES,
                  when=notify.when_text, is_current=notify.is_current, m=m, mail_ok=mailer.configured(),
-                 prios=notify.PRIORITIES)
+                 prios=notify.PRIORITIES, status=notify.status)
 
 
 @router.post("/messages", dependencies=[Depends(require_admin)])

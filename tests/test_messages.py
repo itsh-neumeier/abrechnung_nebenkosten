@@ -80,3 +80,22 @@ def test_broadcast_unicast_notices_and_reminder(monkeypatch):
         # nach dem Ereignis nicht mehr „aktuell“
         assert notify.is_current(m) and not notify.is_current(m, now=m.event_end + timedelta(minutes=1))
     assert len(posted) == 2 and decrypt(posted[0][1], *d2[:2])["title"].startswith("Erinnerung: ‼️ ⛔")
+
+
+def test_past_events_shown_as_completed():
+    with SessionLocal() as s:
+        from app.db import Party
+        s.add(Party(name="Familie Muster", active=True, portal=True))
+        s.add(Message(title="Wasser wird abgestellt", category="abschaltung", priority="urgent",
+                      event_start=datetime.now() - timedelta(days=2, hours=4),
+                      event_end=datetime.now() - timedelta(days=2)))
+        s.add(Message(title="Grillfest", category="termin", event_start=datetime.now() + timedelta(days=3)))
+        s.commit()
+        past = s.query(Message).filter(Message.title == "Wasser wird abgestellt").one()
+        assert notify.status(past) == "done" and not notify.is_current(past)
+    with TestClient(app) as c:  # ohne Login: Verwalter-Vorschau des Portals
+        p = c.get("/portal?party=1").text
+        assert "✓ Abgeschlossen" in p and "<s>🕒" in p and "– vorbei" in p
+        assert p.index("Grillfest") < p.index("✓ Abgeschlossen") < p.index("Wasser wird abgestellt")
+        assert "prio-badge prio-urgent" not in p  # nicht mehr als dringend dargestellt
+        assert "✓ abgeschlossen" in c.get("/messages").text

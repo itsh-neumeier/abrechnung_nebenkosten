@@ -39,12 +39,19 @@
   <p class="muted">Noch keine veröffentlichten Abrechnungen.</p>
   {% endif %}
 </div>
+{% if done %}
+<h2 class="done-head">✓ Abgeschlossen</h2>
+<div class="notices">
+{% for x in done %}{{ notice(x, cats, when, prios=prios, done=true) }}{% endfor %}
+</div>
+{% endif %}
 {% if history %}
 <div class="card">
   <h2 style="margin-top:0">Mitteilungen</h2>
   {% for x in history %}{% set c = cats.get(x.category, cats['info']) %}
   <div class="msg-row" id="m{{ x.id }}"><span class="cat-dot" style="background:{{ c[2] }}"></span>
-    <b>{{ x.title }}</b> <span class="muted">· {{ x.created_at.strftime('%d.%m.%Y') }}</span>
+    {% if is_done(x) %}<span class="badge">✓ abgeschlossen</span> <span class="muted"><b>{{ x.title }}</b></span>{% else %}<b>{{ x.title }}</b>{% endif %}
+    <span class="muted">· {{ x.created_at.strftime('%d.%m.%Y') }}{% if x.event_start %} · Termin {{ when(x) }}{% endif %}</span>
     {% if x.body %}<div class="muted msg-text">{{ x.body }}</div>{% endif %}</div>
   {% endfor %}
 </div>

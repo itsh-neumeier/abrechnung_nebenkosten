@@ -246,6 +246,22 @@ def is_current(msg, now: Optional[datetime] = None) -> bool:
     return bool(msg.pinned or msg.event_start or msg.show_until)
 
 
+def is_done(msg, now: Optional[datetime] = None) -> bool:
+    """Ereignis/Anzeigezeitraum vorbei, aber noch nicht archiviert → als „abgeschlossen“ darstellen."""
+    if msg.archived:
+        return False
+    until = visible_until(msg)
+    return until is not None and until < (now or datetime.now())
+
+
+def status(msg, now: Optional[datetime] = None) -> str:
+    if msg.archived:
+        return "archived"
+    if is_done(msg, now):
+        return "done"
+    return "current" if is_current(msg, now) else "history"
+
+
 def when_text(msg) -> str:
     if not msg.event_start:
         return ""

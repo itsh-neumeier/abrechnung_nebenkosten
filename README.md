@@ -177,6 +177,8 @@ E-Mail. Farbige Kategorien: ℹ️ Information, 📅 Termin, 🔧 Wartung / gepl
 📌 angeheftete Hinweise bleiben dauerhaft bis zum Archivieren. Optional **Erinnerung am Vortag** per Push.
 Mitteilungen ohne Datum erscheinen im Verlauf. **Priorität** je Mitteilung: ⚪ Niedrig (still), 🔵 Normal, 🟠 Hoch (sofortige
 Zustellung, bleibt stehen), 🔴 Dringend (zusätzlich Vibration, ganz oben mit rotem Rahmen, Betreff „[Dringend]“).
+Vorbei, aber noch nicht archiviert: im Portal grau unter **„✓ Abgeschlossen“** (Termin durchgestrichen, 14 Tage lang),
+danach im Verlauf mit Kennzeichnung – so kann ein vergangener Hinweis nicht mit einem aktuellen verwechselt werden.
 Systemmeldungen: Fehler = hoch, Versand/Zustellung = niedrig, Rechnungseingang mit Hinweisen = hoch.
 
 ## Entwicklung
