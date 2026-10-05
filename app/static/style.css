@@ -154,3 +154,8 @@ html.standalone footer.ver{padding-bottom:max(18px,env(safe-area-inset-bottom))}
 .pickup:first-of-type{border-top:0}
 .pickup-day{min-width:96px;font-weight:600}
 .pickup-soon .pickup-day{color:var(--accent)}
+
+/* ---- Bereiche: Verwaltung vs. Mein Zuhause ---- */
+header.area-admin{border-top:3px solid #1e3a8a}
+header.area-home{border-top:3px solid #16a34a}
+.nav-links a.switch-link{color:var(--muted)}

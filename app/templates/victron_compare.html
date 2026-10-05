@@ -8,7 +8,7 @@
     <a class="btn {{ '' if h == hours else 'sec' }} pick-btn" href="?hours={{ h }}">{{ label }}</a>
   {% endfor %}
   </p>
-  <p class="muted">Links die Entitäten aus <a href="/settings">Einstellungen → Haus-Entitäten</a> (aus HA), rechts die Werte
+  <p class="muted">Links die Entitäten aus <a href="/admin/settings">Einstellungen → Haus-Entitäten</a> (aus HA), rechts die Werte
   des eigenen Victron-Loggers. „Erfasst“ = Anteil des Zeitraums, für den der Logger Daten hat – liegt er unter 100 %,
   ist der Logger-Wert entsprechend kleiner und die Abweichung nicht aussagekräftig.</p>
   {% if rows and rows[0].ha_error %}<div class="warn">Home Assistant: {{ rows[0].ha_error }}</div>{% endif %}

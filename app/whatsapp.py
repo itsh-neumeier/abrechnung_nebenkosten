@@ -265,7 +265,7 @@ def flow(provider: str, st: dict, secret: str) -> dict:
     for a, b in zip(names, names[1:]):
         connections[a] = {"main": [[{"node": b, "type": "main", "index": 0}]] + ([[]] if a == "Token prüfen" else [])}
     return {
-        "name": f"Nebenkostenabrechnung → WhatsApp ({'Evolution API' if provider == 'evolution' else 'Cloud API'})",
+        "name": f"ImmoVerwaltung → WhatsApp ({'Evolution API' if provider == 'evolution' else 'Cloud API'})",
         "nodes": nodes,
         "connections": connections,
         "settings": {"executionOrder": "v1"},

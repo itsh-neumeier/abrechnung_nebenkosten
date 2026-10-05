@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from . import accounts, auth, invoice_import, mailbox, mailer, notify, service, victron, vrm, wa_cloud, whatsapp
+from . import accounts, auth, branding, invoice_import, mailbox, mailer, notify, service, victron, vrm, wa_cloud, whatsapp
 from .config import config
 from .db import (Allocation, Billing, FixedCost, Party, SessionLocal, get_session, get_settings, init_db,
                  save_settings)
@@ -58,7 +58,7 @@ async def lifespan(_app):
         t.cancel()
 
 
-app = FastAPI(title="Nebenkostenabrechnung Hausparteien", lifespan=lifespan)
+app = FastAPI(title="ImmoVerwaltung", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 app.include_router(accounts.router)
 
@@ -84,13 +84,26 @@ def redirect(url: str, msg: str = "") -> RedirectResponse:
 
 PUBLIC = ("/login", "/logout", "/setup", "/password/", "/static/", "/healthz", "/favicon", "/apple-touch-icon",
           "/api/n8n/", "/api/whatsapp/", "/manifest.webmanifest", "/sw.js", "/offline", "/app")
-TENANT_OK = ("/portal", "/account", "/api/push/")
+# frühere Adressen des Verwalterbereichs → /admin/… (Lesezeichen, Links in alten Mails)
+LEGACY_ADMIN = ("/billings", "/costs", "/mailbox", "/messages", "/parties", "/settings", "/users", "/victron", "/vrm",
+                "/waste", "/whatsapp")
+
+
+def _is_admin_path(path: str) -> bool:
+    if path == "/admin" or path.startswith("/admin/"):
+        return True
+    return path.startswith("/api/") and not path.startswith(("/api/push/", "/api/n8n/", "/api/whatsapp/"))
 
 
 @app.middleware("http")
 async def authenticate(request: Request, call_next):
-    """Anmeldung prüfen. Ohne angelegte Benutzer ist die App offen (Hinweis zur Einrichtung im Menü)."""
+    """Bereiche: „/“ = Mein Zuhause (Mieter), „/admin“ = ImmoVerwaltung (nur Verwalter).
+    Ohne angelegte Benutzer ist alles offen (Hinweis zur Einrichtung im Menü)."""
     path = request.url.path
+    for old in LEGACY_ADMIN:
+        if path == old or path.startswith(old + "/"):
+            target = "/admin" + path + (f"?{request.url.query}" if request.url.query else "")
+            return RedirectResponse(target, status_code=308)
     with SessionLocal() as s:
         enabled = auth.has_users(s)
         u = None
@@ -101,20 +114,20 @@ async def authenticate(request: Request, call_next):
                 u = auth.user_from_basic(s, request.headers["authorization"])
         request.state.user = auth.snapshot(u) if u else None
         request.state.auth_enabled = enabled
-    if not enabled or path.startswith(PUBLIC) or path == "/":
-        if enabled and path == "/" and request.state.user is None:
-            return RedirectResponse("/login", status_code=303)
-        if enabled and path == "/" and not request.state.user.is_admin:
-            return RedirectResponse("/portal", status_code=303)
+        request.state.brand = branding.resolve(
+            s, request.state.user, get_settings(s), path, request.query_params.get("next", ""),
+            request.cookies.get(branding.ROLE_COOKIE, ""))
+    if not enabled or path.startswith(PUBLIC):
         return await call_next(request)
     user = request.state.user
     if user is None:
         if path.startswith("/api/"):
             return JSONResponse({"detail": "Anmeldung erforderlich"}, status_code=401)
-        return RedirectResponse(f"/login?next={quote(path)}", status_code=303)
-    if not user.is_admin and not path.startswith(TENANT_OK):
-        if request.method == "GET":
-            return RedirectResponse("/portal", status_code=303)
+        nxt = path + (f"?{request.url.query}" if request.url.query else "")
+        return RedirectResponse("/login" + ("" if nxt == "/" else f"?next={quote(nxt)}"), status_code=303)
+    if _is_admin_path(path) and not user.is_admin:
+        if request.method == "GET" and not path.startswith("/api/"):
+            return RedirectResponse("/", status_code=303)
         return Response("Nur für Verwalter", status_code=403)
     return await call_next(request)
 
@@ -125,8 +138,25 @@ def favicon():
 
 
 @app.get("/manifest.webmanifest")
-def manifest():
-    return FileResponse(BASE / "static" / "manifest.webmanifest", media_type="application/manifest+json")
+def manifest(app: str = "admin", name: str = "", s: Session = Depends(get_session)):
+    """Manifest je Rolle: Verwalter-App (ImmoVerwaltung, Start „/“) bzw. Mieter-App (Mein Zuhause,
+    Start „/“). Getrennte ``id`` → beide lassen sich unabhängig installieren."""
+    data = json.loads((BASE / "static" / "manifest.webmanifest").read_text())
+    st = get_settings(s)
+    if app == "tenant":
+        title = branding.clean(name) or branding.tenant_default(st)
+        data.update(id="/", start_url="/?source=pwa", scope="/", name=title, short_name=title,
+                    description=f"{title} – Abrechnungen, Mitteilungen und Abfuhrtermine",
+                    shortcuts=[{"name": "Übersicht", "url": "/", "icons": data["icons"][:1]},
+                               {"name": "Mein Konto", "url": "/account", "icons": data["icons"][:1]}])
+    else:
+        title = branding.admin_name(st)
+        data.update(id="/admin", start_url="/admin?source=pwa", scope="/", name=title, short_name=title,
+                    description=f"{title} – Abrechnung, Mieterportal und Hausverwaltung",
+                    shortcuts=[{"name": "Abrechnungen", "url": "/admin", "icons": data["icons"][:1]},
+                               {"name": "Mitteilungen", "url": "/admin/messages", "icons": data["icons"][:1]}])
+    return Response(json.dumps(data, ensure_ascii=False), media_type="application/manifest+json",
+                    headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/sw.js")
@@ -158,7 +188,7 @@ def healthz():
 
 
 # --------------------------------------------------------------------------- Übersicht
-@app.get("/", response_class=HTMLResponse)
+@app.get("/admin", response_class=HTMLResponse)
 def index(request: Request, s: Session = Depends(get_session)):
     billings = s.query(Billing).order_by(Billing.period_start.desc()).all()
     st = get_settings(s)
@@ -173,17 +203,17 @@ def index(request: Request, s: Session = Depends(get_session)):
                   senders=mailbox.sender_patterns(st), forwarded=bool(st["imap_forwarded"]))
 
 
-@app.post("/mailbox/check")
+@app.post("/admin/mailbox/check")
 async def mailbox_check():
-    return redirect("/", await mailbox.check_mailbox())
+    return redirect("/admin", await mailbox.check_mailbox())
 
 
-@app.post("/billings/import")
+@app.post("/admin/billings/import")
 async def billing_import(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
     upload = form.get("file")
     if upload is None or not getattr(upload, "filename", ""):
-        return redirect("/billings/new", "Bitte eine PDF- oder .eml-Datei auswählen.")
+        return redirect("/admin/billings/new", "Bitte eine PDF- oder .eml-Datei auswählen.")
     data = await upload.read()
     try:
         files = invoice_import.load_upload(upload.filename, data)
@@ -193,12 +223,12 @@ async def billing_import(request: Request, s: Session = Depends(get_session)):
             last, msg = await service.import_invoice(s, pdf, name, mid, source="Upload")
             msgs.append(msg)
     except invoice_import.ImportError_ as e:
-        return redirect("/billings/new", f"Import fehlgeschlagen: {e}")
-    return redirect(f"/billings/{last.id}" if last else "/", " · ".join(msgs))
+        return redirect("/admin/billings/new", f"Import fehlgeschlagen: {e}")
+    return redirect(f"/admin/billings/{last.id}" if last else "/", " · ".join(msgs))
 
 
 # --------------------------------------------------------------------------- Einstellungen
-@app.get("/settings", response_class=HTMLResponse)
+@app.get("/admin/settings", response_class=HTMLResponse)
 def settings_page(request: Request, s: Session = Depends(get_session)):
     return render(request, "settings.html", st=get_settings(s), ha_url=config.ha_url,
                   ha_token_set=bool(config.ha_token), house_entities=service.HOUSE_ENTITIES,
@@ -207,69 +237,69 @@ def settings_page(request: Request, s: Session = Depends(get_session)):
                   vrm_ok=vrm.configured(), vrm_mix=vrm.MIX_FIELDS)
 
 
-@app.post("/settings")
+@app.post("/admin/settings")
 async def settings_save(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
     data = {k: (normalize_spec(str(v)) if k.startswith("entity_") else str(v).strip()) for k, v in form.items()}
     for flag in ("mail_auto_send", "victron_enabled", "owner_free_own_energy", "imap_forwarded"):  # Checkboxen
         data[flag] = "1" if form.get(flag) else ""
     save_settings(s, data)
-    return redirect("/settings", "Gespeichert")
+    return redirect("/admin/settings", "Gespeichert")
 
 
-@app.post("/settings/test")
+@app.post("/admin/settings/test")
 async def settings_test():
     try:
         msg = await HAClient(config.ha_url, config.ha_token).check()
-        return redirect("/settings", f"Verbindung OK: {msg}")
+        return redirect("/admin/settings", f"Verbindung OK: {msg}")
     except Exception as e:  # noqa: BLE001
-        return redirect("/settings", f"Verbindung fehlgeschlagen: {e}")
+        return redirect("/admin/settings", f"Verbindung fehlgeschlagen: {e}")
 
 
-@app.post("/settings/testmail")
+@app.post("/admin/settings/testmail")
 async def settings_testmail(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
     to = str(form.get("test_to", "") or form.get("to", "")).strip()
     if not mailer.configured():
-        return redirect("/settings#mail", "SMTP ist nicht eingerichtet (SMTP_HOST / SMTP_FROM in Portainer).")
+        return redirect("/admin/settings#mail", "SMTP ist nicht eingerichtet (SMTP_HOST / SMTP_FROM in Portainer).")
     if not to:
-        return redirect("/settings#mail", "Bitte eine Empfängeradresse für die Test-E-Mail eintragen.")
+        return redirect("/admin/settings#mail", "Bitte eine Empfängeradresse für die Test-E-Mail eintragen.")
     try:
         html = mailer.render_html(
             title="Test-E-Mail", preheader="Der E-Mail-Versand funktioniert.",
-            paragraphs=["Der E-Mail-Versand der Nebenkostenabrechnung funktioniert. ✅",
+            paragraphs=[f"Der E-Mail-Versand von {branding.admin_name(get_settings(s))} funktioniert. ✅",
                         "So sehen formatierte Mails aus – Abrechnungen enthalten zusätzlich eine Übersicht mit Betrag, "
                         "Fälligkeit und Konto sowie das PDF im Anhang."],
             facts=[("Server", f"{config.smtp_host}:{config.smtp_port} ({config.smtp_security})", False),
                    ("Absender", config.smtp_from, False)],
             footer=service.mail_footer(get_settings(s)))
-        mailer.send_mail([to], "Test Nebenkostenabrechnung",
+        mailer.send_mail([to], f"Test {branding.admin_name(get_settings(s))}",
                          f"Der E-Mail-Versand funktioniert.\n\nServer: {config.smtp_host}:{config.smtp_port} "
                          f"({config.smtp_security})\nAbsender: {config.smtp_from}\n", [], html=html)
-        return redirect("/settings#mail", f"Test-E-Mail an {to} verschickt – bitte Posteingang (und Spam) prüfen.")
+        return redirect("/admin/settings#mail", f"Test-E-Mail an {to} verschickt – bitte Posteingang (und Spam) prüfen.")
     except Exception as e:  # noqa: BLE001
-        return redirect("/settings#mail", f"E-Mail fehlgeschlagen: {mailer.explain(e)}")
+        return redirect("/admin/settings#mail", f"E-Mail fehlgeschlagen: {mailer.explain(e)}")
 
 
-@app.post("/settings/testimap")
+@app.post("/admin/settings/testimap")
 async def settings_testimap(request: Request):
     """Postfach prüfen mit den Absender-Angaben aus dem Formular (ohne Speichern, ohne Import)."""
     form = await request.form()
     if not mailbox.configured():
-        return redirect("/settings#eingang", "IMAP ist nicht eingerichtet (IMAP_HOST / IMAP_USER / IMAP_PASSWORD).")
+        return redirect("/admin/settings#eingang", "IMAP ist nicht eingerichtet (IMAP_HOST / IMAP_USER / IMAP_PASSWORD).")
     patterns = mailbox.sender_patterns({"imap_senders": str(form.get("imap_senders", ""))})
     try:
         msg = await asyncio.to_thread(mailbox.test_connection, patterns, bool(form.get("imap_forwarded")))
     except Exception as e:  # noqa: BLE001
         msg = f"Postfach-Test fehlgeschlagen: {e}"
-    return redirect("/settings#eingang", msg)
+    return redirect("/admin/settings#eingang", msg)
 
 
 # --------------------------------------------------------------------------- WhatsApp über n8n
 WA_KEYS = ("wa_mode", "n8n_webhook_url", "n8n_app_url", "wa_provider", "wa_message", "wa_template_name", "wa_template_lang")
 
 
-@app.get("/whatsapp", response_class=HTMLResponse)
+@app.get("/admin/whatsapp", response_class=HTMLResponse)
 def whatsapp_page(request: Request, s: Session = Depends(get_session)):
     st = get_settings(s)
     secret = whatsapp.ensure_secret(s, st)
@@ -285,7 +315,7 @@ def whatsapp_page(request: Request, s: Session = Depends(get_session)):
                   parties=s.query(Party).order_by(Party.sort, Party.id).all())
 
 
-@app.post("/whatsapp")
+@app.post("/admin/whatsapp")
 async def whatsapp_save(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
     data = {k: str(form.get(k, "")).strip() for k in WA_KEYS}
@@ -297,7 +327,7 @@ async def whatsapp_save(request: Request, s: Session = Depends(get_session)):
         data["n8n_secret"] = secrets.token_urlsafe(24)
     save_settings(s, data)
     s.commit()
-    return redirect("/whatsapp", "Neues Token erzeugt – Flow in n8n neu kopieren!" if form.get("new_secret") else "Gespeichert")
+    return redirect("/admin/whatsapp", "Neues Token erzeugt – Flow in n8n neu kopieren!" if form.get("new_secret") else "Gespeichert")
 
 
 def _wa_verify_token(s: Session, st: dict) -> str:
@@ -308,17 +338,17 @@ def _wa_verify_token(s: Session, st: dict) -> str:
     return st["wa_verify_token"]
 
 
-@app.post("/whatsapp/check")
+@app.post("/admin/whatsapp/check")
 def whatsapp_check():
     try:
         info = wa_cloud.CloudClient().info()
-        return redirect("/whatsapp", f"Cloud API OK: {info.get('verified_name', '?')} · {info.get('display_phone_number', '?')}"
+        return redirect("/admin/whatsapp", f"Cloud API OK: {info.get('verified_name', '?')} · {info.get('display_phone_number', '?')}"
                                      f" · Qualität {info.get('quality_rating', '?')}")
     except Exception as e:  # noqa: BLE001
-        return redirect("/whatsapp", f"Cloud API: {e}")
+        return redirect("/admin/whatsapp", f"Cloud API: {e}")
 
 
-@app.post("/whatsapp/test")
+@app.post("/admin/whatsapp/test")
 async def whatsapp_test(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
     st = get_settings(s)
@@ -334,24 +364,24 @@ async def whatsapp_test(request: Request, s: Session = Depends(get_session)):
                 "ok": True, "at": datetime.now().isoformat(timespec="seconds"), "status": "gesendet",
                 "raw_status": "sent", "message_id": wamid, "provider": "Cloud API direkt", "error": ""})})
             s.commit()
-            return redirect("/whatsapp", f"Test an +{to} gesendet – Zustellstatus erscheint unten, sobald Meta ihn meldet.")
+            return redirect("/admin/whatsapp", f"Test an +{to} gesendet – Zustellstatus erscheint unten, sobald Meta ihn meldet.")
         except Exception as e:  # noqa: BLE001
-            return redirect("/whatsapp", f"Test fehlgeschlagen: {e}")
+            return redirect("/admin/whatsapp", f"Test fehlgeschlagen: {e}")
     try:
         payload = whatsapp.build_payload(
             st, secret, bid=0, pid=0, name="Test", unit_id="TEST", phone=phone, email="", period="Test",
             total=0.0, total_text="0,00 €", due=date.today().isoformat(),
-            message="Test der WhatsApp-Anbindung der Nebenkostenabrechnung ✅", filename="Test.pdf",
+            message="Test der WhatsApp-Anbindung von ImmoVerwaltung ✅", filename="Test.pdf",
             pdf=service.test_pdf(), test=True)
         save_settings(s, {"n8n_last_test": ""})
         s.commit()
         msg = whatsapp.post(st, secret, payload)
-        return redirect("/whatsapp", f"Test an +{payload['phone']} {msg} – Rückmeldung erscheint unten (Seite neu laden).")
+        return redirect("/admin/whatsapp", f"Test an +{payload['phone']} {msg} – Rückmeldung erscheint unten (Seite neu laden).")
     except Exception as e:  # noqa: BLE001
-        return redirect("/whatsapp", f"Test fehlgeschlagen: {e}")
+        return redirect("/admin/whatsapp", f"Test fehlgeschlagen: {e}")
 
 
-@app.get("/whatsapp/flow/{provider}.json")
+@app.get("/admin/whatsapp/flow/{provider}.json")
 def whatsapp_flow(provider: str, s: Session = Depends(get_session)):
     if provider not in whatsapp.PROVIDERS:
         raise HTTPException(404)
@@ -474,7 +504,7 @@ async def api_sources(refresh: bool = False, s: Session = Depends(get_session)):
 
 
 # --------------------------------------------------------------------------- Victron direkt
-@app.post("/victron/discover")
+@app.post("/admin/victron/discover")
 async def victron_discover(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
     if "victron_host" in form:  # Knopf sitzt im Einstellungsformular: Eingaben zuerst übernehmen
@@ -483,12 +513,12 @@ async def victron_discover(request: Request, s: Session = Depends(get_session)):
                           "victron_enabled": "1" if form.get("victron_enabled") else ""})
     st = get_settings(s)
     if not st["victron_host"]:
-        return redirect("/settings", "Bitte zuerst die IP des GX eintragen und speichern.")
+        return redirect("/admin/settings", "Bitte zuerst die IP des GX eintragen und speichern.")
     reader = victron.ModbusReader(st["victron_host"], int(st["victron_port"] or 502))
     try:
         units = await victron.discover(reader)
     except Exception as e:  # noqa: BLE001
-        return redirect("/settings", f"Victron: {e}")
+        return redirect("/admin/settings", f"Victron: {e}")
     finally:
         await reader.close()
     save_settings(s, {"victron_units": json.dumps(units)})
@@ -496,10 +526,10 @@ async def victron_discover(request: Request, s: Session = Depends(get_session)):
     names = {"system": "System", "vebus": "VE.Bus", "battery": "Batteriewächter", "grid": "Energiezähler"}
     found = ", ".join(f"{names[k]} = Unit {v}" for k, v in units.items() if v is not None) or "nichts"
     missing = ", ".join(names[k] for k, v in units.items() if v is None)
-    return redirect("/settings", f"Victron gefunden: {found}" + (f" · nicht gefunden: {missing}" if missing else ""))
+    return redirect("/admin/settings", f"Victron gefunden: {found}" + (f" · nicht gefunden: {missing}" if missing else ""))
 
 
-@app.get("/victron/compare", response_class=HTMLResponse)
+@app.get("/admin/victron/compare", response_class=HTMLResponse)
 async def victron_compare(request: Request, hours: int = 24, s: Session = Depends(get_session)):
     """Abgleich HA ↔ Victron-Logger für die letzten N vollen Stunden."""
     from zoneinfo import ZoneInfo
@@ -511,7 +541,7 @@ async def victron_compare(request: Request, hours: int = 24, s: Session = Depend
     return render(request, "victron_compare.html", rows=rows, hours=hours, t0=t0, t1=t1, st=get_settings(s))
 
 
-@app.post("/vrm/sites")
+@app.post("/admin/vrm/sites")
 async def vrm_sites(request: Request, s: Session = Depends(get_session)):
     """VRM-Anlagen des Tokens suchen; bei genau einer Anlage wird sie direkt übernommen."""
     form = await request.form()
@@ -520,11 +550,11 @@ async def vrm_sites(request: Request, s: Session = Depends(get_session)):
     try:
         sites = await vrm.VRMClient(config.vrm_token).installations()
     except Exception as e:  # noqa: BLE001
-        return redirect("/settings", f"VRM: {e}")
+        return redirect("/admin/settings", f"VRM: {e}")
     if len(sites) == 1 and not get_settings(s)["vrm_site_id"]:
         save_settings(s, {"vrm_site_id": str(sites[0]["id"])})
     listing = ", ".join(f"{x['name']} = {x['id']}" for x in sites) or "keine"
-    return redirect("/settings", f"VRM-Anlagen: {listing}")
+    return redirect("/admin/settings", f"VRM-Anlagen: {listing}")
 
 
 @app.get("/api/victron/status")
@@ -533,13 +563,13 @@ def victron_status():
 
 
 # --------------------------------------------------------------------------- Parteien
-@app.get("/parties", response_class=HTMLResponse)
+@app.get("/admin/parties", response_class=HTMLResponse)
 def parties_page(request: Request, s: Session = Depends(get_session)):
     parties = s.query(Party).order_by(Party.active.desc(), Party.sort, Party.id).all()
     return render(request, "parties.html", parties=parties)
 
 
-@app.get("/parties/{pid}", response_class=HTMLResponse)
+@app.get("/admin/parties/{pid}", response_class=HTMLResponse)
 def party_edit(request: Request, pid: int, s: Session = Depends(get_session)):
     p = Party(name="", meters=[], active=True, is_owner=False, sort=0) if pid == 0 else s.get(Party, pid)
     if p is None:
@@ -547,7 +577,7 @@ def party_edit(request: Request, pid: int, s: Session = Depends(get_session)):
     return render(request, "party_edit.html", p=p, pid=pid)
 
 
-@app.post("/parties/{pid}")
+@app.post("/admin/parties/{pid}")
 async def party_save(request: Request, pid: int, s: Session = Depends(get_session)):
     form = await request.form()
     if form.get("delete"):
@@ -555,7 +585,7 @@ async def party_save(request: Request, pid: int, s: Session = Depends(get_sessio
         if p:
             s.delete(p)
             s.commit()
-        return redirect("/parties", "Gelöscht")
+        return redirect("/admin/parties", "Gelöscht")
     p = Party() if pid == 0 else s.get(Party, pid)
     if p is None:
         raise HTTPException(404)
@@ -578,11 +608,11 @@ async def party_save(request: Request, pid: int, s: Session = Depends(get_sessio
     if pid == 0:
         s.add(p)
     s.commit()
-    return redirect("/parties", "Gespeichert")
+    return redirect("/admin/parties", "Gespeichert")
 
 
 # --------------------------------------------------------------------------- Fixkosten
-@app.get("/costs", response_class=HTMLResponse)
+@app.get("/admin/costs", response_class=HTMLResponse)
 def costs_page(request: Request, s: Session = Depends(get_session)):
     return render(
         request, "costs.html",
@@ -592,7 +622,7 @@ def costs_page(request: Request, s: Session = Depends(get_session)):
     )
 
 
-@app.get("/costs/fixed/{cid}", response_class=HTMLResponse)
+@app.get("/admin/costs/fixed/{cid}", response_class=HTMLResponse)
 def fixed_edit(request: Request, cid: int, s: Session = Depends(get_session)):
     c = FixedCost(name="", amount_gross=0.0, party_ids=[], active=True) if cid == 0 else s.get(FixedCost, cid)
     if c is None:
@@ -600,7 +630,7 @@ def fixed_edit(request: Request, cid: int, s: Session = Depends(get_session)):
     return render(request, "fixed_edit.html", c=c, cid=cid, parties=service.active_parties(s))
 
 
-@app.post("/costs/fixed/{cid}")
+@app.post("/admin/costs/fixed/{cid}")
 async def fixed_save(request: Request, cid: int, s: Session = Depends(get_session)):
     form = await request.form()
     if form.get("delete"):
@@ -608,7 +638,7 @@ async def fixed_save(request: Request, cid: int, s: Session = Depends(get_sessio
         if c:
             s.delete(c)
             s.commit()
-        return redirect("/costs", "Gelöscht")
+        return redirect("/admin/costs", "Gelöscht")
     c = FixedCost() if cid == 0 else s.get(FixedCost, cid)
     if c is None:
         raise HTTPException(404)
@@ -619,10 +649,10 @@ async def fixed_save(request: Request, cid: int, s: Session = Depends(get_sessio
     if cid == 0:
         s.add(c)
     s.commit()
-    return redirect("/costs", "Gespeichert")
+    return redirect("/admin/costs", "Gespeichert")
 
 
-@app.get("/costs/alloc/{aid}", response_class=HTMLResponse)
+@app.get("/admin/costs/alloc/{aid}", response_class=HTMLResponse)
 def alloc_edit(request: Request, aid: int, s: Session = Depends(get_session)):
     a = (Allocation(name="", source_type="energy", source_entity="", source_unit="m³", price_source="custom", default_amount=0.0,
                     key_type="percent", key_unit="", key={}, active=True)
@@ -632,7 +662,7 @@ def alloc_edit(request: Request, aid: int, s: Session = Depends(get_session)):
     return render(request, "alloc_edit.html", a=a, aid=aid, parties=service.active_parties(s))
 
 
-@app.post("/costs/alloc/{aid}")
+@app.post("/admin/costs/alloc/{aid}")
 async def alloc_save(request: Request, aid: int, s: Session = Depends(get_session)):
     form = await request.form()
     if form.get("delete"):
@@ -640,7 +670,7 @@ async def alloc_save(request: Request, aid: int, s: Session = Depends(get_sessio
         if a:
             s.delete(a)
             s.commit()
-        return redirect("/costs", "Gelöscht")
+        return redirect("/admin/costs", "Gelöscht")
     a = Allocation() if aid == 0 else s.get(Allocation, aid)
     if a is None:
         raise HTTPException(404)
@@ -667,7 +697,7 @@ async def alloc_save(request: Request, aid: int, s: Session = Depends(get_sessio
     if aid == 0:
         s.add(a)
     s.commit()
-    return redirect("/costs", "Gespeichert")
+    return redirect("/admin/costs", "Gespeichert")
 
 
 # --------------------------------------------------------------------------- Abrechnungen
@@ -686,14 +716,14 @@ def _apply_bill_form(b: Billing, form, st: dict) -> None:
     b.pv_rate_ct = parse_float(form.get("pv_rate_ct"), parse_float(st["pv_rate_ct"])) or 0.0
 
 
-@app.get("/billings/new", response_class=HTMLResponse)
+@app.get("/admin/billings/new", response_class=HTMLResponse)
 def billing_new(request: Request, s: Session = Depends(get_session)):
     st = get_settings(s)
     end = date.today().replace(day=1) - timedelta(days=1)
     return render(request, "billing_new.html", start=end.replace(day=1), end=end, st=st)
 
 
-@app.post("/billings")
+@app.post("/admin/billings")
 async def billing_create(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
     st = get_settings(s)
@@ -711,7 +741,7 @@ async def billing_create(request: Request, s: Session = Depends(get_session)):
             msg = f"Home Assistant nicht erreichbar: {e}"
     service.recompute(s, b)
     s.commit()
-    return redirect(f"/billings/{b.id}", msg)
+    return redirect(f"/admin/billings/{b.id}", msg)
 
 
 def _get_billing(s: Session, bid: int) -> Billing:
@@ -721,7 +751,7 @@ def _get_billing(s: Session, bid: int) -> Billing:
     return b
 
 
-@app.get("/billings/{bid}", response_class=HTMLResponse)
+@app.get("/admin/billings/{bid}", response_class=HTMLResponse)
 def billing_view(request: Request, bid: int, s: Session = Depends(get_session)):
     b = _get_billing(s, bid)
     allocs = [a for a in s.query(Allocation).filter(Allocation.active.is_(True)).all()
@@ -744,7 +774,7 @@ def _report_msg(report: list[tuple[str, bool, str]]) -> str:
     return "Versand: " + "; ".join(f"{n} {'✔' if ok else '✘ ' + m}" for n, ok, m in report)
 
 
-@app.post("/billings/{bid}")
+@app.post("/admin/billings/{bid}")
 async def billing_save(request: Request, bid: int, s: Session = Depends(get_session)):
     b = _get_billing(s, bid)
     form = await request.form()
@@ -754,27 +784,27 @@ async def billing_save(request: Request, bid: int, s: Session = Depends(get_sess
     if action == "delete":
         s.delete(b)
         s.commit()
-        return redirect("/", "Abrechnung gelöscht")
+        return redirect("/admin", "Abrechnung gelöscht")
     if action == "reopen":
         b.status = "draft"
         s.commit()
-        return redirect(f"/billings/{bid}", "Wieder zur Bearbeitung geöffnet")
+        return redirect(f"/admin/billings/{bid}", "Wieder zur Bearbeitung geöffnet")
     if action in ("publish", "unpublish"):
         b.published = action == "publish"
         s.commit()
         if not b.published:
-            return redirect(f"/billings/{bid}", "Aus dem Mieterportal zurückgezogen")
+            return redirect(f"/admin/billings/{bid}", "Aus dem Mieterportal zurückgezogen")
         n = notify.billing_published(s, b)
-        return redirect(f"/billings/{bid}", "Im Mieterportal veröffentlicht" + (f" · {n} Mieter per Push benachrichtigt" if n else ""))
+        return redirect(f"/admin/billings/{bid}", "Im Mieterportal veröffentlicht" + (f" · {n} Mieter per Push benachrichtigt" if n else ""))
     if action.startswith("send"):
         if b.status != "final":
-            return redirect(f"/billings/{bid}", "Bitte zuerst abschließen, dann versenden.")
+            return redirect(f"/admin/billings/{bid}", "Bitte zuerst abschließen, dann versenden.")
         ids = None if action == "send_all" else [int(action.split(":")[1])]
         report = service.send_invoices(s, b, ids)
         s.commit()
-        return redirect(f"/billings/{bid}", _report_msg(report))
+        return redirect(f"/admin/billings/{bid}", _report_msg(report))
     if b.status == "final":
-        return redirect(f"/billings/{bid}", "Abrechnung ist abgeschlossen")
+        return redirect(f"/admin/billings/{bid}", "Abrechnung ist abgeschlossen")
 
     _apply_bill_form(b, form, st)
     b.notes = str(form.get("notes", "")).strip()
@@ -807,7 +837,7 @@ async def billing_save(request: Request, bid: int, s: Session = Depends(get_sess
     if action == "finalize" and b.published:
         if n := notify.billing_published(s, b):
             msg += f" · {n} Mieter per Push benachrichtigt"
-    return redirect(f"/billings/{bid}", msg)
+    return redirect(f"/admin/billings/{bid}", msg)
 
 
 def _party_or_404(b: Billing, pid: int) -> dict:
@@ -817,7 +847,7 @@ def _party_or_404(b: Billing, pid: int) -> dict:
     return p
 
 
-@app.get("/billings/{bid}/source.pdf")
+@app.get("/admin/billings/{bid}/source.pdf")
 def billing_source(bid: int, s: Session = Depends(get_session)):
     b = _get_billing(s, bid)
     if not b.source_file or not os.path.exists(b.source_file):
@@ -825,7 +855,7 @@ def billing_source(bid: int, s: Session = Depends(get_session)):
     return FileResponse(b.source_file, media_type="application/pdf")
 
 
-@app.get("/billings/{bid}/invoice/{pid}.pdf")
+@app.get("/admin/billings/{bid}/invoice/{pid}.pdf")
 def invoice_pdf_view(bid: int, pid: int, s: Session = Depends(get_session)):
     b = _get_billing(s, bid)
     p = _party_or_404(b, pid)
@@ -834,13 +864,13 @@ def invoice_pdf_view(bid: int, pid: int, s: Session = Depends(get_session)):
                              "Cache-Control": "no-store"})
 
 
-@app.get("/billings/{bid}/invoice/{pid}", response_class=HTMLResponse)
+@app.get("/admin/billings/{bid}/invoice/{pid}", response_class=HTMLResponse)
 def invoice_view(bid: int, pid: int, s: Session = Depends(get_session)):
     b = _get_billing(s, bid)
     return HTMLResponse(invoice_html(b, _party_or_404(b, pid)))
 
 
-@app.get("/billings/{bid}/all.zip")
+@app.get("/admin/billings/{bid}/all.zip")
 def invoices_zip(bid: int, s: Session = Depends(get_session)):
     b = _get_billing(s, bid)
     buf = io.BytesIO()

@@ -55,12 +55,12 @@ def test_login_roles_portal_and_reset(monkeypatch):
         assert c.get("/favicon.ico").status_code == 200
 
         # Grunddaten + Abrechnung (noch offen)
-        c.post("/settings", data={"entity_grid": "sensor.grid", "entity_total": "sensor.total", "vat_rate": "19"})
-        c.post("/parties/0", data={"name": "Eigentümer", "is_owner": "1", "active": "1"})
-        c.post("/parties/0", data={"name": "Familie Muster", "unit_id": "WE-001", "meters": "sensor.eg", "active": "1",
+        c.post("/admin/settings", data={"entity_grid": "sensor.grid", "entity_total": "sensor.total", "vat_rate": "19"})
+        c.post("/admin/parties/0", data={"name": "Eigentümer", "is_owner": "1", "active": "1"})
+        c.post("/admin/parties/0", data={"name": "Familie Muster", "unit_id": "WE-001", "meters": "sensor.eg", "active": "1",
                                    "portal": "1", "email": "muster@test.de"})
-        c.post("/parties/0", data={"name": "Familie Andere", "unit_id": "WE-002", "meters": "sensor.og", "active": "1"})
-        r = c.post("/billings", data=BILL, follow_redirects=False)
+        c.post("/admin/parties/0", data={"name": "Familie Andere", "unit_id": "WE-002", "meters": "sensor.og", "active": "1"})
+        r = c.post("/admin/billings", data=BILL, follow_redirects=False)
         url = r.headers["location"].split("?")[0]
         bid = int(url.rsplit("/", 1)[1])
         c.post(url, data={"action": "save", **BILL, **VALUES})
@@ -76,15 +76,15 @@ def test_login_roles_portal_and_reset(monkeypatch):
         assert "im Mieterportal veröffentlicht" in c.post(url, data={"action": "finalize", **BILL, **VALUES}).text
 
         # Mieter-Zugang für Familie Muster (Partei 2)
-        r = c.post("/users/0", data={"username": "muster", "role": "tenant", "party_id": "2", "name": "Muster",
+        r = c.post("/admin/users/0", data={"username": "muster", "role": "tenant", "party_id": "2", "name": "Muster",
                                      "email": "muster@test.de", "password": "mieter-pass", "active": "1"})
         assert "Benutzer gespeichert" in r.text
-        assert "Mieter müssen einer Partei" in c.post("/users/0", data={"username": "x", "role": "tenant",
+        assert "Mieter müssen einer Partei" in c.post("/admin/users/0", data={"username": "x", "role": "tenant",
                                                                          "password": "mieter-pass", "active": "1"}).text
 
         # Abmelden → alles gesperrt
         c.get("/logout")
-        assert c.get("/settings", follow_redirects=False).headers["location"].startswith("/login?next=/settings")
+        assert c.get("/admin/settings", follow_redirects=False).headers["location"].startswith("/login?next=/admin/settings")
         assert c.get("/", follow_redirects=False).headers["location"] == "/login"
         assert c.get("/api/entities").status_code == 401
         assert c.get(f"{url}/invoice/2.pdf", follow_redirects=False).status_code == 303
@@ -93,16 +93,16 @@ def test_login_roles_portal_and_reset(monkeypatch):
         # falsches Passwort, dann Mieter-Login
         assert "falsch" in c.post("/login", data={"username": "muster", "password": "nein"}).text
         r = login(c, "muster", "mieter-pass")
-        assert r.headers["location"] == "/portal"
-        page = c.get("/portal").text
-        assert "Meine Abrechnungen" in page and f"/portal/{bid}.pdf" in page and "Einstellungen" not in page
+        assert r.headers["location"] == "/"
+        page = c.get("/").text
+        assert "Mein Zuhause" in page and f"/portal/{bid}.pdf" in page and "Einstellungen" not in page
         assert c.get(f"/portal/{bid}.pdf").content[:4] == b"%PDF"
         assert "Familie Muster" in c.get(f"/portal/{bid}").text
         # Mieter darf nichts anderes – auch nicht über ?party= eine fremde Partei
-        assert c.get("/settings", follow_redirects=False).headers["location"] == "/portal"
-        assert c.post("/settings", data={"vat_rate": "7"}).status_code == 403
+        assert c.get("/admin/settings", follow_redirects=False).headers["location"] == "/"
+        assert c.post("/admin/settings", data={"vat_rate": "7"}).status_code == 403
         assert c.get(f"{url}/invoice/3", follow_redirects=False).status_code == 303
-        assert "Familie Andere" not in c.get("/portal?party=3").text
+        assert "Familie Andere" not in c.get("/?party=3").text
         assert c.get(f"/portal/{bid}?party=3").status_code == 200  # bleibt bei der eigenen Partei
         assert "Familie Muster" in c.get(f"/portal/{bid}?party=3").text
         c.get("/logout")
@@ -110,14 +110,14 @@ def test_login_roles_portal_and_reset(monkeypatch):
         # Verwalter: zurückziehen → Mieter sieht nichts mehr; Vorschau „Ansicht als Mieter“
         login(c, "admin", "admin-pass-1")
         c.post(url, data={"action": "unpublish"})
-        assert "Noch keine veröffentlichten" in c.get("/portal?party=2").text
+        assert "Noch keine veröffentlichten" in c.get("/?party=2").text
         c.post(url, data={"action": "publish"})
-        assert f"/portal/{bid}.pdf?party=2" in c.get("/portal?party=2").text
-        assert "nicht freigegeben" in c.get("/portal?party=3").text
+        assert f"/portal/{bid}.pdf?party=2" in c.get("/?party=2").text
+        assert "nicht freigegeben" in c.get("/?party=3").text
         # letzter Verwalter bleibt geschützt
-        assert "letzte aktive Verwalter" in c.post("/users/1", data={"username": "admin", "role": "tenant",
+        assert "letzte aktive Verwalter" in c.post("/admin/users/1", data={"username": "admin", "role": "tenant",
                                                                        "party_id": "2", "active": "1"}).text
-        assert "nicht selbst löschen" in c.post("/users/1", data={"delete": "1"}).text
+        assert "nicht selbst löschen" in c.post("/admin/users/1", data={"delete": "1"}).text
         c.get("/logout")
 
         # Passwort vergessen → Mail mit Link → neues Passwort → alte Sitzung ungültig
@@ -135,14 +135,14 @@ def test_login_roles_portal_and_reset(monkeypatch):
         assert "Passwort gespeichert" in r.text
         assert "ungültig" in c.get(f"/password/reset?token={token}").text  # nur einmal nutzbar
         assert login(c, "muster", "mieter-pass").headers["location"].startswith("/login")
-        assert login(c, "muster", "neues-pass-1").headers["location"] == "/portal"
+        assert login(c, "muster", "neues-pass-1").headers["location"] == "/"
         c.cookies.set(auth.COOKIE, old_cookie)
-        assert c.get("/portal", follow_redirects=False).headers["location"].startswith("/login")
+        assert c.get("/", follow_redirects=False).headers["location"].startswith("/login")
 
         # Einladung: Benutzer ohne Passwort bekommt Link
         c.cookies.clear()
         login(c, "admin", "admin-pass-1")
-        r = c.post("/users/0", data={"username": "neu", "role": "tenant", "party_id": "2", "email": "neu@test.de",
+        r = c.post("/admin/users/0", data={"username": "neu", "role": "tenant", "party_id": "2", "email": "neu@test.de",
                                      "active": "1"})
         assert "Einladung an neu@test.de verschickt" in r.text
         assert "Benutzername: neu" in MAILS[-1].get_body(("plain",)).get_content()
@@ -193,3 +193,49 @@ def test_pwa_files_public_and_valid():
         assert "Keine Verbindung" in c.get("/offline").text
         assert "Android" in c.get("/app").text  # Installationshilfe ohne Login erreichbar
         assert 'rel="manifest"' in c.get("/login").text
+
+
+def test_areas_home_and_admin_with_branding():
+    import json as _json
+
+    auth.login_throttle.hits.clear()
+    with TestClient(app) as c:
+        # ohne Login-System: „/“ = Mein Zuhause, „/admin“ = ImmoVerwaltung
+        home = c.get("/").text
+        assert "<title>Mein Zuhause</title>" in home and "⚙️ Verwaltung" in home
+        adm = c.get("/admin").text
+        assert "<title>ImmoVerwaltung</title>" in adm and "🏠 Mein Zuhause" in adm
+        assert "manifest.webmanifest?app=admin" in adm and "manifest.webmanifest?app=tenant" in home
+        # frühere Adressen leiten weiter (auch POST-Formulare, 308 behält Methode und Daten)
+        r = c.get("/settings?x=1", follow_redirects=False)
+        assert r.status_code == 308 and r.headers["location"] == "/admin/settings?x=1"
+        assert c.post("/parties/0", data={"name": "Familie Muster", "meters": "sensor.eg", "active": "1",
+                                          "portal": "1"}).url.path == "/admin/parties"
+        assert c.get("/portal?party=1", follow_redirects=False).headers["location"] == "/?party=1"
+        # Manifeste: zwei getrennte Apps
+        t = _json.loads(c.get("/manifest.webmanifest?app=tenant").text)
+        a = _json.loads(c.get("/manifest.webmanifest?app=admin").text)
+        assert (t["name"], t["id"], t["start_url"].split("?")[0]) == ("Mein Zuhause", "/", "/")
+        assert (a["name"], a["id"], a["start_url"].split("?")[0]) == ("ImmoVerwaltung", "/admin", "/admin")
+
+        c.post("/setup", data={"username": "admin", "password": "admin-pass-1", "password2": "admin-pass-1"})
+        c.post("/admin/users/settings", data={"tenant_app_name": "Unser Haus", "admin_app_name": "Hausbüro",
+                                              "portal_1": "1"})
+        c.post("/admin/users/0", data={"username": "muster", "role": "tenant", "party_id": "1",
+                                       "password": "mieter-pass", "active": "1"})
+        assert "<title>Hausbüro</title>" in c.get("/admin").text
+        c.get("/logout")
+        # Login-Seite: ohne Hinweis Mieter-Name, mit next=/admin Verwalter-Name
+        assert "Unser Haus" in c.get("/login").text
+        assert "Hausbüro" in c.get("/login?next=/admin").text
+        # Mieter: „/“ erlaubt, /admin → zurück nach „/“, Admin-API gesperrt
+        r = c.post("/login", data={"username": "muster", "password": "mieter-pass", "next": "/admin"},
+                   follow_redirects=False)
+        assert r.headers["location"] == "/" and r.cookies.get("nk_app") == "tenant"
+        assert "<title>Unser Haus</title>" in c.get("/").text and "⚙️ Verwaltung" not in c.get("/").text
+        assert c.get("/admin", follow_redirects=False).headers["location"] == "/"
+        assert c.get("/api/entities").status_code == 403
+        c.get("/logout")
+        # Verwalter landet nach dem Login in der Verwaltung
+        assert c.post("/login", data={"username": "admin", "password": "admin-pass-1"},
+                      follow_redirects=False).headers["location"] == "/admin"

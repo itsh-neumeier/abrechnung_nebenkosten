@@ -20,7 +20,7 @@
     <div data-show="quantity amount" id="amtbox"><label id="amtlabel">Preis je Einheit (€)</label><input type="text" name="default_amount" value="{{ a.default_amount|num(4 if a.source_type == 'quantity' else 2) }}"></div>
   </div>
   <p class="muted" data-show="energy">Strom-Umlagen werden vom Restverbrauch des Eigentümers abgezogen, damit nichts doppelt berechnet wird.</p>
-  <p class="muted" data-show="quantity" id="waterhint">Preis = Trinkwasser + Abwasser je m³ aus den <a href="/settings">Einstellungen</a>.</p>
+  <p class="muted" data-show="quantity" id="waterhint">Preis = Trinkwasser + Abwasser je m³ aus den <a href="/admin/settings">Einstellungen</a>.</p>
 
   <h2>Verteilung</h2>
   <div class="grid">

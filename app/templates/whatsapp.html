@@ -4,11 +4,11 @@
 <div class="card">
   <p>Abrechnungen können per WhatsApp verschickt werden – <b>direkt</b> über die offizielle WhatsApp Business Cloud API
   von Meta oder <b>über n8n</b> (Webhook, dort z. B. Evolution API oder Cloud API). Welche Partei WhatsApp bekommt,
-  stellst du unter <a href="/parties">Parteien</a> ein (Nummer + Versand „WhatsApp“ oder „E-Mail und WhatsApp“).
+  stellst du unter <a href="/admin/parties">Parteien</a> ein (Nummer + Versand „WhatsApp“ oder „E-Mail und WhatsApp“).
   Der Versand läuft über dieselben Knöpfe wie die E-Mail („senden“ / „Alle senden“ bzw. automatisch beim Abschließen).</p>
 </div>
 
-<form method="post" action="/whatsapp">
+<form method="post" action="/admin/whatsapp">
 <div class="card">
   <h2 style="margin-top:0">Versandweg</h2>
   <div class="grid">
@@ -25,7 +25,7 @@
   <h2 style="margin-top:0">Direkt: WhatsApp Business Cloud API {% if st.wa_mode == 'native' %}<span class="badge final">aktiv</span>{% endif %}</h2>
   <p>Zugang: {{ "✔ eingerichtet" if native_ok else "✘ nicht eingerichtet" }}{% if phone_id %} · Telefonnummern-ID <code>{{ phone_id }}</code>{% endif %}
   · Status-Webhook: {{ "✔ App-Geheimnis gesetzt" if app_secret_set else "App-Geheimnis fehlt (WA_APP_SECRET)" }}</p>
-  <button class="sec" formaction="/whatsapp/check" {% if not native_ok %}disabled{% endif %}>Verbindung testen</button>
+  <button class="sec" formaction="/admin/whatsapp/check" {% if not native_ok %}disabled{% endif %}>Verbindung testen</button>
   <details style="margin-top:10px" {% if not native_ok %}open{% endif %}><summary><b>Einrichtung bei Meta</b></summary>
   <ol class="muted" style="padding-left:20px">
     <li><b>Meta-Business-Konto</b> anlegen (business.facebook.com) und unter developers.facebook.com eine <b>App</b> vom Typ
@@ -79,7 +79,7 @@
 </div>
 </form>
 
-<form method="post" action="/whatsapp/test" class="card">
+<form method="post" action="/admin/whatsapp/test" class="card">
   <h2 style="margin-top:0">Test</h2>
   <p class="muted">Schickt ein Test-PDF an die Nummer – {{ 'direkt über die Cloud API (Vorlage mit Parametern „Test“)' if st.wa_mode == 'native' else 'über n8n; der Flow meldet das Ergebnis zurück' }}.</p>
   <div class="grid">
@@ -111,7 +111,7 @@
   {% endif %}
   <textarea id="flowtxt-{{ k }}" rows="10" readonly style="font-family:monospace;font-size:12px">{{ flows[k] }}</textarea>
   <button type="button" onclick="copyFlow('{{ k }}', this)">📋 Flow kopieren</button>
-  <a class="btn sec" href="/whatsapp/flow/{{ k }}.json">Als Datei herunterladen</a>
+  <a class="btn sec" href="/admin/whatsapp/flow/{{ k }}.json">Als Datei herunterladen</a>
 </div>
 {% endfor %}
 

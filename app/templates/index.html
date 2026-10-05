@@ -2,7 +2,7 @@
 {% block content %}
 <h1>Abrechnungen</h1>
 {% if setup_missing %}
-<div class="warn">Noch einzurichten: {{ setup_missing|join(", ") }} – siehe <a href="/settings">Einstellungen</a> und <a href="/parties">Parteien</a>.</div>
+<div class="warn">Noch einzurichten: {{ setup_missing|join(", ") }} – siehe <a href="/admin/settings">Einstellungen</a> und <a href="/admin/parties">Parteien</a>.</div>
 {% endif %}
 {% if not ha_configured %}
 <div class="warn">Home Assistant ist nicht verbunden (HA_URL / HA_TOKEN in der <code>.env</code> setzen). Verbrauchswerte können manuell eingetragen werden.</div>
@@ -12,20 +12,20 @@
   {% if imap_ok %}
   <p class="muted">Postfach <code>{{ imap.imap_user }}</code> wird alle {{ imap.imap_interval_min }} Min. auf Rechnungen von
   {% for x in senders %}<code>{{ x }}</code>{{ ", " if not loop.last }}{% else %}<i>allen Absendern</i>{% endfor %}
-  geprüft{% if forwarded and senders %} (auch weitergeleitet){% endif %} – <a href="/settings#eingang">ändern</a>.
+  geprüft{% if forwarded and senders %} (auch weitergeleitet){% endif %} – <a href="/admin/settings#eingang">ändern</a>.
   {% if mbox.last_run %}<br>Letzter Abruf {{ mbox.last_run[:16]|replace('T', ' ') }}: {{ mbox.last_result }}{% endif %}</p>
-  <form method="post" action="/mailbox/check" style="display:inline"><button class="sec">Postfach jetzt prüfen</button></form>
+  <form method="post" action="/admin/mailbox/check" style="display:inline"><button class="sec">Postfach jetzt prüfen</button></form>
   {% else %}
   <p class="muted">Automatischer Abruf aus dem Postfach: <code>IMAP_*</code> in der <code>.env</code> setzen.</p>
   {% endif %}
-  <a class="btn" href="/billings/new">+ Rechnung hochladen / erfassen</a>
+  <a class="btn" href="/admin/billings/new">+ Rechnung hochladen / erfassen</a>
 </div>
 <div class="card scroll" style="margin-top:12px">
 <table>
 <tr><th>Zeitraum</th><th>Titel</th><th class="r">Ø Preis brutto</th><th class="r">Rechnung</th><th class="r">Umgelegt</th><th>Status</th></tr>
 {% for b in billings %}
 <tr>
-  <td><a href="/billings/{{ b.id }}">{{ b.period_start|de_date }} – {{ b.period_end|de_date }}</a></td>
+  <td><a href="/admin/billings/{{ b.id }}">{{ b.period_start|de_date }} – {{ b.period_end|de_date }}</a></td>
   <td>{{ b.title }}</td>
   <td class="r">{% if b.result.price_gross %}{{ (b.result.price_gross*100)|num(2) }} ct{% endif %}</td>
   <td class="r">{{ b.result.bill_gross|eur }}</td>

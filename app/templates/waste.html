@@ -2,7 +2,7 @@
 {% block title %}Abfallkalender{% endblock %}
 {% block content %}
 <h1>🗑️ Abfallkalender</h1>
-<form method="post" action="/waste" enctype="multipart/form-data" class="card">
+<form method="post" action="/admin/waste" enctype="multipart/form-data" class="card">
   <h2 style="margin-top:0">Kalender (ICS)</h2>
   <p class="muted" style="margin-top:0">Die meisten Entsorger bzw. Landkreise bieten den Abfuhrkalender für die eigene Straße als
   <b>ICS</b> (iCal) an – Link kopieren und hier eintragen (wird täglich neu geladen) oder die Datei hochladen.</p>
@@ -39,7 +39,7 @@
   {% endif %}
   <button>Speichern</button>
   <button class="sec" name="refresh" value="1" {% if not st.waste_ics_url %}disabled{% endif %}>Speichern &amp; Kalender jetzt laden</button>
-  <button class="sec" formaction="/waste/test" {% if not total %}disabled{% endif %}>Test an mein Gerät</button>
+  <button class="sec" formaction="/admin/waste/test" {% if not total %}disabled{% endif %}>Test an mein Gerät</button>
 </form>
 
 <div class="card">

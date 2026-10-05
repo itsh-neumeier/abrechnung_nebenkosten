@@ -1,11 +1,10 @@
 {% extends "base.html" %}
-{% block title %}Meine Abrechnungen{% endblock %}
 {% from "_notice.html" import notice %}
 {% block content %}
 {% set me = request.state.user %}
-<h1>{{ "Meine Abrechnungen" if me and not me.is_admin else "Mieterportal – Vorschau" }}</h1>
+<h1>{{ request.state.brand.name }}{% if not (me and not me.is_admin) %} <span class="muted" style="font-size:.9rem;font-weight:normal">– Vorschau für Mieter</span>{% endif %}</h1>
 {% if parties %}
-<form method="get" action="/portal" class="card">
+<form method="get" action="/" class="card">
   <label>Ansicht als Mieter von</label>
   <select name="party" onchange="this.form.submit()"><option value="">– Partei wählen –</option>
     {% for p in parties %}<option value="{{ p.id }}" {% if party and party.id == p.id %}selected{% endif %}>{{ p.name }}{% if not p.portal %} (Portal nicht freigegeben){% endif %}</option>{% endfor %}

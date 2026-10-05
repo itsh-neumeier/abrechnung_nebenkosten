@@ -1,4 +1,4 @@
-# Portainer-Stack „stromabrechnung“
+# Portainer-Stack „immoverwaltung“
 #
 # Portainer -> Stacks -> Add stack
 #   Variante A „Repository“: URL dieses Repos, Reference leer lassen (= Standard-Branch),
@@ -9,9 +9,9 @@
 # Portainer setzt sie hier über ${VARIABLE} ein; nicht gesetzte Werte nutzen den Standard.
 
 services:
-  stromabrechnung:
-    image: ghcr.io/itsh-neumeier/abrechnung_nebenkosten:${IMAGE_TAG:-latest}
-    container_name: stromabrechnung
+  immoverwaltung:
+    image: ${IMAGE:-ghcr.io/itsh-neumeier/immoverwaltung}:${IMAGE_TAG:-latest}
+    container_name: immoverwaltung
     restart: unless-stopped
     environment:
       DATABASE_URL: sqlite:////data/abrechnung.db
@@ -50,6 +50,7 @@ services:
     ports:
       - "${APP_PORT:-8000}:8000"
     volumes:
+      # Volume-Name bleibt „stromabrechnung-data“ – so bleiben alle bisherigen Daten erhalten
       - stromabrechnung-data:/data
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]

@@ -76,33 +76,33 @@ def test_waste_page_portal_and_tick(monkeypatch):
     dev = device()
     text = ics([(D, "Restmülltonne"), (D, "Windelsack"), (D + timedelta(days=3), "Sperrmüllanmeldung")])
     with TestClient(app) as c:
-        c.post("/parties/0", data={"name": "Familie Muster", "meters": "sensor.eg", "active": "1", "portal": "1"})
+        c.post("/admin/parties/0", data={"name": "Familie Muster", "meters": "sensor.eg", "active": "1", "portal": "1"})
         c.post("/setup", data={"username": "admin", "password": "admin-pass-1", "password2": "admin-pass-1"})
-        c.post("/users/0", data={"username": "muster", "role": "tenant", "party_id": "1", "password": "mieter-pass",
+        c.post("/admin/users/0", data={"username": "muster", "role": "tenant", "party_id": "1", "password": "mieter-pass",
                                  "active": "1"})
-        r = c.post("/waste", data={"waste_evening_time": "18:00", "waste_morning_time": "06:00",
+        r = c.post("/admin/waste", data={"waste_evening_time": "18:00", "waste_morning_time": "06:00",
                                    "waste_notify_evening": "1", "waste_notify_morning": "1"},
                    files={"ics_file": ("abfall.ics", text.encode(), "text/calendar")})
         assert "3 Abholtermine aus der Datei" in r.text and "Sperrmüllanmeldung" in r.text
         # nur Restmüll + Windelsack auswählen
-        c.post("/waste", data={"types_form": "1", "waste_types": ["Restmülltonne", "Windelsack"],
+        c.post("/admin/waste", data={"types_form": "1", "waste_types": ["Restmülltonne", "Windelsack"],
                                "waste_notify_evening": "1", "waste_notify_morning": "1",
                                "waste_evening_time": "18:00", "waste_morning_time": "06:00"})
-        page = c.get("/waste").text
+        page = c.get("/admin/waste").text
         assert page.count('name="waste_types"') == 3 and "Sperrmüllanmeldung</span>" not in page.split("Nächste Abholungen")[1]
         c.get("/logout")
         c.post("/login", data={"username": "muster", "password": "mieter-pass"})
         c.post("/api/push/subscribe", json=dev[2])
-        p = c.get("/portal").text
+        p = c.get("/").text
         assert "Nächste Abholungen" in p and "⚫ Restmülltonne" in p and "🟠 Windelsack" in p
-        assert c.get("/waste", follow_redirects=False).status_code == 303  # Mieter: keine Verwaltung
+        assert c.get("/admin/waste", follow_redirects=False).status_code == 303  # Mieter: keine Verwaltung
 
     with SessionLocal() as s:
         eve = datetime.combine(D - timedelta(days=1), datetime.min.time()).replace(hour=18, minute=10)
         assert notify.waste_tick(s, eve) == 1 and notify.waste_tick(s, eve + timedelta(minutes=5)) == 0
         assert "|evening" in get_settings(s)["waste_sent"]
     msg = decrypt(posted[-1][1], *dev[:2])
-    assert msg["title"] == "🗑️ Morgen Abholung: Restmülltonne, Windelsack" and msg["url"] == "/portal#abfall"
+    assert msg["title"] == "🗑️ Morgen Abholung: Restmülltonne, Windelsack" and msg["url"] == "/#abfall"
     with SessionLocal() as s:
         assert notify.waste_tick(s, datetime.combine(D, datetime.min.time()).replace(hour=6, minute=5)) == 1
         assert notify.waste_tick(s, datetime.combine(D + timedelta(days=3), datetime.min.time()).replace(hour=7)) == 0

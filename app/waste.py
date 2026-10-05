@@ -142,7 +142,7 @@ def merge(texts: list[str]) -> str:
     events = []
     for t in texts:
         events += re.findall(r"BEGIN:VEVENT.*?END:VEVENT", t.replace("\r\n", "\n"), flags=re.S)
-    return "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:Nebenkostenabrechnung\n" + "\n".join(events) + "\nEND:VCALENDAR\n"
+    return "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:ImmoVerwaltung\n" + "\n".join(events) + "\nEND:VCALENDAR\n"
 
 
 # --------------------------------------------------------------------------- Auswertung

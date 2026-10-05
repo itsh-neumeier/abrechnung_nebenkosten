@@ -56,7 +56,7 @@ def test_full_flow(monkeypatch):
         assert [e["entity_id"] for e in ents] == ["sensor.shelly_eg_energy", "sensor.temp"]
         assert ents[0]["statistics"] and not ents[1]["statistics"]
 
-        c.post("/settings", data={
+        c.post("/admin/settings", data={
             "entity_grid": "sensor.grid", "entity_total": "sensor.total", "entity_battery": "sensor.dis",
             "entity_battery_charge": "sensor.chg", "entity_battery_charge_grid": "sensor.chg_grid",
             "battery_rate_ct": "8", "pv_rate_ct": "5", "vat_rate": "19",
@@ -65,19 +65,19 @@ def test_full_flow(monkeypatch):
             "landlord_name": "Max Vermieter", "landlord_iban": "DE00 1234",
             "mail_auto_send": "1", "water_price_m3": "2,15", "sewage_price_m3": "2,60", "mail_subject": "Abrechnung {zeitraum} – {wohneinheit}",
             "mail_body": "Hallo {name}, Betrag {betrag}", "mail_bcc": "ich@test.de"})
-        assert "data-phases" in c.get("/settings").text
+        assert "data-phases" in c.get("/admin/settings").text
 
-        c.post("/parties/0", data={"name": "Eigentümer", "is_owner": "1", "active": "1"})
-        c.post("/parties/0", data={"name": "Familie Muster", "unit_id": "WE-001", "meters": "sensor.eg",
+        c.post("/admin/parties/0", data={"name": "Eigentümer", "is_owner": "1", "active": "1"})
+        c.post("/admin/parties/0", data={"name": "Familie Muster", "unit_id": "WE-001", "meters": "sensor.eg",
                                    "active": "1", "email": "zweig@test.de"})
-        c.post("/costs/fixed/0", data={"name": "IPTV", "amount_gross": "9,99", "party_ids": ["2"], "active": "1"})
-        c.post("/costs/alloc/0", data={"name": "Warmwasser", "source_type": "energy", "source_entity": "sensor.ww",
+        c.post("/admin/costs/fixed/0", data={"name": "IPTV", "amount_gross": "9,99", "party_ids": ["2"], "active": "1"})
+        c.post("/admin/costs/alloc/0", data={"name": "Warmwasser", "source_type": "energy", "source_entity": "sensor.ww",
                                        "key_type": "entity", "key_unit": "m³", "key_2": "sensor.w_eg", "active": "1"})
 
-        c.post("/costs/alloc/0", data={"name": "Trinkwasser", "source_type": "quantity", "source_entity": "sensor.wasser",
+        c.post("/admin/costs/alloc/0", data={"name": "Trinkwasser", "source_type": "quantity", "source_entity": "sensor.wasser",
                                        "source_unit": "m³", "price_source": "water", "key_type": "percent",
                                        "key_1": "50", "key_2": "50", "active": "1"})
-        r = c.post("/billings", data=BILL, follow_redirects=False)
+        r = c.post("/admin/billings", data=BILL, follow_redirects=False)
         assert r.status_code == 303
         url = r.headers["location"].split("?")[0]
 
@@ -150,15 +150,15 @@ def test_migration_adds_columns(tmp_path):
 def test_three_phase_meters():
     """Shelly 3EM o. Ä.: Zähler je Phase L1/L2/L3 werden addiert, Haus-Entitäten ebenso."""
     with TestClient(app) as c:
-        c.post("/settings", data={"entity_total": "sensor.tot_l1+sensor.tot_l2 , sensor.tot_l3", "vat_rate": "19"})
-        c.post("/parties/0", data={"name": "Eigentümer", "is_owner": "1", "active": "1"})
-        c.post("/parties/0", data={"name": "3EM", "active": "1",
+        c.post("/admin/settings", data={"entity_total": "sensor.tot_l1+sensor.tot_l2 , sensor.tot_l3", "vat_rate": "19"})
+        c.post("/admin/parties/0", data={"name": "Eigentümer", "is_owner": "1", "active": "1"})
+        c.post("/admin/parties/0", data={"name": "3EM", "active": "1",
                                    "meters": ["sensor.p_l1 + sensor.p_l2 + sensor.p_l3", "sensor.extra", ""]})
-        page = c.get("/parties/2").text
+        page = c.get("/admin/parties/2").text
         assert 'value="sensor.p_l1 + sensor.p_l2 + sensor.p_l3"' in page and 'value="sensor.extra"' in page
-        c.post("/costs/alloc/0", data={"name": "WW", "source_type": "energy", "source_entity": "sensor.ww_l1 sensor.ww_l2 sensor.ww_l3",
+        c.post("/admin/costs/alloc/0", data={"name": "WW", "source_type": "energy", "source_entity": "sensor.ww_l1 sensor.ww_l2 sensor.ww_l3",
                                        "key_type": "entity", "keyent_2": "sensor.k1+sensor.k2+sensor.k3", "active": "1"})
-        r = c.post("/billings", data={"period_start": "2026-09-01", "period_end": "2026-09-30", "grid_kwh": "100",
+        r = c.post("/admin/billings", data={"period_start": "2026-09-01", "period_end": "2026-09-30", "grid_kwh": "100",
                                       "energy_cost_net": "25", "vat_rate": "19"}, follow_redirects=False)
         url = r.headers["location"].split("?")[0]
         page = c.get(url).text

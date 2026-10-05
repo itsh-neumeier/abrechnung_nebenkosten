@@ -300,7 +300,9 @@ SETTING_DEFAULTS = {
     "push_admin_sent": "1",
     "push_admin_errors": "1",
     "push_admin_delivery": "",  # Web-Push-Schlüssel (wird erzeugt, oder VAPID_PRIVATE_KEY)
-    "portal_auto_publish": "1",  # beim Abschließen im Mieterportal veröffentlichen
+    "portal_auto_publish": "1",
+    "admin_app_name": "ImmoVerwaltung",
+    "tenant_app_name": "Mein Zuhause",  # Name der App für Mieter  # beim Abschließen im Mieterportal veröffentlichen
     # Rechnungsimport
     "imap_senders": "",  # leer = IMAP_SENDER aus der .env (Standard awattar.de)
     "imap_forwarded": "1",  # weitergeleitete Mails am Original-Absender erkennen

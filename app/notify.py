@@ -15,7 +15,7 @@ from typing import Iterable, Optional
 
 from sqlalchemy.orm import Session
 
-from . import render, webpush
+from . import branding, render, webpush
 from .config import config
 from .db import Billing, Party, PushSubscription, User, get_settings, save_settings
 
@@ -185,7 +185,7 @@ def invoice_imported(s: Session, b: Billing, status: str, gross: Optional[float]
     if warnings:
         lines.append(f"⚠ {warnings} Hinweis(e) – bitte prüfen")
     lines.append(status)
-    return to_admins(s, "push_admin_import", title, "\n".join(lines), f"/billings/{b.id}", f"import-{b.id}",
+    return to_admins(s, "push_admin_import", title, "\n".join(lines), f"/admin/billings/{b.id}", f"import-{b.id}",
                      "high" if warnings else "normal")
 
 
@@ -198,10 +198,10 @@ def sent_report(s: Session, b: Billing, report: list[tuple[str, bool, str]]) -> 
     period = f"{b.period_start:%m/%Y}"
     if bad:
         to_admins(s, "push_admin_errors", f"Versand {period}: {len(bad)} Fehler",
-                  "; ".join(bad), f"/billings/{b.id}", f"senderr-{b.id}")
+                  "; ".join(bad), f"/admin/billings/{b.id}", f"senderr-{b.id}")
     if good:
         to_admins(s, "push_admin_sent", f"Abrechnung {period} versendet",
-                  f"{len(good)} erfolgreich: " + ", ".join(sorted(set(good))), f"/billings/{b.id}", f"sent-{b.id}")
+                  f"{len(good)} erfolgreich: " + ", ".join(sorted(set(good))), f"/admin/billings/{b.id}", f"sent-{b.id}")
 
 
 def wa_delivery(s: Session, b: Billing, pid: int, ok: bool, status: str, error: str = "") -> None:
@@ -209,10 +209,10 @@ def wa_delivery(s: Session, b: Billing, pid: int, ok: bool, status: str, error: 
     name = next((p["name"] for p in (b.result or {}).get("parties", []) if p["id"] == pid), f"Partei {pid}")
     if ok:
         to_admins(s, "push_admin_delivery", f"WhatsApp {status}: {name}", f"Abrechnung {b.period_start:%m/%Y}",
-                  f"/billings/{b.id}", f"wa-{b.id}-{pid}")
+                  f"/admin/billings/{b.id}", f"wa-{b.id}-{pid}")
     else:
         to_admins(s, "push_admin_errors", f"WhatsApp-Fehler: {name}", f"Abrechnung {b.period_start:%m/%Y}: {error}",
-                  f"/billings/{b.id}", f"waerr-{b.id}-{pid}")
+                  f"/admin/billings/{b.id}", f"waerr-{b.id}-{pid}")
 
 
 # --------------------------------------------------------------------------- Mitteilungen (Broadcast / Unicast)
@@ -314,7 +314,7 @@ def send_message(s: Session, msg, via_mail: bool = False) -> dict:
     users = s.query(User).filter(User.role == "tenant", User.active.is_(True), User.party_id.in_(pids)).all() if pids else []
     subs = subs_for_users(s, [u.id for u in users])
     ok, errors = send_to(s, subs, {"title": _push_title(msg), "body": _push_body(msg)[:240],
-                                   "url": f"/portal#m{msg.id}", "tag": f"msg-{msg.id}"},
+                                   "url": f"/#m{msg.id}", "tag": f"msg-{msg.id}"},
                          msg.priority or "normal") if subs else (0, [])
     stats = {"parties": [p.name for p in parties], "push_devices": len(subs), "push_ok": ok,
              "push_errors": errors[:3], "mail_ok": 0, "mail_errors": []}
@@ -330,12 +330,12 @@ def send_message(s: Session, msg, via_mail: bool = False) -> dict:
             if msg.priority in ("high", "urgent"):
                 facts.insert(0, ("Priorität", f"{prio(msg.priority)[1]} {prio(msg.priority)[0]}", True))
             html = mailer.render_html(
-                title=msg.title, preheader=_push_body(msg)[:120], facts=facts, brand=st.get("building_title") or "Nebenkostenabrechnung",
+                title=msg.title, preheader=_push_body(msg)[:120], facts=facts, brand=branding.for_party(st, p),
                 brand_sub=st.get("building_address", ""), paragraphs=[f"Hallo {p.name},"] + [
                     x.strip() for x in msg.body.split("\n\n") if x.strip()],
                 closing=f"Viele Grüße\n{st.get('landlord_name', '')}",
-                button_url=f"{config.app_base_url}/portal" if (p.portal and config.app_base_url) else "",
-                button_label="Zum Mieterportal", footer=st.get("building_address", ""))
+                button_url=f"{config.app_base_url}/" if (p.portal and config.app_base_url) else "",
+                button_label="Zu „Mein Zuhause“", footer=st.get("building_address", ""))
             try:
                 subject = (f"[{prio(msg.priority)[0]}] " if msg.priority in ("high", "urgent") else "") + msg.title
                 mailer.send_mail(to, subject, body, [], html=html)
@@ -368,7 +368,7 @@ def send_reminders(s: Session, now: Optional[datetime] = None) -> int:
         if now < m.event_start <= now + timedelta(hours=24):
             subs = subs_for_users(s, tenant_users_for(s, m))
             send_to(s, subs, {"title": f"Erinnerung: {_push_title(m)}", "body": _push_body(m)[:240],
-                              "url": f"/portal#m{m.id}", "tag": f"msg-{m.id}"}, m.priority or "normal")
+                              "url": f"/#m{m.id}", "tag": f"msg-{m.id}"}, m.priority or "normal")
             m.reminded_at = now
             count += 1
     s.commit()
@@ -429,7 +429,7 @@ def waste_tick(s: Session, now: Optional[datetime] = None) -> int:
     sent = json.loads(st.get("waste_sent") or "[]")
     due = waste.due_notifications(events, st, now, set(sent))
     for key, title, body, _kinds in due:
-        send_to(s, subs_for_users(s, waste_recipients(s)), {"title": title, "body": body, "url": "/portal#abfall",
+        send_to(s, subs_for_users(s, waste_recipients(s)), {"title": title, "body": body, "url": "/#abfall",
                                                               "tag": "abfall-" + key.split("|")[0]})
         sent.append(key)
     if due:

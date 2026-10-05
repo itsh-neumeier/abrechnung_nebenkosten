@@ -2,36 +2,43 @@
 <html lang="de">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>{% block title %}Nebenkostenabrechnung{% endblock %}</title>
+{% set brand = request.state.brand if request.state.brand else none %}
+{% set brand_name = brand.name if brand else 'ImmoVerwaltung' %}
+<title>{% block title %}{{ brand_name }}{% endblock %}{% if self.title() != brand_name %} – {{ brand_name }}{% endif %}</title>
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon.ico" sizes="32x32">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#2563eb">
-<link rel="manifest" href="/manifest.webmanifest">
+<link rel="manifest" href="/manifest.webmanifest?app={{ brand.kind if brand else 'admin' }}{% if brand and brand.kind == 'tenant' %}&amp;name={{ brand_name|urlencode }}{% endif %}">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Nebenkosten">
+<meta name="apple-mobile-web-app-title" content="{{ brand_name }}">
+<meta name="application-name" content="{{ brand_name }}">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 {% set me = request.state.user if request.state is defined else none %}
 {% set auth_on = request.state.auth_enabled if request.state is defined else false %}
-<header><nav>
-  <a class="brand" href="/"><img src="/static/favicon.svg" alt="" class="logo"> Nebenkostenabrechnung</a>
+{% set is_admin_user = (not auth_on) or (me and me.is_admin) %}
+{% set admin_area = brand and brand.kind == 'admin' and is_admin_user %}
+<header class="{{ 'area-admin' if admin_area else 'area-home' }}"><nav>
+  <a class="brand" href="{{ '/admin' if admin_area else '/' }}"><img src="/static/favicon.svg" alt="" class="logo"> {{ brand_name }}</a>
   <button type="button" class="menu-toggle" aria-label="Menü" aria-expanded="false"><span></span><span></span><span></span></button>
   <div class="nav-links">
-  {% if not auth_on or (me and me.is_admin) %}
-  <a href="/">Abrechnungen</a>
-  <a href="/parties">Parteien</a>
-  <a href="/costs">Fixkosten &amp; Umlagen</a>
-  <a href="/messages">Mitteilungen</a>
-  <a href="/waste">Abfall</a>
-  <a href="/whatsapp">WhatsApp</a>
-  <a href="/settings">Einstellungen</a>
-  <a href="/users">Benutzer</a>
-  {% elif me %}
-  <a href="/portal">Meine Abrechnungen</a>
+  {% if admin_area %}
+  <a href="/admin">Abrechnungen</a>
+  <a href="/admin/parties">Parteien</a>
+  <a href="/admin/costs">Fixkosten &amp; Umlagen</a>
+  <a href="/admin/messages">Mitteilungen</a>
+  <a href="/admin/waste">Abfall</a>
+  <a href="/admin/whatsapp">WhatsApp</a>
+  <a href="/admin/settings">Einstellungen</a>
+  <a href="/admin/users">Benutzer</a>
+  <a href="/" class="switch-link" title="Ansicht für Mieter">🏠 Mein Zuhause</a>
+  {% else %}
+  <a href="/">Übersicht</a>
+  {% if is_admin_user %}<a href="/admin" class="switch-link">⚙️ Verwaltung</a>{% endif %}
   {% endif %}
   <a href="/app" class="app-link" title="Als App installieren">📲 App</a>
   {% if me %}<a href="/account" class="who">👤 {{ me.display }}</a><a href="/logout">Abmelden</a>{% endif %}

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Neue Stromrechnung</h1>
-<form method="post" action="/billings/import" enctype="multipart/form-data" class="card">
+<form method="post" action="/admin/billings/import" enctype="multipart/form-data" class="card">
   <h2 style="margin-top:0">Rechnung importieren</h2>
   <p class="muted">PDF der Rechnung oder die ganze E-Mail (.eml) des Lieferanten. Zeitraum, kWh, Arbeitspreis, Fixkosten,
   Börsenpreis und MwSt. werden ausgelesen, Verbrauchswerte aus Home Assistant geladen.</p>
@@ -9,7 +9,7 @@
   <button>Importieren</button>
 </form>
 <h2>… oder manuell erfassen</h2>
-<form method="post" action="/billings" class="card">
+<form method="post" action="/admin/billings" class="card">
   {% set b = none %}{% set ro = '' %}
   {% include "_bill_fields.html" %}
   <div class="check"><input type="checkbox" name="fetch" id="f" value="1" checked><label for="f" style="margin:0">Verbrauchswerte direkt aus Home Assistant laden</label></div>

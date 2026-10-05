@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
-from . import auth, mailer, notify
+from . import auth, branding, mailer, notify
 from .config import config
 from .db import Billing, Message, Party, PushSubscription, User, get_session, get_settings, save_settings
 from .render import invoice_html, invoice_pdf, party_result, pdf_name, period_text, templates
@@ -77,10 +77,14 @@ async def login(request: Request, s: Session = Depends(get_session)):
     u.last_login = datetime.now()
     s.commit()
     days = 30 if form.get("remember") else 0.5
-    if u.role != "admin" and not nxt.startswith(("/portal", "/account")):
-        nxt = "/portal"
+    if u.role != "admin" and (nxt.startswith("/admin") or nxt.startswith("/api/")):
+        nxt = "/"  # Mieter: immer „Mein Zuhause“
+    elif u.role == "admin" and nxt == "/" and not form.get("next"):
+        nxt = "/admin"
     resp = RedirectResponse(nxt, status_code=303)
     _set_cookie(resp, request, auth.make_cookie(s, u, days), days)
+    resp.set_cookie(branding.ROLE_COOKIE, "admin" if u.role == "admin" else "tenant", max_age=365 * 86400,
+                    samesite="lax", secure=request.url.scheme == "https", path="/")
     return resp
 
 
@@ -114,7 +118,7 @@ async def setup(request: Request, s: Session = Depends(get_session)):
     auth.set_password(u, pw)
     s.add(u)
     s.commit()
-    resp = _redirect("/", f"Verwalter „{username}“ angelegt – Login ist jetzt aktiv.")
+    resp = _redirect("/admin", f"Verwalter „{username}“ angelegt – Login ist jetzt aktiv.")
     _set_cookie(resp, request, auth.make_cookie(s, u, 0.5), 0.5)
     return resp
 
@@ -131,13 +135,15 @@ def send_reset_mail(request: Request, s: Session, u: User, invite: bool = False)
     st = get_settings(s)
     sender = st["landlord_name"] or "Ihre Hausverwaltung"
     hello = f"Hallo {u.name or u.username},"
+    app_name = branding.admin_name(st) if u.role == "admin" else branding.for_party(
+        st, s.get(Party, u.party_id) if u.party_id else None)
     if invite:
-        subject = "Zugang zur Nebenkostenabrechnung"
-        body = (f"{hello}\n\nfür Sie wurde ein Zugang zur Nebenkostenabrechnung eingerichtet.\n"
+        subject = f"Ihr Zugang zu „{app_name}“"
+        body = (f"{hello}\n\nfür Sie wurde ein Zugang zu „{app_name}“ eingerichtet.\n"
                 f"Benutzername: {u.username}\n\nBitte legen Sie über diesen Link Ihr Passwort fest (7 Tage gültig):\n"
                 f"{link}\n\nViele Grüße\n{sender}")
         html = mailer.render_html(
-            title="Ihr Zugang zur Nebenkostenabrechnung", preheader="Passwort festlegen und Abrechnungen online ansehen",
+            title=f"Ihr Zugang zu „{app_name}“", preheader="Passwort festlegen und Abrechnungen online ansehen", brand=app_name,
             paragraphs=[hello, "für Sie wurde ein Zugang eingerichtet. Dort finden Sie Ihre Nebenkostenabrechnungen "
                                "jederzeit als Ansicht und PDF."],
             facts=[("Benutzername", u.username, True)],
@@ -145,12 +151,12 @@ def send_reset_mail(request: Request, s: Session, u: User, invite: bool = False)
             button_hint="Der Link ist 7 Tage gültig. Falls der Knopf nicht funktioniert, diese Adresse öffnen:",
             closing=f"Viele Grüße\n{sender}", footer="Diese E-Mail wurde automatisch versendet.")
     else:
-        subject = "Passwort zurücksetzen – Nebenkostenabrechnung"
+        subject = f"Passwort zurücksetzen – {app_name}"
         body = (f"{hello}\n\nüber diesen Link können Sie ein neues Passwort festlegen "
                 f"(1 Stunde gültig):\n{link}\n\nFalls Sie das nicht angefordert haben, ignorieren Sie diese E-Mail.\n\n"
                 f"Viele Grüße\n{sender}")
         html = mailer.render_html(
-            title="Passwort zurücksetzen", preheader="Link zum Festlegen eines neuen Passworts",
+            title="Passwort zurücksetzen", preheader="Link zum Festlegen eines neuen Passworts", brand=app_name,
             paragraphs=[hello, "über den Knopf unten können Sie ein neues Passwort festlegen.",
                         "Falls Sie das nicht angefordert haben, ignorieren Sie diese E-Mail – Ihr Passwort bleibt unverändert."],
             button_url=link, button_label="Neues Passwort festlegen",
@@ -241,7 +247,7 @@ async def account_save(request: Request, s: Session = Depends(get_session)):
 
 
 # --------------------------------------------------------------------------- Benutzerverwaltung (Verwalter)
-@router.get("/users", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
+@router.get("/admin/users", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
 def users_page(request: Request, s: Session = Depends(get_session)):
     users = s.query(User).order_by(User.role, User.username).all()
     parties = {p.id: p for p in s.query(Party).order_by(Party.sort, Party.id).all()}
@@ -252,20 +258,22 @@ def users_page(request: Request, s: Session = Depends(get_session)):
                  mail_ok=mailer.configured(), devices=devices, events=notify.EVENTS)
 
 
-@router.post("/users/settings", dependencies=[Depends(require_admin)])
+@router.post("/admin/users/settings", dependencies=[Depends(require_admin)])
 async def users_settings(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
     if form.get("push_form"):  # Formular „Benachrichtigungen (global)“
         save_settings(s, {k: "1" if form.get(k) else "" for k in notify.EVENTS})
     else:  # Formular „Mieterportal“
-        save_settings(s, {"portal_auto_publish": "1" if form.get("portal_auto_publish") else ""})
+        save_settings(s, {"portal_auto_publish": "1" if form.get("portal_auto_publish") else "",
+                          "tenant_app_name": branding.clean(str(form.get("tenant_app_name", ""))) or "Mein Zuhause",
+                          "admin_app_name": branding.clean(str(form.get("admin_app_name", ""))) or "ImmoVerwaltung"})
         for p in s.query(Party).all():
             p.portal = bool(form.get(f"portal_{p.id}"))
     s.commit()
-    return _redirect("/users", "Gespeichert")
+    return _redirect("/admin/users", "Gespeichert")
 
 
-@router.get("/users/{uid}", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
+@router.get("/admin/users/{uid}", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
 def user_edit(request: Request, uid: int, party: Optional[int] = None, s: Session = Depends(get_session)):
     u = User(role="tenant", active=True, party_id=party) if uid == 0 else s.get(User, uid)
     if u is None:
@@ -283,7 +291,7 @@ def _admins(s: Session, exclude: int = 0) -> int:
     return s.query(User).filter(User.role == "admin", User.active.is_(True), User.id != exclude).count()
 
 
-@router.post("/users/{uid}", dependencies=[Depends(require_admin)])
+@router.post("/admin/users/{uid}", dependencies=[Depends(require_admin)])
 async def user_save(request: Request, uid: int, s: Session = Depends(get_session)):
     form = await request.form()
     me = current(request)
@@ -292,27 +300,27 @@ async def user_save(request: Request, uid: int, s: Session = Depends(get_session
         raise HTTPException(404)
     if form.get("delete"):
         if me and u.id == me.id:
-            return _redirect(f"/users/{uid}", "Du kannst dich nicht selbst löschen.")
+            return _redirect(f"/admin/users/{uid}", "Du kannst dich nicht selbst löschen.")
         if u.role == "admin" and _admins(s, exclude=u.id) == 0:
-            return _redirect(f"/users/{uid}", "Der letzte Verwalter kann nicht gelöscht werden.")
+            return _redirect(f"/admin/users/{uid}", "Der letzte Verwalter kann nicht gelöscht werden.")
         s.delete(u)
         s.commit()
-        return _redirect("/users", "Benutzer gelöscht")
+        return _redirect("/admin/users", "Benutzer gelöscht")
 
     username = str(form.get("username", "")).strip()
     if not username:
-        return _redirect(f"/users/{uid}", "Benutzername fehlt.")
+        return _redirect(f"/admin/users/{uid}", "Benutzername fehlt.")
     clash = s.query(User).filter(User.username == username, User.id != (u.id or 0)).first()
     if clash:
-        return _redirect(f"/users/{uid}", f"Benutzername „{username}“ ist schon vergeben.")
+        return _redirect(f"/admin/users/{uid}", f"Benutzername „{username}“ ist schon vergeben.")
     role = str(form.get("role", "tenant"))
     role = role if role in auth.ROLES else "tenant"
     active = bool(form.get("active"))
     if u.id and u.role == "admin" and (role != "admin" or not active) and _admins(s, exclude=u.id) == 0:
-        return _redirect(f"/users/{uid}", "Der letzte aktive Verwalter muss Verwalter bleiben.")
+        return _redirect(f"/admin/users/{uid}", "Der letzte aktive Verwalter muss Verwalter bleiben.")
     party_id = int(form.get("party_id") or 0) or None
     if role == "tenant" and not party_id:
-        return _redirect(f"/users/{uid}" + (f"?party={party_id}" if party_id else ""),
+        return _redirect(f"/admin/users/{uid}" + (f"?party={party_id}" if party_id else ""),
                          "Mieter müssen einer Partei zugeordnet sein.")
     u.username, u.role, u.active = username, role, active
     u.name = str(form.get("name", "")).strip()
@@ -321,7 +329,7 @@ async def user_save(request: Request, uid: int, s: Session = Depends(get_session
     pw = str(form.get("password", ""))
     if pw:
         if problem := auth.password_problem(pw):
-            return _redirect(f"/users/{uid}", problem)
+            return _redirect(f"/admin/users/{uid}", problem)
         auth.set_password(u, pw)
     elif uid == 0:
         u.password_hash = ""  # Login erst nach Festlegen über den Einladungslink
@@ -338,21 +346,21 @@ async def user_save(request: Request, uid: int, s: Session = Depends(get_session
                 msg += f" – Einladung an {u.email} verschickt"
             except Exception as e:  # noqa: BLE001
                 msg += f" – Einladung fehlgeschlagen: {e}"
-    return _redirect("/users", msg)
+    return _redirect("/admin/users", msg)
 
 
-@router.post("/users/{uid}/reset", dependencies=[Depends(require_admin)])
+@router.post("/admin/users/{uid}/reset", dependencies=[Depends(require_admin)])
 def user_reset(request: Request, uid: int, s: Session = Depends(get_session)):
     u = s.get(User, uid)
     if u is None:
         raise HTTPException(404)
     if not (u.email and mailer.configured()):
-        return _redirect(f"/users/{uid}", "Keine E-Mail-Adresse hinterlegt bzw. Mailversand nicht eingerichtet.")
+        return _redirect(f"/admin/users/{uid}", "Keine E-Mail-Adresse hinterlegt bzw. Mailversand nicht eingerichtet.")
     try:
         send_reset_mail(request, s, u)
-        return _redirect("/users", f"Link zum Zurücksetzen an {u.email} verschickt")
+        return _redirect("/admin/users", f"Link zum Zurücksetzen an {u.email} verschickt")
     except Exception as e:  # noqa: BLE001
-        return _redirect(f"/users/{uid}", f"E-Mail fehlgeschlagen: {e}")
+        return _redirect(f"/admin/users/{uid}", f"E-Mail fehlgeschlagen: {e}")
 
 
 # --------------------------------------------------------------------------- Mieterportal
@@ -374,7 +382,14 @@ def visible_billings(s: Session, party: Party) -> list[Billing]:
     return out
 
 
-@router.get("/portal", response_class=HTMLResponse)
+@router.get("/portal")
+def portal_legacy(request: Request):
+    """Frühere Adresse des Mieterportals → „/“ (Mein Zuhause)."""
+    q = request.url.query
+    return RedirectResponse("/" + (f"?{q}" if q else ""), status_code=308)
+
+
+@router.get("/", response_class=HTMLResponse)
 def portal(request: Request, party: Optional[int] = None, s: Session = Depends(get_session)):
     me = current(request)
     p = _portal_party(request, s, party)
@@ -465,9 +480,9 @@ def push_test(request: Request, s: Session = Depends(get_session)):
     if not allowed:
         raise HTTPException(401)
     me = current(request)
-    url = "/portal" if (me is not None and not me.is_admin) else "/"
+    url = "/" if (me is not None and not me.is_admin) else "/admin"
     ok, errors = notify.send_to(s, notify.subs_for_users(s, [uid]), {
-        "title": "Test-Benachrichtigung", "body": "Benachrichtigungen der Nebenkostenabrechnung funktionieren ✅",
+        "title": "Test-Benachrichtigung", "body": "Benachrichtigungen auf diesem Gerät funktionieren ✅",
         "url": url, "tag": "test"})
     return {"ok": ok, "errors": errors}
 
@@ -483,7 +498,7 @@ def _dt(value) -> Optional[datetime]:
         return None
 
 
-@router.get("/messages", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
+@router.get("/admin/messages", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
 def messages_page(request: Request, edit: int = 0, s: Session = Depends(get_session)):
     msgs = s.query(Message).order_by(Message.created_at.desc()).limit(100).all()
     parties = s.query(Party).filter(Party.active.is_(True)).order_by(Party.sort, Party.id).all()
@@ -494,7 +509,7 @@ def messages_page(request: Request, edit: int = 0, s: Session = Depends(get_sess
                  prios=notify.PRIORITIES, status=notify.status)
 
 
-@router.post("/messages", dependencies=[Depends(require_admin)])
+@router.post("/admin/messages", dependencies=[Depends(require_admin)])
 async def message_save(request: Request, s: Session = Depends(get_session)):
     form = await request.form()
     mid = int(form.get("id") or 0)
@@ -503,7 +518,7 @@ async def message_save(request: Request, s: Session = Depends(get_session)):
         raise HTTPException(404)
     title = str(form.get("title", "")).strip()
     if not title:
-        return _redirect("/messages", "Bitte einen Titel eingeben.")
+        return _redirect("/admin/messages", "Bitte einen Titel eingeben.")
     target = form.getlist("party_ids")
     m.title, m.body = title, str(form.get("body", "")).strip()
     m.category = str(form.get("category", "info")) if form.get("category") in notify.CATEGORIES else "info"
@@ -512,7 +527,7 @@ async def message_save(request: Request, s: Session = Depends(get_session)):
     m.pinned = bool(form.get("pinned"))
     m.event_start, m.event_end, m.show_until = _dt(form.get("event_start")), _dt(form.get("event_end")), _dt(form.get("show_until"))
     if m.event_start and m.event_end and m.event_end < m.event_start:
-        return _redirect("/messages" + (f"?edit={mid}" if mid else ""), "Ende liegt vor dem Beginn.")
+        return _redirect("/admin/messages" + (f"?edit={mid}" if mid else ""), "Ende liegt vor dem Beginn.")
     remind = bool(form.get("remind")) and m.event_start is not None
     if remind and not m.remind:
         m.reminded_at = None
@@ -530,40 +545,40 @@ async def message_save(request: Request, s: Session = Depends(get_session)):
             msg += f" · {st['mail_ok']} E-Mail(s)"
             if st["mail_errors"]:
                 msg += f" ({len(st['mail_errors'])} fehlgeschlagen)"
-    return _redirect("/messages", msg)
+    return _redirect("/admin/messages", msg)
 
 
-@router.post("/messages/{mid}/archive", dependencies=[Depends(require_admin)])
+@router.post("/admin/messages/{mid}/archive", dependencies=[Depends(require_admin)])
 def message_archive(mid: int, s: Session = Depends(get_session)):
     m = s.get(Message, mid)
     if m is None:
         raise HTTPException(404)
     m.archived = not m.archived
     s.commit()
-    return _redirect("/messages", "Archiviert" if m.archived else "Wieder aktiv")
+    return _redirect("/admin/messages", "Archiviert" if m.archived else "Wieder aktiv")
 
 
-@router.post("/messages/{mid}/delete", dependencies=[Depends(require_admin)])
+@router.post("/admin/messages/{mid}/delete", dependencies=[Depends(require_admin)])
 def message_delete(mid: int, s: Session = Depends(get_session)):
     m = s.get(Message, mid)
     if m is not None:
         s.delete(m)
         s.commit()
-    return _redirect("/messages", "Gelöscht")
+    return _redirect("/admin/messages", "Gelöscht")
 
 
-@router.post("/messages/{mid}/send", dependencies=[Depends(require_admin)])
+@router.post("/admin/messages/{mid}/send", dependencies=[Depends(require_admin)])
 async def message_resend(request: Request, mid: int, s: Session = Depends(get_session)):
     m = s.get(Message, mid)
     if m is None:
         raise HTTPException(404)
     form = await request.form()
     st = notify.send_message(s, m, via_mail=bool(form.get("via_mail")))
-    return _redirect("/messages", f"Erneut gesendet · Push an {st['push_ok']} von {st['push_devices']} Gerät(en)")
+    return _redirect("/admin/messages", f"Erneut gesendet · Push an {st['push_ok']} von {st['push_devices']} Gerät(en)")
 
 
 # --------------------------------------------------------------------------- Abfallkalender (Verwalter)
-@router.get("/waste", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
+@router.get("/admin/waste", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
 def waste_page(request: Request, s: Session = Depends(get_session)):
     from . import waste
 
@@ -575,7 +590,7 @@ def waste_page(request: Request, s: Session = Depends(get_session)):
                  recipients=len(notify.subs_for_users(s, notify.waste_recipients(s))))
 
 
-@router.post("/waste", dependencies=[Depends(require_admin)])
+@router.post("/admin/waste", dependencies=[Depends(require_admin)])
 async def waste_save(request: Request, s: Session = Depends(get_session)):
     from . import waste
 
@@ -590,7 +605,7 @@ async def waste_save(request: Request, s: Session = Depends(get_session)):
     if upload is not None and getattr(upload, "filename", ""):
         text = (await upload.read()).decode("utf-8", errors="replace")
         if "BEGIN:VCALENDAR" not in text:
-            return _redirect("/waste", "Die Datei ist keine ICS-Kalenderdatei.")
+            return _redirect("/admin/waste", "Die Datei ist keine ICS-Kalenderdatei.")
         data["waste_ics_data"] = text
         data["waste_fetched_at"] = datetime.now().isoformat(timespec="seconds")
         msg += f" · {len(waste.parse_ics(text))} Abholtermine aus der Datei"
@@ -601,10 +616,10 @@ async def waste_save(request: Request, s: Session = Depends(get_session)):
             msg += " · " + notify.waste_refresh(s, force=True)
         except Exception as e:  # noqa: BLE001
             msg += f" · Laden fehlgeschlagen: {e}"
-    return _redirect("/waste", msg)
+    return _redirect("/admin/waste", msg)
 
 
-@router.post("/waste/test", dependencies=[Depends(require_admin)])
+@router.post("/admin/waste/test", dependencies=[Depends(require_admin)])
 def waste_test(request: Request, s: Session = Depends(get_session)):
     from . import waste
 
@@ -612,11 +627,11 @@ def waste_test(request: Request, s: Session = Depends(get_session)):
     events = waste.parse_ics(st.get("waste_ics_data", ""))
     nxt = waste.upcoming(events, json.loads(st.get("waste_types") or "[]"), days=400)
     if not nxt:
-        return _redirect("/waste", "Keine kommenden Abholtermine im Kalender.")
+        return _redirect("/admin/waste", "Keine kommenden Abholtermine im Kalender.")
     d, ks = nxt[0]
     _, uid = _push_user(request)
     ok, errors = notify.send_to(s, notify.subs_for_users(s, [uid]), {
         "title": f"🗑️ Test – nächste Abholung {d:%d.%m.}: {', '.join(ks)}",
-        "body": "So sieht die Erinnerung für die Mieter aus.", "url": "/portal#abfall", "tag": "abfall-test"})
-    return _redirect("/waste", f"Test an {ok} eigenes Gerät gesendet" if ok else
+        "body": "So sieht die Erinnerung für die Mieter aus.", "url": "/#abfall", "tag": "abfall-test"})
+    return _redirect("/admin/waste", f"Test an {ok} eigenes Gerät gesendet" if ok else
                      "Kein eigenes Gerät angemeldet – unter „Mein Konto“ Benachrichtigungen aktivieren.")

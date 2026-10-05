@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Hausparteien</h1>
-<a class="btn" href="/parties/0">+ Partei anlegen</a>
+<a class="btn" href="/admin/parties/0">+ Partei anlegen</a>
 <div class="card scroll" style="margin-top:12px">
 <table>
 <tr><th>Wohneinheit</th><th>WE-ID</th><th>Versand</th><th>Shelly-Zähler</th><th>Rolle</th><th>Status</th></tr>
 {% for p in parties %}
 <tr>
-  <td><a href="/parties/{{ p.id }}">{{ p.name }}</a>{% if p.unit %}<br><span class="muted">{{ p.unit }}</span>{% endif %}</td>
+  <td><a href="/admin/parties/{{ p.id }}">{{ p.name }}</a>{% if p.unit %}<br><span class="muted">{{ p.unit }}</span>{% endif %}</td>
   <td>{{ p.unit_id or '' }}</td>
   <td>{% set ch = p.channel or 'email' %}{% if ch in ('email', 'both') %}✉️ {{ p.email or '–' }}{% endif %}{% if ch == 'both' %}<br>{% endif %}{% if ch in ('whatsapp', 'both') %}💬 {{ p.phone or '–' }}{% endif %}</td>
   <td>{% for m in p.meters %}<code>{{ m }}</code><br>{% endfor %}</td>

@@ -4,7 +4,7 @@
 {% block content %}
 <h1>Mitteilungen &amp; Hinweise</h1>
 
-<form method="post" action="/messages" class="card">
+<form method="post" action="/admin/messages" class="card">
   <h2 style="margin-top:0">{{ "Hinweis bearbeiten" if m else "Neue Mitteilung" }}</h2>
   {% if m %}<input type="hidden" name="id" value="{{ m.id }}">{% endif %}
   <div class="grid">
@@ -32,7 +32,7 @@
   <div class="check"><input type="checkbox" name="via_mail" id="vm" {% if not mail_ok %}disabled{% endif %}><label for="vm" style="margin:0">zusätzlich per E-Mail an die Parteien{% if not mail_ok %} (SMTP nicht eingerichtet){% endif %}</label></div>
   <p class="muted">Geplante Ereignisse bleiben oben stehen, bis sie vorbei sind; ohne Datum und ohne 📌 erscheint die Mitteilung nur im Verlauf.</p>
   <button>{{ "Speichern" if m else "Veröffentlichen" }}</button>
-  {% if m %}<a class="btn sec" href="/messages">Abbrechen</a>{% endif %}
+  {% if m %}<a class="btn sec" href="/admin/messages">Abbrechen</a>{% endif %}
 </form>
 
 <h2>Aktuell im Mieterportal</h2>
@@ -57,10 +57,10 @@
     {% if x.reminded_at %}<br>Erinnerung {{ x.reminded_at.strftime('%d.%m. %H:%M') }}{% endif %}</td>
   <td>{% set stt = status(x) %}{% if stt == 'archived' %}<span class="badge">archiviert</span>{% elif stt == 'current' %}<span class="badge final">aktuell</span>{% elif stt == 'done' %}<span class="badge">✓ abgeschlossen</span>{% else %}Verlauf{% endif %}</td>
   <td class="r">
-    <a href="/messages?edit={{ x.id }}">Bearbeiten</a>
-    <form method="post" action="/messages/{{ x.id }}/send" style="display:inline"><button class="sec pick-btn">erneut senden</button></form>
-    <form method="post" action="/messages/{{ x.id }}/archive" style="display:inline"><button class="sec pick-btn">{{ "aktivieren" if x.archived else "archivieren" }}</button></form>
-    <form method="post" action="/messages/{{ x.id }}/delete" style="display:inline" onsubmit="return confirm('Mitteilung löschen?')"><button class="danger pick-btn">löschen</button></form>
+    <a href="/admin/messages?edit={{ x.id }}">Bearbeiten</a>
+    <form method="post" action="/admin/messages/{{ x.id }}/send" style="display:inline"><button class="sec pick-btn">erneut senden</button></form>
+    <form method="post" action="/admin/messages/{{ x.id }}/archive" style="display:inline"><button class="sec pick-btn">{{ "aktivieren" if x.archived else "archivieren" }}</button></form>
+    <form method="post" action="/admin/messages/{{ x.id }}/delete" style="display:inline" onsubmit="return confirm('Mitteilung löschen?')"><button class="danger pick-btn">löschen</button></form>
   </td>
 </tr>
 {% else %}<tr><td colspan="8" class="muted">Noch keine Mitteilungen.</td></tr>{% endfor %}

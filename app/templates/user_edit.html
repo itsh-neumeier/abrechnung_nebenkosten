@@ -2,7 +2,7 @@
 {% block title %}Benutzer{% endblock %}
 {% block content %}
 <h1>{{ "Neuer Benutzer" if uid == 0 else u.username }}</h1>
-<form method="post" action="/users/{{ uid }}" class="card" style="max-width:640px">
+<form method="post" action="/admin/users/{{ uid }}" class="card" style="max-width:640px">
   <div class="grid">
     <div><label>Benutzername</label><input type="text" name="username" value="{{ u.username or '' }}" required autocomplete="off"></div>
     <div><label>Rolle</label><select name="role" id="role">
@@ -26,7 +26,7 @@
   {% if not mail_ok %}<p class="muted">E-Mail-Versand nicht eingerichtet – Passwort bitte direkt setzen.</p>{% endif %}
   <button>Speichern</button>
   {% if uid %}
-  <button class="sec" formaction="/users/{{ uid }}/reset" {% if not (u.email and mail_ok) %}disabled{% endif %}>Link „Passwort zurücksetzen“ senden</button>
+  <button class="sec" formaction="/admin/users/{{ uid }}/reset" {% if not (u.email and mail_ok) %}disabled{% endif %}>Link „Passwort zurücksetzen“ senden</button>
   <button class="danger" name="delete" value="1" onclick="return confirm('Benutzer löschen?')">Löschen</button>
   {% endif %}
 </form>

@@ -2,13 +2,13 @@
 {% block title %}Benutzer{% endblock %}
 {% block content %}
 <h1>Benutzer &amp; Mieterportal</h1>
-<a class="btn" href="/users/0">+ Benutzer anlegen</a>
+<a class="btn" href="/admin/users/0">+ Benutzer anlegen</a>
 <div class="card scroll" style="margin-top:12px">
 <table>
 <tr><th>Benutzer</th><th>Rolle</th><th>Partei</th><th>E-Mail</th><th>Letzte Anmeldung</th><th>🔔 Geräte</th><th>Status</th></tr>
 {% for u in users %}
 <tr>
-  <td><a href="/users/{{ u.id }}">{{ u.username }}</a>{% if u.name %}<br><span class="muted">{{ u.name }}</span>{% endif %}</td>
+  <td><a href="/admin/users/{{ u.id }}">{{ u.username }}</a>{% if u.name %}<br><span class="muted">{{ u.name }}</span>{% endif %}</td>
   <td>{{ roles[u.role] }}</td>
   <td>{{ parties[u.party_id].name if u.party_id in parties else '–' }}</td>
   <td>{{ u.email or '–' }}</td>
@@ -20,9 +20,9 @@
 </table>
 </div>
 
-<form method="post" action="/users/settings" class="card">
+<form method="post" action="/admin/users/settings" class="card">
   <h2 style="margin-top:0">Mieterportal</h2>
-  <p class="muted">Mieter-Benutzer sehen unter „Meine Abrechnungen“ die <b>abgeschlossenen und veröffentlichten</b> Abrechnungen
+  <p class="muted">Mieter-Benutzer sehen unter „Mein Zuhause“ (Startseite „/“) die <b>abgeschlossenen und veröffentlichten</b> Abrechnungen
   ihrer Partei (Ansicht und PDF) – aber nur, wenn das Portal für die Partei freigegeben ist.</p>
   <div class="scroll"><table>
   <tr><th>Partei</th><th>Portal freigegeben</th><th>Mieter-Zugänge</th><th></th></tr>
@@ -32,17 +32,23 @@
     <td>{{ p.name }}{% if p.unit_id %} <span class="muted">({{ p.unit_id }})</span>{% endif %}</td>
     <td><input type="checkbox" name="portal_{{ p.id }}" {% if p.portal %}checked{% endif %} aria-label="Portal für {{ p.name }}"></td>
     <td>{{ n }}</td>
-    <td class="r"><a href="/users/0?party={{ p.id }}">+ Zugang</a> · <a href="/portal?party={{ p.id }}">Ansicht als Mieter</a></td>
+    <td class="r"><a href="/admin/users/0?party={{ p.id }}">+ Zugang</a> · <a href="/?party={{ p.id }}">Ansicht als Mieter</a></td>
   </tr>
   {% endfor %}
   </table></div>
+  <div class="grid">
+    <div><label>Name der App für Mieter</label>
+      <input type="text" name="tenant_app_name" maxlength="30" value="{{ st.tenant_app_name or 'Mein Zuhause' }}"></div>
+    <div><label>Name der App für Verwalter</label>
+      <input type="text" name="admin_app_name" maxlength="30" value="{{ st.admin_app_name or 'ImmoVerwaltung' }}"></div>
+  </div>
   <div class="check"><input type="checkbox" name="portal_auto_publish" id="pap" {% if st.portal_auto_publish %}checked{% endif %}>
     <label for="pap" style="margin:0">Abrechnungen beim Abschließen automatisch veröffentlichen</label></div>
   <p class="muted">Sonst in der Abrechnung über „Im Mieterportal veröffentlichen“. Einladungen und „Passwort vergessen“ laufen über den
   E-Mail-Versand ({{ "eingerichtet ✔" if mail_ok else "nicht eingerichtet – SMTP in Portainer setzen" }}).</p>
   <button>Speichern</button>
 </form>
-<form method="post" action="/users/settings" class="card">
+<form method="post" action="/admin/users/settings" class="card">
   <input type="hidden" name="push_form" value="1">
   <h2 style="margin-top:0">🔔 Benachrichtigungen (global)</h2>
   <p class="muted">Gilt für alle Geräte, auf denen Benachrichtigungen aktiviert sind („Mein Konto“, Mieterportal oder Seite

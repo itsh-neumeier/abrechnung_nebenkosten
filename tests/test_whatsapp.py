@@ -59,23 +59,23 @@ def test_whatsapp_send_and_status(monkeypatch):
     monkeypatch.setattr(whatsapp.httpx, "post", fake_post)
 
     with TestClient(app) as c:
-        c.post("/settings", data={"entity_grid": "sensor.grid", "entity_total": "sensor.total",
+        c.post("/admin/settings", data={"entity_grid": "sensor.grid", "entity_total": "sensor.total",
                                   "landlord_name": "Max Vermieter", "vat_rate": "19"})
-        c.post("/parties/0", data={"name": "Eigentümer", "is_owner": "1", "active": "1"})
-        c.post("/parties/0", data={"name": "Familie Muster", "unit_id": "WE-001", "meters": "sensor.eg",
+        c.post("/admin/parties/0", data={"name": "Eigentümer", "is_owner": "1", "active": "1"})
+        c.post("/admin/parties/0", data={"name": "Familie Muster", "unit_id": "WE-001", "meters": "sensor.eg",
                                    "active": "1", "phone": "0151 2345678", "channel": "whatsapp"})
-        assert "💬 0151 2345678" in c.get("/parties").text
+        assert "💬 0151 2345678" in c.get("/admin/parties").text
 
-        page = c.get("/whatsapp").text
+        page = c.get("/admin/whatsapp").text
         assert "Flow kopieren" in page and "Evolution API" in page and "Cloud API" in page
-        c.post("/whatsapp", data={"n8n_webhook_url": "http://n8n.test/webhook/x", "n8n_app_url": APP + "/",
+        c.post("/admin/whatsapp", data={"n8n_webhook_url": "http://n8n.test/webhook/x", "n8n_app_url": APP + "/",
                                   "wa_provider": "evolution", "n8n_pdf_base64": "1",
                                   "wa_message": "Hallo {name}, {betrag} bis {faellig}",
                                   "wa_template_name": "nebenkostenabrechnung", "wa_template_lang": "de"})
-        flow = c.get("/whatsapp/flow/cloud.json")
+        flow = c.get("/admin/whatsapp/flow/cloud.json")
         assert flow.status_code == 200 and json.loads(flow.text)["nodes"][0]["type"] == "n8n-nodes-base.webhook"
 
-        r = c.post("/billings", data=BILL, follow_redirects=False)
+        r = c.post("/admin/billings", data=BILL, follow_redirects=False)
         url = r.headers["location"].split("?")[0]
         bid = int(url.rsplit("/", 1)[1])
         c.post(url, data={"action": "save", **BILL, **VALUES})
@@ -107,12 +107,12 @@ def test_whatsapp_send_and_status(monkeypatch):
         assert "💬 zugestellt" in c.get(url).text
 
         # Test-Nachricht inkl. Rückmeldung
-        c.post("/whatsapp/test", data={"phone": "+49 170 1111111"})
+        c.post("/admin/whatsapp/test", data={"phone": "+49 170 1111111"})
         assert calls[-1][1]["test"] and calls[-1][1]["phone"] == "491701111111"
         assert c.get(calls[-1][1]["pdf_url"][len(APP):]).content[:4] == b"%PDF"
         c.post("/api/n8n/status", json={"billing_id": 0, "party_id": 0, "ok": False, "error": "nicht registriert",
                                         "provider": "cloud"}, headers={whatsapp.HEADER: secret})
-        assert "nicht registriert" in c.get("/whatsapp").text
+        assert "nicht registriert" in c.get("/admin/whatsapp").text
 
 
 def test_native_cloud_api(monkeypatch):
@@ -147,17 +147,17 @@ def test_native_cloud_api(monkeypatch):
     monkeypatch.setattr(wa_cloud.httpx, "get", fake_get)
 
     with TestClient(app) as c:
-        c.post("/settings", data={"entity_grid": "sensor.grid", "entity_total": "sensor.total", "vat_rate": "19"})
-        c.post("/parties/0", data={"name": "Eigentümer", "is_owner": "1", "active": "1"})
-        c.post("/parties/0", data={"name": "Familie Muster", "unit_id": "WE-001", "meters": "sensor.eg",
+        c.post("/admin/settings", data={"entity_grid": "sensor.grid", "entity_total": "sensor.total", "vat_rate": "19"})
+        c.post("/admin/parties/0", data={"name": "Eigentümer", "is_owner": "1", "active": "1"})
+        c.post("/admin/parties/0", data={"name": "Familie Muster", "unit_id": "WE-001", "meters": "sensor.eg",
                                    "active": "1", "phone": "+49 151 2345678", "channel": "whatsapp"})
-        c.post("/whatsapp", data={"wa_mode": "native", "wa_template_name": "nebenkostenabrechnung",
+        c.post("/admin/whatsapp", data={"wa_mode": "native", "wa_template_name": "nebenkostenabrechnung",
                                   "wa_template_lang": "de"})
-        page = c.get("/whatsapp").text
+        page = c.get("/admin/whatsapp").text
         assert "✔ eingerichtet" in page and "PNID" in page
-        assert "Hausverwaltung" in c.post("/whatsapp/check").text
+        assert "Hausverwaltung" in c.post("/admin/whatsapp/check").text
 
-        r = c.post("/billings", data=BILL, follow_redirects=False)
+        r = c.post("/admin/billings", data=BILL, follow_redirects=False)
         url = r.headers["location"].split("?")[0]
         c.post(url, data={"action": "save", **BILL, **VALUES})
         c.post(url, data={"action": "finalize", **BILL, **VALUES})
@@ -172,7 +172,7 @@ def test_native_cloud_api(monkeypatch):
         assert "💬 gesendet" in c.get(url).text
 
         # Webhook-Einrichtung (Verify) und Statusmeldungen von Meta
-        verify = c.get("/whatsapp").text.split("Prüf-Token")[1].split("<code>")[1].split("</code>")[0]
+        verify = c.get("/admin/whatsapp").text.split("Prüf-Token")[1].split("<code>")[1].split("</code>")[0]
         ok = c.get("/api/whatsapp/webhook", params={"hub.mode": "subscribe", "hub.verify_token": verify,
                                                     "hub.challenge": "1234"})
         assert ok.status_code == 200 and ok.text == "1234"
@@ -195,5 +195,5 @@ def test_native_cloud_api(monkeypatch):
         assert "💬 Fehler" in page and "Message undeliverable" in page
 
         # Testnachricht direkt; Fehler der API wird lesbar angezeigt
-        assert "gesendet" in c.post("/whatsapp/test", data={"phone": "+49 170 1111111"}).text
-        assert "Vorlage existiert nicht" in c.post("/whatsapp/test", data={"phone": "+49 00000000"}).text
+        assert "gesendet" in c.post("/admin/whatsapp/test", data={"phone": "+49 170 1111111"}).text
+        assert "Vorlage existiert nicht" in c.post("/admin/whatsapp/test", data={"phone": "+49 00000000"}).text

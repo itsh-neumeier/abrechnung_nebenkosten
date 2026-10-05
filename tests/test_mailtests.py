@@ -64,17 +64,17 @@ def test_testmail_and_imap_check(monkeypatch):
     monkeypatch.setattr(mailbox, "configured", lambda: True)
     SENT.clear()
     with TestClient(app) as c:
-        page = c.get("/settings").text
+        page = c.get("/admin/settings").text
         assert "Test-E-Mail senden" in page and "Postfach testen" in page
-        r = c.post("/settings/testmail", data={"test_to": "ich@test.de"})
+        r = c.post("/admin/settings/testmail", data={"test_to": "ich@test.de"})
         assert "Test-E-Mail an ich@test.de verschickt" in r.text
         assert SENT[-1][1] == ["ich@test.de"] and "Absender:" in SENT[-1][0].get_body(("plain",)).get_content()
-        assert "Empfängeradresse" in c.post("/settings/testmail", data={"test_to": ""}).text
+        assert "Empfängeradresse" in c.post("/admin/settings/testmail", data={"test_to": ""}).text
 
         monkeypatch.setattr(smtplib, "SMTP", BadSMTP)
-        assert "SMTP_FROM muss die Adresse des Postfachs" in c.post("/settings/testmail", data={"test_to": "a@b.de"}).text
+        assert "SMTP_FROM muss die Adresse des Postfachs" in c.post("/admin/settings/testmail", data={"test_to": "a@b.de"}).text
 
-        ok = c.post("/settings/testimap", data={"imap_senders": "awattar.de", "imap_forwarded": "1"}).text
+        ok = c.post("/admin/settings/testimap", data={"imap_senders": "awattar.de", "imap_forwarded": "1"}).text
         assert "Postfach OK" in ok and "1 als Rechnung erkannt" in ok and "Absender awattar.de" in ok
-        none = c.post("/settings/testimap", data={"imap_senders": "andere.de"}).text
+        none = c.post("/admin/settings/testimap", data={"imap_senders": "andere.de"}).text
         assert "0 als Rechnung erkannt" in none and "Absender-Einstellung prüfen" in none

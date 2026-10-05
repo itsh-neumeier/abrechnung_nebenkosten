@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}App installieren – Nebenkostenabrechnung{% endblock %}
+{% block title %}App installieren{% endblock %}
 {% block content %}
 <h1>Als App installieren</h1>
 <div class="card app-hero">
   <img src="/static/icon-192.png" alt="" width="72" height="72">
   <div>
-    <b>Nebenkostenabrechnung</b><br>
+    <b>{{ request.state.brand.name }}</b><br>
     <span class="muted">Eigenes Symbol auf dem Startbildschirm, öffnet ohne Browserleiste wie eine App. Daten bleiben auf
     deinem Server – es wird nichts aus einem App-Store geladen.</span>
   </div>

@@ -177,6 +177,6 @@ def test_compare_page(monkeypatch):
             s.add(VictronBucket(start=now - timedelta(minutes=15 * i), key="grid_import", kwh=1.25, seconds=900))
         s.commit()
     with TestClient(app) as c:
-        page = c.get("/victron/compare?hours=2").text
+        page = c.get("/admin/victron/compare?hours=2").text
     assert "sensor.easymeter_bezug" in page
     assert "+0,0 %" in page or "+0.0 %" in page  # 8 × 1,25 = 10 kWh = HA-Wert

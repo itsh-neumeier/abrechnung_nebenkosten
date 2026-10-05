@@ -1,10 +1,10 @@
 {
-  "id": "/",
-  "name": "Nebenkostenabrechnung",
-  "short_name": "Nebenkosten",
-  "description": "Nebenkosten- und Stromabrechnung der Hausparteien",
+  "id": "/admin",
+  "name": "ImmoVerwaltung",
+  "short_name": "ImmoVerwaltung",
+  "description": "ImmoVerwaltung – Abrechnung, Mieterportal und Hausverwaltung",
   "lang": "de",
-  "start_url": "/?source=pwa",
+  "start_url": "/admin?source=pwa",
   "scope": "/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
@@ -19,7 +19,7 @@
     {"src": "/static/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}
   ],
   "shortcuts": [
-    {"name": "Abrechnungen", "url": "/", "icons": [{"src": "/static/icon-192.png", "sizes": "192x192"}]},
-    {"name": "Meine Abrechnungen", "url": "/portal", "icons": [{"src": "/static/icon-192.png", "sizes": "192x192"}]}
+    {"name": "Abrechnungen", "url": "/admin", "icons": [{"src": "/static/icon-192.png", "sizes": "192x192"}]},
+    {"name": "Mein Zuhause", "url": "/", "icons": [{"src": "/static/icon-192.png", "sizes": "192x192"}]}
   ]
 }

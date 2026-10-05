@@ -34,7 +34,7 @@
   {% set gt = {} %}{% for g in (p.groups or []) %}{% set _ = gt.update({g.key: g.total}) %}{% endfor %}
   <td class="r">{{ gt.get('strom', 0)|eur }}</td><td class="r">{{ gt.get('fix', 0)|eur }}</td><td class="r">{{ gt.get('umlage', 0)|eur }}</td>
   <td class="r"><b>{{ p.total|eur }}</b></td>
-  <td class="r"><a href="/billings/{{ b.id }}/invoice/{{ p.id }}" target="_blank">Ansicht</a> · <a href="/billings/{{ b.id }}/invoice/{{ p.id }}.pdf" target="_blank">PDF</a></td>
+  <td class="r"><a href="/admin/billings/{{ b.id }}/invoice/{{ p.id }}" target="_blank">Ansicht</a> · <a href="/admin/billings/{{ b.id }}/invoice/{{ p.id }}.pdf" target="_blank">PDF</a></td>
   <td>{% set sx = (b.sent or {}).get(p.id|string) or {} %}{% set cx = contacts.get(p.id, {}) %}
     {% if sx.get('at') and sx.ok %}<span class="badge final" title="{{ sx.to }}">✉️ versendet {{ sx.at[:16]|replace('T', ' ') }}</span>
     {% elif sx.get('at') %}<span class="badge" title="{{ sx.error }}" style="color:var(--danger)">✉️ Fehler</span>{% endif %}
@@ -50,7 +50,7 @@
 <tr><td><b>Summe</b></td><td></td><td></td><td></td><td></td><td class="r"><b>{{ r.charged_total|eur }}</b></td><td></td><td></td></tr>
 <tr><td class="muted" colspan="5">Differenz zur Rechnung des Stromanbieters (PV/Batterie, Umlagen, Rundung)</td><td class="r muted">{{ r.difference|eur }}</td><td></td><td></td></tr>
 </table>
-<a class="btn sec" href="/billings/{{ b.id }}/all.zip">Alle PDFs als ZIP</a>
+<a class="btn sec" href="/admin/billings/{{ b.id }}/all.zip">Alle PDFs als ZIP</a>
 {% if b.status == 'final' %}
   {% if b.published %}<span class="badge final">👁 im Mieterportal</span>
   <button form="mailform" class="sec" name="action" value="unpublish">Aus dem Portal zurückziehen</button>
@@ -69,7 +69,7 @@
 <div class="card scroll">
   <p>{{ imp.supplier }} Rechnung {{ imp.invoice_no }}{% if imp.invoice_date %} vom {{ imp.invoice_date|de_date }}{% endif %}
   · Summe {{ imp.total_net|eur }} netto / {{ imp.total_gross|eur }} brutto
-  {% if b.source_file %} · <a href="/billings/{{ b.id }}/source.pdf" target="_blank">Original-PDF</a>{% endif %}</p>
+  {% if b.source_file %} · <a href="/admin/billings/{{ b.id }}/source.pdf" target="_blank">Original-PDF</a>{% endif %}</p>
   {% for w in imp.warnings %}<div class="warn">⚠ {{ w }}</div>{% endfor %}
   <details><summary>Positionen ({{ imp.positions|length }})</summary>
   <table>

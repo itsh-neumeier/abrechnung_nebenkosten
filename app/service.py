@@ -411,13 +411,13 @@ def invoice_mail_html(st: dict, b: Billing, rp: dict, party: Optional[Party], bo
     if st.get("landlord_iban"):
         facts.append(("Konto (IBAN)", st["landlord_iban"], False))
         facts.append(("Verwendungszweck", f"Nebenkosten {b.period_start:%m/%Y} {unit or rp['name']}", False))
-    portal = f"{config.app_base_url}/portal" if (party is not None and party.portal and config.app_base_url) else ""
+    portal = f"{config.app_base_url}/" if (party is not None and party.portal and config.app_base_url) else ""
     return mailer.render_html(
         title=f"Ihre Nebenkostenabrechnung {b.period_start:%m/%Y}",
         preheader=f"{rp['name']}: {render.fmt_eur(rp['total'])} für {period}",
         brand=st.get("building_title") or "Nebenkostenabrechnung", brand_sub=st.get("building_address", ""),
         paragraphs=paragraphs(body), facts=facts, attachment=render.pdf_name(b, rp),
-        button_url=portal, button_label="Alle Abrechnungen im Mieterportal",
+        button_url=portal, button_label="Alle Abrechnungen in „Mein Zuhause“",
         footer=mail_footer(st))
 
 
@@ -490,7 +490,7 @@ def wa_cloud_status(s: Session, items: list[dict]) -> int:
 
 def test_pdf() -> bytes:
     return render.render_pdf("<html><body style='font-family:DejaVu Sans'><h1>Testdokument</h1>"
-                             "<p>WhatsApp-Versand der Nebenkostenabrechnung über n8n funktioniert.</p></body></html>")
+                             "<p>WhatsApp-Versand von ImmoVerwaltung funktioniert.</p></body></html>")
 
 
 def wa_status(s: Session, data: dict) -> str:
@@ -613,7 +613,7 @@ async def import_invoice(s: Session, pdf: bytes, filename: str, message_id: str 
     s.commit()
     text_msg = " · ".join(msgs)
     if st["notify_email"] and mailer.configured():
-        link = f"{config.app_base_url}/billings/{b.id}" if config.app_base_url else f"/billings/{b.id}"
+        link = f"{config.app_base_url}/admin/billings/{b.id}" if config.app_base_url else f"/admin/billings/{b.id}"
         body = (f"Neue Stromrechnung über {source} eingegangen.\n\n{text_msg}\n\n"
                 + ("Hinweise:\n- " + "\n- ".join(warnings) + "\n\n" if warnings else "")
                 + f"Abrechnung: {link}\n")
@@ -626,7 +626,7 @@ async def import_invoice(s: Session, pdf: bytes, filename: str, message_id: str 
             paragraphs=[f"Über {source} ist eine neue Rechnung eingegangen und wurde importiert."],
             facts=facts, notes=warnings, notes_title=f"{len(warnings)} Hinweis(e) – bitte prüfen",
             button_url=link if config.app_base_url else "", button_label="Abrechnung öffnen",
-            footer="Automatische Nachricht der Nebenkostenabrechnung.")
+            footer="Automatische Nachricht von ImmoVerwaltung.")
         try:
             mailer.send_mail(_split_addr(st["notify_email"]), f"Stromrechnung importiert: {b.title}", body, [],
                              html=html)

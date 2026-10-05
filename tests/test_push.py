@@ -76,14 +76,14 @@ def test_push_on_publish(monkeypatch):
     priv, pub, sub = device()
 
     with TestClient(app) as c:
-        c.post("/settings", data={"entity_grid": "sensor.grid", "entity_total": "sensor.total", "vat_rate": "19"})
-        c.post("/parties/0", data={"name": "Eigentümer", "is_owner": "1", "active": "1"})
-        c.post("/parties/0", data={"name": "Familie Muster", "unit_id": "WE-001", "meters": "sensor.eg",
+        c.post("/admin/settings", data={"entity_grid": "sensor.grid", "entity_total": "sensor.total", "vat_rate": "19"})
+        c.post("/admin/parties/0", data={"name": "Eigentümer", "is_owner": "1", "active": "1"})
+        c.post("/admin/parties/0", data={"name": "Familie Muster", "unit_id": "WE-001", "meters": "sensor.eg",
                                    "active": "1", "portal": "1"})
         c.post("/setup", data={"username": "admin", "password": "admin-pass-1", "password2": "admin-pass-1"})
-        c.post("/users/0", data={"username": "muster", "role": "tenant", "party_id": "2", "password": "mieter-pass",
+        c.post("/admin/users/0", data={"username": "muster", "role": "tenant", "party_id": "2", "password": "mieter-pass",
                                  "active": "1"})
-        r = c.post("/billings", data=BILL, follow_redirects=False)
+        r = c.post("/admin/billings", data=BILL, follow_redirects=False)
         url = r.headers["location"].split("?")[0]
         c.post(url, data={"action": "save", **BILL, **VALUES})
         c.get("/logout")
@@ -97,7 +97,7 @@ def test_push_on_publish(monkeypatch):
         assert c.post("/api/push/subscribe", json={"endpoint": "http://unsicher", "keys": {}}).status_code == 400
         assert c.post("/api/push/subscribe", json=sub).json()["ok"]
         assert c.get("/api/push/config").json()["devices"] == 1
-        assert "push-card" in c.get("/account").text and "push-card" in c.get("/portal").text
+        assert "push-card" in c.get("/account").text and "push-card" in c.get("/").text
         # Test-Benachrichtigung an das eigene Gerät
         assert c.post("/api/push/test").json()["ok"] == 1
         assert decrypt(posted[-1][1], priv, pub)["title"] == "Test-Benachrichtigung"
@@ -150,7 +150,7 @@ def test_admin_notifications_with_amount_and_global_switches(monkeypatch):
     with TestClient(app) as c:
         c.post("/setup", data={"username": "admin", "password": "admin-pass-1", "password2": "admin-pass-1"})
         assert c.post("/api/push/subscribe", json=sub).json()["ok"]
-        page = c.get("/users").text
+        page = c.get("/admin/users").text
         assert "Benachrichtigungen (global)" in page and "neue Stromrechnung eingegangen" in page
 
         # Eingang per Postfach → Verwalter bekommt Betrag, Zeitraum und kWh
@@ -159,10 +159,10 @@ def test_admin_notifications_with_amount_and_global_switches(monkeypatch):
             bid = b.id
         msg = decrypt(posted[-1], priv, pub)
         assert msg["title"].startswith("Neue Stromrechnung: ") and msg["title"].endswith("€")
-        assert "01.08.2026" in msg["body"] and "74,8 kWh" in msg["body"] and msg["url"] == f"/billings/{bid}"
+        assert "01.08.2026" in msg["body"] and "74,8 kWh" in msg["body"] and msg["url"] == f"/admin/billings/{bid}"
 
         # Versand schlägt fehl → Fehler-Benachrichtigung
-        c.post("/parties/0", data={"name": "Familie Muster", "meters": "sensor.eg", "active": "1", "email": "m@test.de"})
+        c.post("/admin/parties/0", data={"name": "Familie Muster", "meters": "sensor.eg", "active": "1", "email": "m@test.de"})
         with SessionLocal() as s:
             from app.db import Billing
             b = s.get(Billing, bid)
@@ -174,7 +174,7 @@ def test_admin_notifications_with_amount_and_global_switches(monkeypatch):
         assert "Fehler" in err["title"] and "Familie Muster" in err["body"]
 
         # global abgeschaltet → keine Benachrichtigung mehr beim Eingang
-        c.post("/users/settings", data={"push_form": "1", "push_tenant_published": "1"})
+        c.post("/admin/users/settings", data={"push_form": "1", "push_tenant_published": "1"})
         n = len(posted)
         with SessionLocal() as s:
             asyncio.run(service.import_invoice(s, make_pdf(AWATTAR_TEXT.replace("2026000001", "2026000009")),

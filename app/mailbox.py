@@ -148,7 +148,7 @@ async def check_mailbox() -> str:
             if not status.get("error_notified"):  # nur einmal bis zum nächsten erfolgreichen Abruf
                 with SessionLocal() as s2:
                     notify.to_admins(s2, "push_admin_errors", "Postfach-Abruf fehlgeschlagen", str(e),
-                                     "/settings#eingang", "mailbox-error")
+                                     "/admin/settings#eingang", "mailbox-error")
                 status["error_notified"] = True
         except Exception:  # noqa: BLE001
             pass

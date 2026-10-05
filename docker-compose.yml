@@ -1,8 +1,8 @@
 services:
-  stromabrechnung:
+  immoverwaltung:
     build: .
-    # alternativ fertiges Image: ghcr.io/itsh-neumeier/abrechnung_nebenkosten:latest
-    container_name: stromabrechnung
+    # alternativ fertiges Image: ghcr.io/itsh-neumeier/immoverwaltung:latest
+    container_name: immoverwaltung
     restart: unless-stopped
     env_file: .env
     ports:

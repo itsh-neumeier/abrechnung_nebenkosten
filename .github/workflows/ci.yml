@@ -38,10 +38,13 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          # neuer Name + alter Name für den Übergang (bestehende Stacks laufen weiter)
+          images: |
+            ghcr.io/${{ github.repository_owner }}/immoverwaltung
+            ghcr.io/${{ github.repository_owner }}/abrechnung_nebenkosten
           labels: |
-            org.opencontainers.image.title=Stromabrechnung Hausparteien
-            org.opencontainers.image.description=Nebenkosten-/Stromabrechnung mit Home Assistant, Victron, Shelly und aWATTar-Import
+            org.opencontainers.image.title=ImmoVerwaltung
+            org.opencontainers.image.description=Hausverwaltung mit Nebenkostenabrechnung, Mieterportal „Mein Zuhause“, Mitteilungen, Abfallkalender, Home Assistant/Victron und aWATTar-Import
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch

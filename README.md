@@ -1,8 +1,15 @@
-# 🏠 Nebenkostenabrechnung Hausparteien
+# 🏠 ImmoVerwaltung
 
-Web-Tool für die monatliche Nebenkostenabrechnung der Parteien eines Hauses – Strom (inkl. PV/Batterie),
-mit Messwerten aus **Home Assistant** (Shelly, Victron, Stromzähler), **Batterie-Logik**,
-**Fixkosten** (Grundpreis, IPTV …) und **Umlagen** (Warmwasser, Wasser …). Ausgabe als PDF je Partei.
+Selbst gehostete Hausverwaltung für ein Mehrparteienhaus – mit zwei Oberflächen:
+
+- **ImmoVerwaltung** (Verwalter): monatliche **Nebenkostenabrechnung** je Partei – Strom inkl. PV/Batterie mit Messwerten
+  aus **Home Assistant**, **Victron** (Modbus/VRM) und Shelly, **Fixkosten** (Grundpreis, IPTV …), **Umlagen**
+  (Warmwasser, Trinkwasser …), automatischer Import der **aWATTar**-Rechnung, Versand per E-Mail/WhatsApp, PDF je Partei,
+  **Mitteilungen** mit Prioritäten, **Abfallkalender**, Benutzer- und Rechteverwaltung.
+- **Mein Zuhause** (Mieter): eigene Abrechnungen, Hinweise der Hausverwaltung (z. B. geplante Wasserabschaltung),
+  nächste Abfuhrtermine und Push-Benachrichtigungen – im Browser oder als installierte App.
+
+Beide lassen sich als eigene App (PWA) installieren – mit eigenem Namen und eigener Startseite.
 
 ## Ablauf pro Monat
 
@@ -45,33 +52,39 @@ Restverbrauch (Gesamt − andere Parteien − Strom-Umlagen).
 ## Installation (Docker)
 
 ```bash
-git clone https://github.com/itsh-neumeier/abrechnung_nebenkosten.git
-cd abrechnung_nebenkosten
+git clone https://github.com/itsh-neumeier/immoverwaltung.git
+cd immoverwaltung
 cp .env.example .env      # HA_TOKEN, APP_PASSWORD, SMTP_* und IMAP_* eintragen
 docker compose up -d --build
 ```
 
-Webinterface: `http://<host>:8000`. Daten (SQLite) liegen in `./data`.
-Fertige Images werden per GitHub Actions nach `ghcr.io/itsh-neumeier/abrechnung_nebenkosten` gebaut
-(bei Push auf `main`).
+- **Mein Zuhause** (Mieter): `http://<host>:8000/`
+- **ImmoVerwaltung** (Verwalter): `http://<host>:8000/admin`
+
+Daten (SQLite) liegen in `./data`. Fertige Images baut GitHub Actions nach `ghcr.io/itsh-neumeier/immoverwaltung`.
 
 ### Portainer
 
 Fertiger Stack in [`portainer/docker-compose.yml`](portainer/docker-compose.yml), nutzt das Image
-`ghcr.io/itsh-neumeier/abrechnung_nebenkosten` (amd64 + arm64).
+`ghcr.io/itsh-neumeier/immoverwaltung` (amd64 + arm64).
 
-1. Portainer → **Stacks → Add stack**, Name `stromabrechnung`.
-2. **Repository**: `https://github.com/itsh-neumeier/abrechnung_nebenkosten`,
+1. Portainer → **Stacks → Add stack**, Name `immoverwaltung`.
+2. **Repository**: `https://github.com/itsh-neumeier/immoverwaltung`,
    Reference leer lassen (= Standard-Branch), Compose path `portainer/docker-compose.yml`
    – *oder* **Web editor** und den Dateiinhalt einfügen.
 3. **Environment variables**: einzeln eintragen oder per *Load variables from .env file* die Vorlage
    [`portainer/stack.env.example`](portainer/stack.env.example) laden und ausfüllen
    (`HA_URL`, `HA_TOKEN`, `APP_PASSWORD`, `SMTP_*`, `IMAP_*` …). Die Compose-Datei setzt sie per
    `${VARIABLE}` ein – eine `stack.env`-Datei wird nicht benötigt.
-4. **Deploy the stack** → Webinterface unter `http://<host>:8000` (Port über `APP_PORT`).
+4. **Deploy the stack** → `http://<host>:8000/` (Mein Zuhause) bzw. `/admin` (ImmoVerwaltung), Port über `APP_PORT`.
 
-Daten (SQLite + Original-Rechnungen) liegen im Volume `stromabrechnung-data`. Updates:
-Stack → **Pull and redeploy** (oder Watchtower, Label ist gesetzt).
+Daten (SQLite + Original-Rechnungen) liegen im Volume `stromabrechnung-data` – der Name bleibt aus
+Kompatibilitätsgründen, damit bestehende Installationen ihre Daten behalten. Updates: Stack → **Pull and redeploy**.
+
+**Umstellung von „abrechnung_nebenkosten“:** Das Image wird bis auf Weiteres unter beiden Namen veröffentlicht
+(`…/immoverwaltung` und `…/abrechnung_nebenkosten`). Im Stack das Image auf `ghcr.io/itsh-neumeier/immoverwaltung`
+umstellen (Standard der neuen `portainer/docker-compose.yml`), das neue Package auf **Public** stellen, redeployen.
+Frühere Adressen (`/billings/…`, `/settings`, `/portal` …) werden automatisch auf `/admin/…` bzw. `/` umgeleitet.
 
 ### Container-Image (GHCR)
 
@@ -85,7 +98,7 @@ GitHub Actions testet bei jedem Push und baut danach das Image für `linux/amd64
 | `1.2.3` | Git-Tag `v1.2.3` |
 
 Manuell starten: *Actions → CI → Run workflow*. Sollte Portainer das Image nicht ziehen dürfen, unter
-*GitHub → Profil → Packages → abrechnung_nebenkosten → Package settings* die Sichtbarkeit auf **Public** stellen
+*GitHub → Profil → Packages → immoverwaltung → Package settings* die Sichtbarkeit auf **Public** stellen
 (oder in Portainer die Registry `ghcr.io` mit einem Token mit `read:packages` hinterlegen).
 
 ### Home-Assistant-Token
@@ -151,7 +164,7 @@ Basic-Auth erreichbar, aber durch Token, Signatur bzw. signierte Links geschütz
   offen und zeigt einen Hinweis mit Link zur Einrichtung (`/setup`). Danach ist für alle Seiten eine Anmeldung nötig.
 - **Benutzer** (Menü „Benutzer“): Verwalter (alles) und **Mieter** (an eine Partei gebunden). Neue Benutzer ohne Passwort
   bekommen eine **Einladung** per E-Mail (Link 7 Tage gültig).
-- **Mieterportal:** je Partei freigeben; Mieter sehen unter „Meine Abrechnungen“ nur die **abgeschlossenen und
+- **Mieterportal:** je Partei freigeben; Mieter sehen unter „Mein Zuhause“ (Startseite) nur die **abgeschlossenen und
   veröffentlichten** Abrechnungen ihrer Partei (Ansicht + PDF). Veröffentlichen automatisch beim Abschließen
   (abschaltbar) oder je Abrechnung per Knopf. Verwalter können über „Ansicht als Mieter“ prüfen, was sichtbar ist.
 - **Passwort vergessen:** Link per E-Mail über den eingerichteten Mailversand (SMTP), 1 Stunde gültig, nur einmal nutzbar.
