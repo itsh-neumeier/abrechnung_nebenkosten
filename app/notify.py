@@ -7,6 +7,7 @@ Anlässe:
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from email.utils import parseaddr
@@ -372,3 +373,66 @@ def send_reminders(s: Session, now: Optional[datetime] = None) -> int:
             count += 1
     s.commit()
     return count
+
+
+
+# --------------------------------------------------------------------------- Abfallkalender
+def waste_events(s: Session) -> list:
+    from . import waste
+
+    return waste.parse_ics(get_settings(s).get("waste_ics_data", ""))
+
+
+def waste_refresh(s: Session, force: bool = False) -> str:
+    """ICS vom Link neu laden (höchstens einmal täglich, außer ``force``)."""
+    from . import waste
+
+    st = get_settings(s)
+    url = st.get("waste_ics_url", "").strip()
+    if not url:
+        return "Kein Link hinterlegt."
+    last = st.get("waste_fetched_at", "")
+    if not force and last and last[:10] == datetime.now().date().isoformat():
+        return "Heute schon geladen."
+    text = waste.fetch(url)
+    n = len(waste.parse_ics(text))
+    save_settings(s, {"waste_ics_data": text, "waste_fetched_at": datetime.now().isoformat(timespec="seconds")})
+    s.commit()
+    return f"{n} Abholtermine geladen."
+
+
+def waste_recipients(s: Session) -> list[Optional[int]]:
+    st = get_settings(s)
+    pids = [p.id for p in s.query(Party).filter(Party.active.is_(True))]
+    ids: list[Optional[int]] = [u.id for u in s.query(User).filter(
+        User.role == "tenant", User.active.is_(True), User.party_id.in_(pids))] if pids else []
+    if st.get("waste_include_admins"):
+        ids += admin_ids(s)
+    return ids
+
+
+def waste_tick(s: Session, now: Optional[datetime] = None) -> int:
+    """Fällige Abfall-Benachrichtigungen verschicken (Hintergrund, alle paar Minuten)."""
+    from . import waste
+
+    now = now or datetime.now()
+    st = get_settings(s)
+    if st.get("waste_ics_url"):
+        try:
+            waste_refresh(s)
+            st = get_settings(s)
+        except Exception as e:  # noqa: BLE001 – alter Stand bleibt nutzbar
+            log.warning("Abfallkalender nicht geladen: %s", e)
+    events = waste.parse_ics(st.get("waste_ics_data", ""))
+    if not events:
+        return 0
+    sent = json.loads(st.get("waste_sent") or "[]")
+    due = waste.due_notifications(events, st, now, set(sent))
+    for key, title, body, _kinds in due:
+        send_to(s, subs_for_users(s, waste_recipients(s)), {"title": title, "body": body, "url": "/portal#abfall",
+                                                              "tag": "abfall-" + key.split("|")[0]})
+        sent.append(key)
+    if due:
+        save_settings(s, {"waste_sent": json.dumps(sent[-60:])})
+        s.commit()
+    return len(due)

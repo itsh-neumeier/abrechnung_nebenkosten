@@ -284,6 +284,17 @@ SETTING_DEFAULTS = {
     # Login / Mieterportal
     "session_secret": "",  # wird erzeugt (oder APP_SECRET_KEY)
     "vapid_private": "",
+    # Abfallkalender (ICS)
+    "waste_ics_url": "",
+    "waste_ics_data": "",
+    "waste_fetched_at": "",
+    "waste_types": "[]",  # ausgewählte Müllarten (JSON), leer = alle
+    "waste_notify_evening": "1",
+    "waste_evening_time": "18:00",
+    "waste_notify_morning": "1",
+    "waste_morning_time": "06:00",
+    "waste_include_admins": "1",
+    "waste_sent": "[]",  # bereits verschickte Benachrichtigungen (Schlüssel)
     "push_tenant_published": "1",
     "push_admin_import": "1",
     "push_admin_sent": "1",

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Abfallkalender{% endblock %}
+{% block content %}
+<h1>🗑️ Abfallkalender</h1>
+<form method="post" action="/waste" enctype="multipart/form-data" class="card">
+  <h2 style="margin-top:0">Kalender (ICS)</h2>
+  <p class="muted" style="margin-top:0">Die meisten Entsorger bzw. Landkreise bieten den Abfuhrkalender für die eigene Straße als
+  <b>ICS</b> (iCal) an – Link kopieren und hier eintragen (wird täglich neu geladen) oder die Datei hochladen.</p>
+  <label>Link zur ICS-Datei</label>
+  <input type="text" name="waste_ics_url" value="{{ st.waste_ics_url }}" placeholder="https://…/abfallkalender.ics">
+  <label>… oder ICS-Datei hochladen</label>
+  <input type="file" name="ics_file" accept=".ics,text/calendar">
+  <p class="muted">{% if total %}✔ {{ total }} Abholtermine im Kalender{% if st.waste_fetched_at %}, Stand {{ st.waste_fetched_at[:16]|replace('T', ' ') }}{% endif %}.{% else %}Noch kein Kalender geladen.{% endif %}</p>
+
+  <h2>Benachrichtigung</h2>
+  <div class="grid">
+    <div>
+      <div class="check"><input type="checkbox" name="waste_notify_evening" id="we" {% if st.waste_notify_evening %}checked{% endif %}><label for="we" style="margin:0">Am Vortag ab</label></div>
+      <input type="time" name="waste_evening_time" value="{{ st.waste_evening_time or '18:00' }}">
+    </div>
+    <div>
+      <div class="check"><input type="checkbox" name="waste_notify_morning" id="wm" {% if st.waste_notify_morning %}checked{% endif %}><label for="wm" style="margin:0">Am Abholtag ab (bis 12 Uhr)</label></div>
+      <input type="time" name="waste_morning_time" value="{{ st.waste_morning_time or '06:00' }}">
+    </div>
+  </div>
+  <div class="check"><input type="checkbox" name="waste_include_admins" id="wa" {% if st.waste_include_admins %}checked{% endif %}><label for="wa" style="margin:0">Verwalter ebenfalls benachrichtigen</label></div>
+  <p class="muted">Empfänger: alle Mieter aller aktiven Parteien mit aktivierten Benachrichtigungen – derzeit {{ recipients }} Gerät(e).</p>
+
+  {% if kinds %}
+  <input type="hidden" name="types_form" value="1">
+  <h2>Müllarten</h2>
+  <p class="muted" style="margin-top:0">Für welche Leerungen soll erinnert werden? (keine Auswahl = alle)</p>
+  <div class="waste-kinds">
+  {% for k in kinds %}{% set c = style(k) %}
+    <label class="waste-kind" style="--wc:{{ c[0] }}"><input type="checkbox" name="waste_types" value="{{ k }}" {% if k in enabled %}checked{% endif %}>
+      <span class="cat-dot" style="background:{{ c[0] }}"></span>{{ k }}</label>
+  {% endfor %}
+  </div>
+  {% endif %}
+  <button>Speichern</button>
+  <button class="sec" name="refresh" value="1" {% if not st.waste_ics_url %}disabled{% endif %}>Speichern &amp; Kalender jetzt laden</button>
+  <button class="sec" formaction="/waste/test" {% if not total %}disabled{% endif %}>Test an mein Gerät</button>
+</form>
+
+<div class="card">
+  <h2 style="margin-top:0">Nächste Abholungen {% if enabled %}<span class="muted">(ausgewählte Arten)</span>{% endif %}</h2>
+  {% if upcoming %}
+  <table>
+  {% for d, ks in upcoming %}
+  <tr><td style="white-space:nowrap">{{ ['Mo','Di','Mi','Do','Fr','Sa','So'][d.weekday()] }}, {{ d.strftime('%d.%m.%Y') }}</td>
+    <td>{% for k in ks %}{% set c = style(k) %}<span class="waste-pill" style="--wc:{{ c[0] }}">{{ c[1] }} {{ k }}</span>{% endfor %}</td></tr>
+  {% endfor %}
+  </table>
+  {% else %}<p class="muted">Keine Termine in den nächsten 45 Tagen.</p>{% endif %}
+</div>
+{% endblock %}

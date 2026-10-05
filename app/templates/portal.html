@@ -17,6 +17,17 @@
 {% for x in current %}{{ notice(x, cats, when, prios=prios) }}{% endfor %}
 </div>
 {% endif %}
+{% if party and pickups %}
+<div class="card" id="abfall">
+  <h2 style="margin-top:0">🗑️ Nächste Abholungen</h2>
+  {% for d, ks in pickups %}
+  <div class="pickup{{ ' pickup-soon' if (d - today).days <= 1 }}">
+    <span class="pickup-day">{% if d == today %}Heute{% elif (d - today).days == 1 %}Morgen{% else %}{{ ['Mo','Di','Mi','Do','Fr','Sa','So'][d.weekday()] }}, {{ d.strftime('%d.%m.') }}{% endif %}</span>
+    <span>{% for k in ks %}{% set c = wstyle(k) %}<span class="waste-pill" style="--wc:{{ c[0] }}">{{ c[1] }} {{ k }}</span>{% endfor %}</span>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 {% if party %}
 <div class="card scroll">
   <p style="margin-top:0"><b>{{ party.name }}</b>{% if party.unit_id %} · {{ party.unit_id }}{% endif %}</p>

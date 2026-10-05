@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import quote
@@ -384,9 +385,14 @@ def portal(request: Request, party: Optional[int] = None, s: Session = Depends(g
     recent = datetime.now() - timedelta(days=14)
     done = [m for m in msgs if notify.is_done(m) and notify.visible_until(m) >= recent]  # kürzlich vorbei
     history = [m for m in msgs if m not in current_ and m not in done and not m.archived][:10]
+    from . import waste
+    st = get_settings(s)
+    pickups = waste.upcoming(waste.parse_ics(st.get("waste_ics_data", "")), json.loads(st.get("waste_types") or "[]"),
+                             days=35)[:6] if p else []
     return _page(request, "portal.html", party=p, rows=rows, parties=parties, period_text=period_text,
                  current=current_, history=history, done=done, cats=notify.CATEGORIES, when=notify.when_text,
-                 prios=notify.PRIORITIES, is_done=notify.is_done)
+                 prios=notify.PRIORITIES, is_done=notify.is_done, pickups=pickups, wstyle=waste.style,
+                 today=datetime.now().date())
 
 
 def _portal_billing(request: Request, s: Session, bid: int, party: Optional[int]):
@@ -554,3 +560,63 @@ async def message_resend(request: Request, mid: int, s: Session = Depends(get_se
     form = await request.form()
     st = notify.send_message(s, m, via_mail=bool(form.get("via_mail")))
     return _redirect("/messages", f"Erneut gesendet · Push an {st['push_ok']} von {st['push_devices']} Gerät(en)")
+
+
+# --------------------------------------------------------------------------- Abfallkalender (Verwalter)
+@router.get("/waste", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
+def waste_page(request: Request, s: Session = Depends(get_session)):
+    from . import waste
+
+    st = get_settings(s)
+    events = waste.parse_ics(st.get("waste_ics_data", ""))
+    enabled = json.loads(st.get("waste_types") or "[]")
+    return _page(request, "waste.html", st=st, kinds=waste.kinds(events), enabled=enabled, style=waste.style,
+                 upcoming=waste.upcoming(events, enabled, days=45), total=len(events),
+                 recipients=len(notify.subs_for_users(s, notify.waste_recipients(s))))
+
+
+@router.post("/waste", dependencies=[Depends(require_admin)])
+async def waste_save(request: Request, s: Session = Depends(get_session)):
+    from . import waste
+
+    form = await request.form()
+    data = {k: str(form.get(k, "")).strip() for k in ("waste_ics_url", "waste_evening_time", "waste_morning_time")}
+    for flag in ("waste_notify_evening", "waste_notify_morning", "waste_include_admins"):
+        data[flag] = "1" if form.get(flag) else ""
+    if form.get("types_form"):
+        data["waste_types"] = json.dumps(form.getlist("waste_types"), ensure_ascii=False)
+    upload = form.get("ics_file")
+    msg = "Gespeichert"
+    if upload is not None and getattr(upload, "filename", ""):
+        text = (await upload.read()).decode("utf-8", errors="replace")
+        if "BEGIN:VCALENDAR" not in text:
+            return _redirect("/waste", "Die Datei ist keine ICS-Kalenderdatei.")
+        data["waste_ics_data"] = text
+        data["waste_fetched_at"] = datetime.now().isoformat(timespec="seconds")
+        msg += f" · {len(waste.parse_ics(text))} Abholtermine aus der Datei"
+    save_settings(s, data)
+    s.commit()
+    if data["waste_ics_url"] and (form.get("refresh") or not get_settings(s).get("waste_ics_data")):
+        try:
+            msg += " · " + notify.waste_refresh(s, force=True)
+        except Exception as e:  # noqa: BLE001
+            msg += f" · Laden fehlgeschlagen: {e}"
+    return _redirect("/waste", msg)
+
+
+@router.post("/waste/test", dependencies=[Depends(require_admin)])
+def waste_test(request: Request, s: Session = Depends(get_session)):
+    from . import waste
+
+    st = get_settings(s)
+    events = waste.parse_ics(st.get("waste_ics_data", ""))
+    nxt = waste.upcoming(events, json.loads(st.get("waste_types") or "[]"), days=400)
+    if not nxt:
+        return _redirect("/waste", "Keine kommenden Abholtermine im Kalender.")
+    d, ks = nxt[0]
+    _, uid = _push_user(request)
+    ok, errors = notify.send_to(s, notify.subs_for_users(s, [uid]), {
+        "title": f"🗑️ Test – nächste Abholung {d:%d.%m.}: {', '.join(ks)}",
+        "body": "So sieht die Erinnerung für die Mieter aus.", "url": "/portal#abfall", "tag": "abfall-test"})
+    return _redirect("/waste", f"Test an {ok} eigenes Gerät gesendet" if ok else
+                     "Kein eigenes Gerät angemeldet – unter „Mein Konto“ Benachrichtigungen aktivieren.")

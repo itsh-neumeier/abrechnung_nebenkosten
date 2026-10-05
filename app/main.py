@@ -28,15 +28,17 @@ from .render import BASE, invoice_html, invoice_pdf, parse_float, party_result, 
 
 
 async def reminder_loop() -> None:
-    """Erinnerungen für geplante Ereignisse (Vortag) – alle 15 Minuten prüfen."""
+    """Erinnerungen für geplante Ereignisse (Vortag) und Abfallkalender – alle 5 Minuten prüfen."""
     while True:
         await asyncio.sleep(60)
         try:
             with SessionLocal() as s:
                 await asyncio.to_thread(notify.send_reminders, s)
+            with SessionLocal() as s:
+                await asyncio.to_thread(notify.waste_tick, s)
         except Exception:  # noqa: BLE001
             pass
-        await asyncio.sleep(14 * 60)
+        await asyncio.sleep(4 * 60)
 
 
 @asynccontextmanager

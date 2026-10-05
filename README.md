@@ -181,6 +181,15 @@ Vorbei, aber noch nicht archiviert: im Portal grau unter **„✓ Abgeschlossen�
 danach im Verlauf mit Kennzeichnung – so kann ein vergangener Hinweis nicht mit einem aktuellen verwechselt werden.
 Systemmeldungen: Fehler = hoch, Versand/Zustellung = niedrig, Rechnungseingang mit Hinweisen = hoch.
 
+### Abfallkalender (ICS)
+
+Menü **Abfall**: Link zur ICS-Datei des Entsorgers eintragen (z. B. abfalltermine-bamberg.de → „ICS“) oder Datei
+hochladen. Enthält der Link `year=2026`, lädt die App automatisch aktuelles **und** nächstes Jahr (täglich aktualisiert).
+Die Müllarten werden aus dem Kalender erkannt und farbig dargestellt; ausgewählt wird, für welche erinnert wird.
+Benachrichtigung an alle Mieter (optional auch Verwalter): **am Vortag ab** einer Uhrzeit (Standard 18:00) und **am
+Abholtag ab** einer Uhrzeit (Standard 06:00, bis 12 Uhr) – je Termin genau einmal. Im Mieterportal stehen die
+nächsten Abholungen.
+
 ## Entwicklung
 
 ```bash
