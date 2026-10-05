@@ -45,15 +45,22 @@ self.addEventListener("push", (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch (e) { data = { body: event.data && event.data.text() }; }
   const title = data.title || "Nebenkostenabrechnung";
-  event.waitUntil(self.registration.showNotification(title, {
+  const prio = data.priority || "normal";  // low | normal | high | urgent
+  const opts = {
     body: data.body || "",
     icon: "/static/icon-192.png",
     badge: "/static/badge-96.png",
     tag: data.tag || undefined,
-    renotify: !!data.tag,
+    renotify: !!data.tag && prio !== "low",
+    silent: prio === "low",                                  // niedrig: ohne Ton/Vibration
+    requireInteraction: prio === "high" || prio === "urgent", // bleibt stehen, bis weggetippt
     data: { url: data.url || "/" },
     lang: "de",
-  }));
+    timestamp: Date.now(),
+  };
+  if (prio === "urgent") opts.vibrate = [300, 120, 300, 120, 600];
+  else if (prio === "high") opts.vibrate = [200, 100, 200];
+  event.waitUntil(self.registration.showNotification(title, opts));
 });
 
 self.addEventListener("notificationclick", (event) => {

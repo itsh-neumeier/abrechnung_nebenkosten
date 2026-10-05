@@ -14,7 +14,7 @@
 {% endif %}
 {% if party and current %}
 <div class="notices" id="mitteilungen">
-{% for x in current %}{{ notice(x, cats, when) }}{% endfor %}
+{% for x in current %}{{ notice(x, cats, when, prios=prios) }}{% endfor %}
 </div>
 {% endif %}
 {% if party %}

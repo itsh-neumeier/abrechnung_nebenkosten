@@ -95,6 +95,7 @@ class Message(Base):
     remind: Mapped[bool] = mapped_column(Boolean, default=False)  # Erinnerung am Vortag
     reminded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    priority: Mapped[str] = mapped_column(String(10), default="normal")  # low | normal | high | urgent
 
 
 class FixedCost(Base):

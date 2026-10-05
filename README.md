@@ -175,7 +175,9 @@ Menü **Mitteilungen**: Nachricht an **alle Parteien** oder **ausgewählte Parte
 E-Mail. Farbige Kategorien: ℹ️ Information, 📅 Termin, 🔧 Wartung / geplante Arbeiten, ⛔ Abschaltung, ✅ Erledigt.
 **Geplante Ereignisse** (Beginn/Ende) stehen im Mieterportal oben, bis sie vorbei sind (oder bis „Anzeigen bis“);
 📌 angeheftete Hinweise bleiben dauerhaft bis zum Archivieren. Optional **Erinnerung am Vortag** per Push.
-Mitteilungen ohne Datum erscheinen im Verlauf.
+Mitteilungen ohne Datum erscheinen im Verlauf. **Priorität** je Mitteilung: ⚪ Niedrig (still), 🔵 Normal, 🟠 Hoch (sofortige
+Zustellung, bleibt stehen), 🔴 Dringend (zusätzlich Vibration, ganz oben mit rotem Rahmen, Betreff „[Dringend]“).
+Systemmeldungen: Fehler = hoch, Versand/Zustellung = niedrig, Rechnungseingang mit Hinweisen = hoch.
 
 ## Entwicklung
 

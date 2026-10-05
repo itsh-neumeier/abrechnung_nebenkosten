@@ -380,10 +380,11 @@ def portal(request: Request, party: Optional[int] = None, s: Session = Depends(g
     rows = [(b, party_result(b, p.id)) for b in visible_billings(s, p)] if p else []
     parties = s.query(Party).order_by(Party.sort, Party.id).all() if (me is None or me.is_admin) else []
     msgs = notify.messages_for_party(s, p.id, limit=30) if p else []
-    current_ = sorted([m for m in msgs if notify.is_current(m)], key=lambda m: (m.event_start or m.created_at))
+    current_ = sorted([m for m in msgs if notify.is_current(m)], key=notify.sort_key)
     history = [m for m in msgs if m not in current_ and not m.archived][:10]
     return _page(request, "portal.html", party=p, rows=rows, parties=parties, period_text=period_text,
-                 current=current_, history=history, cats=notify.CATEGORIES, when=notify.when_text)
+                 current=current_, history=history, cats=notify.CATEGORIES, when=notify.when_text,
+                 prios=notify.PRIORITIES)
 
 
 def _portal_billing(request: Request, s: Session, bid: int, party: Optional[int]):
@@ -478,11 +479,11 @@ def _dt(value) -> Optional[datetime]:
 def messages_page(request: Request, edit: int = 0, s: Session = Depends(get_session)):
     msgs = s.query(Message).order_by(Message.created_at.desc()).limit(100).all()
     parties = s.query(Party).filter(Party.active.is_(True)).order_by(Party.sort, Party.id).all()
-    current_ = [m for m in msgs if notify.is_current(m)]
-    current_.sort(key=lambda m: (m.event_start or m.created_at))
+    current_ = sorted([m for m in msgs if notify.is_current(m)], key=notify.sort_key)
     m = s.get(Message, edit) if edit else None
     return _page(request, "messages.html", msgs=msgs, current=current_, parties=parties, cats=notify.CATEGORIES,
-                 when=notify.when_text, is_current=notify.is_current, m=m, mail_ok=mailer.configured())
+                 when=notify.when_text, is_current=notify.is_current, m=m, mail_ok=mailer.configured(),
+                 prios=notify.PRIORITIES)
 
 
 @router.post("/messages", dependencies=[Depends(require_admin)])
@@ -499,6 +500,7 @@ async def message_save(request: Request, s: Session = Depends(get_session)):
     m.title, m.body = title, str(form.get("body", "")).strip()
     m.category = str(form.get("category", "info")) if form.get("category") in notify.CATEGORIES else "info"
     m.party_ids = [] if (not target or "all" in target) else sorted({int(x) for x in target if str(x).isdigit()})
+    m.priority = str(form.get("priority", "normal")) if form.get("priority") in notify.PRIORITIES else "normal"
     m.pinned = bool(form.get("pinned"))
     m.event_start, m.event_end, m.show_until = _dt(form.get("event_start")), _dt(form.get("event_end")), _dt(form.get("show_until"))
     if m.event_start and m.event_end and m.event_end < m.event_start:

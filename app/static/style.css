@@ -123,7 +123,7 @@ html.standalone footer.ver{padding-bottom:max(18px,env(safe-area-inset-bottom))}
 /* ---- farbige Hinweise / Mitteilungen ---- */
 .notices{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:16px}
 .notice{background:var(--nbg);border:1px solid var(--line);border-left:5px solid var(--nc);border-radius:10px;padding:12px 14px;color:#111827}
-.notice-head{display:flex;justify-content:space-between;align-items:center;font-size:.8rem;font-weight:600;color:var(--nc);text-transform:uppercase;letter-spacing:.02em}
+.notice-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;font-size:.8rem;font-weight:600;color:var(--nc);text-transform:uppercase;letter-spacing:.02em}
 .notice-title{font-weight:700;font-size:1.05rem;margin:4px 0 2px}
 .notice-when{font-weight:600;color:var(--nc);margin:2px 0 4px}
 .notice-body{white-space:pre-line;font-size:.95rem}
@@ -132,3 +132,10 @@ html.standalone footer.ver{padding-bottom:max(18px,env(safe-area-inset-bottom))}
 .msg-row{padding:8px 0;border-top:1px solid var(--line)}.msg-row:first-of-type{border-top:0}
 .msg-text{white-space:pre-line;margin:2px 0 0 16px}
 @media (prefers-color-scheme:dark){.notice{filter:brightness(.92)}}
+.prio-badge{display:inline-block;white-space:nowrap;font-size:.72rem;font-weight:700;padding:1px 8px;border-radius:99px;margin-right:6px;text-transform:none;letter-spacing:0}
+.prio-badge.prio-high{background:#ffedd5;color:#9a3412}
+.prio-badge.prio-urgent{background:#dc2626;color:#fff}
+.notice.prio-urgent{border:2px solid #dc2626;border-left-width:6px;box-shadow:0 0 0 3px rgba(220,38,38,.15);animation:urgent-pulse 2.4s ease-in-out 3}
+.notice.prio-high{border-left-width:6px}
+@keyframes urgent-pulse{50%{box-shadow:0 0 0 7px rgba(220,38,38,.05)}}
+@media (prefers-reduced-motion:reduce){.notice.prio-urgent{animation:none}}

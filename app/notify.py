@@ -30,6 +30,19 @@ EVENTS = {
 }
 
 
+# Priorität → (Bezeichnung, Symbol, Web-Push-Urgency, Rang für Sortierung)
+PRIORITIES = {
+    "low": ("Niedrig", "⚪", "low", 0),
+    "normal": ("Normal", "🔵", "normal", 1),
+    "high": ("Hoch", "🟠", "high", 2),
+    "urgent": ("Dringend", "🔴", "high", 3),
+}
+
+
+def prio(key: str) -> tuple:
+    return PRIORITIES.get(key or "normal", PRIORITIES["normal"])
+
+
 def enabled(s: Session, key: str) -> bool:
     return bool(get_settings(s).get(key, EVENTS[key][1]))
 
@@ -78,14 +91,21 @@ def unsubscribe(s: Session, endpoint: str) -> None:
     s.commit()
 
 
-def send_to(s: Session, subs: Iterable[PushSubscription], data: dict) -> tuple[int, list[str]]:
-    """An alle Abos senden; abgelaufene Abos werden entfernt. Ergebnis: (zugestellt, Fehler)."""
+def send_to(s: Session, subs: Iterable[PushSubscription], data: dict,
+            priority: str = "normal") -> tuple[int, list[str]]:
+    """An alle Abos senden; abgelaufene Abos werden entfernt. Ergebnis: (zugestellt, Fehler).
+
+    ``priority`` (low/normal/high/urgent) steuert die Web-Push-Dringlichkeit (Zustellung, auch im Energiesparmodus)
+    und – über ``data.priority`` im Service Worker – Ton, Vibration und ob die Meldung stehen bleibt."""
     key, sub_claim = vapid_key(s), subject()
+    data = {**data, "priority": priority if priority in PRIORITIES else "normal"}
+    urgency = prio(priority)[2]
+    ttl = 4 * 3600 if priority == "low" else 86400
     ok, errors = 0, []
     for sub in list(subs):
         try:
             webpush.send({"endpoint": sub.endpoint, "keys": {"p256dh": sub.p256dh, "auth": sub.auth}}, data,
-                         key, sub_claim)
+                         key, sub_claim, ttl=ttl, urgency=urgency)
             sub.last_ok, sub.failures = datetime.now(), 0
             ok += 1
         except webpush.PushError as e:
@@ -143,12 +163,15 @@ def billing_published(s: Session, b: Billing) -> int:
     return len(sent_to)
 
 
-def to_admins(s: Session, key: str, title: str, body: str, url: str = "/", tag: str = "") -> int:
+def to_admins(s: Session, key: str, title: str, body: str, url: str = "/", tag: str = "",
+              priority: str = "") -> int:
     """Benachrichtigung an alle Verwalter-Geräte, wenn der globale Schalter ``key`` an ist."""
     if not enabled(s, key):
         return 0
+    priority = priority or {"push_admin_errors": "high", "push_admin_sent": "low",
+                            "push_admin_delivery": "low"}.get(key, "normal")
     ok, _ = send_to(s, subs_for_users(s, admin_ids(s)), {"title": title, "body": body[:240], "url": url,
-                                                          "tag": tag or key})
+                                                          "tag": tag or key}, priority)
     return ok
 
 
@@ -161,7 +184,8 @@ def invoice_imported(s: Session, b: Billing, status: str, gross: Optional[float]
     if warnings:
         lines.append(f"⚠ {warnings} Hinweis(e) – bitte prüfen")
     lines.append(status)
-    return to_admins(s, "push_admin_import", title, "\n".join(lines), f"/billings/{b.id}", f"import-{b.id}")
+    return to_admins(s, "push_admin_import", title, "\n".join(lines), f"/billings/{b.id}", f"import-{b.id}",
+                     "high" if warnings else "normal")
 
 
 def sent_report(s: Session, b: Billing, report: list[tuple[str, bool, str]]) -> None:
@@ -235,7 +259,12 @@ def when_text(msg) -> str:
 
 def _push_title(msg) -> str:
     label, icon, *_ = CATEGORIES.get(msg.category, CATEGORIES["info"])
-    return f"{icon} {msg.title}"
+    return ("‼️ " if msg.priority == "urgent" else "") + f"{icon} {msg.title}"
+
+
+def sort_key(msg):
+    """Aktuelle Hinweise: dringende zuerst, dann nach Termin."""
+    return (-prio(msg.priority)[3], msg.event_start or msg.created_at)
 
 
 def _push_body(msg) -> str:
@@ -268,7 +297,8 @@ def send_message(s: Session, msg, via_mail: bool = False) -> dict:
     users = s.query(User).filter(User.role == "tenant", User.active.is_(True), User.party_id.in_(pids)).all() if pids else []
     subs = subs_for_users(s, [u.id for u in users])
     ok, errors = send_to(s, subs, {"title": _push_title(msg), "body": _push_body(msg)[:240],
-                                   "url": f"/portal#m{msg.id}", "tag": f"msg-{msg.id}"}) if subs else (0, [])
+                                   "url": f"/portal#m{msg.id}", "tag": f"msg-{msg.id}"},
+                         msg.priority or "normal") if subs else (0, [])
     stats = {"parties": [p.name for p in parties], "push_devices": len(subs), "push_ok": ok,
              "push_errors": errors[:3], "mail_ok": 0, "mail_errors": []}
     if via_mail and mailer.configured():
@@ -280,6 +310,8 @@ def send_message(s: Session, msg, via_mail: bool = False) -> dict:
             body = f"Hallo {p.name},\n\n{msg.body}\n\nViele Grüße\n{st.get('landlord_name', '')}"
             label = CATEGORIES.get(msg.category, CATEGORIES["info"])[0]
             facts = [("Art", label, False)] + ([("Wann", when_text(msg), True)] if msg.event_start else [])
+            if msg.priority in ("high", "urgent"):
+                facts.insert(0, ("Priorität", f"{prio(msg.priority)[1]} {prio(msg.priority)[0]}", True))
             html = mailer.render_html(
                 title=msg.title, preheader=_push_body(msg)[:120], facts=facts, brand=st.get("building_title") or "Nebenkostenabrechnung",
                 brand_sub=st.get("building_address", ""), paragraphs=[f"Hallo {p.name},"] + [
@@ -288,7 +320,8 @@ def send_message(s: Session, msg, via_mail: bool = False) -> dict:
                 button_url=f"{config.app_base_url}/portal" if (p.portal and config.app_base_url) else "",
                 button_label="Zum Mieterportal", footer=st.get("building_address", ""))
             try:
-                mailer.send_mail(to, msg.title, body, [], html=html)
+                subject = (f"[{prio(msg.priority)[0]}] " if msg.priority in ("high", "urgent") else "") + msg.title
+                mailer.send_mail(to, subject, body, [], html=html)
                 stats["mail_ok"] += 1
             except Exception as e:  # noqa: BLE001
                 stats["mail_errors"].append(f"{p.name}: {e}")
@@ -318,7 +351,7 @@ def send_reminders(s: Session, now: Optional[datetime] = None) -> int:
         if now < m.event_start <= now + timedelta(hours=24):
             subs = subs_for_users(s, tenant_users_for(s, m))
             send_to(s, subs, {"title": f"Erinnerung: {_push_title(m)}", "body": _push_body(m)[:240],
-                              "url": f"/portal#m{m.id}", "tag": f"msg-{m.id}"})
+                              "url": f"/portal#m{m.id}", "tag": f"msg-{m.id}"}, m.priority or "normal")
             m.reminded_at = now
             count += 1
     s.commit()

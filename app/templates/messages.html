@@ -11,6 +11,9 @@
     <div><label>Kategorie</label><select name="category">
       {% for k, c in cats.items() %}<option value="{{ k }}" {% if (m.category if m else 'info') == k %}selected{% endif %}>{{ c[1] }} {{ c[0] }}</option>{% endfor %}
     </select></div>
+    <div><label>Priorität</label><select name="priority">
+      {% for k, pr in prios.items() %}<option value="{{ k }}" {% if (m.priority if m and m.priority else 'normal') == k %}selected{% endif %}>{{ pr[1] }} {{ pr[0] }}</option>{% endfor %}
+    </select><p class="hint muted">Hoch/Dringend: sofortige Zustellung, bleibt auf dem Gerät stehen; Dringend vibriert zusätzlich. Niedrig: ohne Ton.</p></div>
     <div><label>An</label><select name="party_ids" multiple size="{{ [parties|length + 1, 5]|min }}">
       <option value="all" {% if not m or not m.party_ids %}selected{% endif %}>Alle Parteien (Broadcast)</option>
       {% for p in parties %}<option value="{{ p.id }}" {% if m and p.id in m.party_ids %}selected{% endif %}>{{ p.name }}{% if p.unit_id %} ({{ p.unit_id }}){% endif %}</option>{% endfor %}
@@ -35,18 +38,19 @@
 <h2>Aktuell im Mieterportal</h2>
 {% if current %}
 <div class="notices">
-{% for x in current %}{{ notice(x, cats, when, admin=true) }}{% endfor %}
+{% for x in current %}{{ notice(x, cats, when, admin=true, prios=prios) }}{% endfor %}
 </div>
 {% else %}<p class="muted">Keine aktuellen Hinweise.</p>{% endif %}
 
 <h2>Alle Mitteilungen</h2>
 <div class="card scroll">
 <table>
-<tr><th>Datum</th><th>Art</th><th>Titel</th><th>An</th><th>Zustellung</th><th>Status</th><th></th></tr>
+<tr><th>Datum</th><th>Art</th><th>Prio</th><th>Titel</th><th>An</th><th>Zustellung</th><th>Status</th><th></th></tr>
 {% for x in msgs %}{% set c = cats.get(x.category, cats['info']) %}
 <tr>
   <td>{{ x.created_at.strftime('%d.%m.%Y') }}</td>
   <td><span class="cat-dot" style="background:{{ c[2] }}"></span>{{ c[0] }}</td>
+  <td title="{{ prios[x.priority or 'normal'][0] }}">{{ prios[x.priority or 'normal'][1] }}</td>
   <td><b>{{ x.title }}</b>{% if x.event_start %}<br><span class="muted">🕒 {{ when(x) }}</span>{% endif %}</td>
   <td>{{ "alle" if not x.party_ids else (x.stats.parties|join(", ") if x.stats and x.stats.parties else x.party_ids|length ~ " Partei(en)") }}</td>
   <td class="muted">{% if x.stats %}🔔 {{ x.stats.push_ok }}/{{ x.stats.push_devices }}{% if x.stats.mail_ok %} · ✉️ {{ x.stats.mail_ok }}{% endif %}{% else %}–{% endif %}
@@ -59,7 +63,7 @@
     <form method="post" action="/messages/{{ x.id }}/delete" style="display:inline" onsubmit="return confirm('Mitteilung löschen?')"><button class="danger pick-btn">löschen</button></form>
   </td>
 </tr>
-{% else %}<tr><td colspan="7" class="muted">Noch keine Mitteilungen.</td></tr>{% endfor %}
+{% else %}<tr><td colspan="8" class="muted">Noch keine Mitteilungen.</td></tr>{% endfor %}
 </table>
 </div>
 {% endblock %}
