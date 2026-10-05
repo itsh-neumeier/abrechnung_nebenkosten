@@ -188,3 +188,138 @@ def wa_delivery(s: Session, b: Billing, pid: int, ok: bool, status: str, error: 
     else:
         to_admins(s, "push_admin_errors", f"WhatsApp-Fehler: {name}", f"Abrechnung {b.period_start:%m/%Y}: {error}",
                   f"/billings/{b.id}", f"waerr-{b.id}-{pid}")
+
+
+# --------------------------------------------------------------------------- Mitteilungen (Broadcast / Unicast)
+CATEGORIES = {  # Schlüssel → (Bezeichnung, Symbol, Farbe, heller Hintergrund)
+    "info": ("Information", "ℹ️", "#2563eb", "#eff6ff"),
+    "termin": ("Termin", "📅", "#7c3aed", "#f5f3ff"),
+    "wartung": ("Wartung / geplante Arbeiten", "🔧", "#d97706", "#fff7ed"),
+    "abschaltung": ("Abschaltung", "⛔", "#dc2626", "#fef2f2"),
+    "ok": ("Erledigt / Entwarnung", "✅", "#16a34a", "#f0fdf4"),
+}
+
+
+def visible_until(msg) -> Optional[datetime]:
+    """Bis wann eine Mitteilung als aktueller Hinweis oben steht (None = dauerhaft bzw. nur im Verlauf)."""
+    if msg.show_until:
+        return msg.show_until
+    if msg.event_end:
+        return msg.event_end
+    if msg.event_start:
+        return msg.event_start.replace(hour=23, minute=59, second=59)
+    return None
+
+
+def is_current(msg, now: Optional[datetime] = None) -> bool:
+    """Oben als farbiger Hinweis: angeheftet oder geplantes Ereignis, nicht archiviert, noch nicht vorbei."""
+    now = now or datetime.now()
+    if msg.archived:
+        return False
+    until = visible_until(msg)
+    if until is not None and until < now:
+        return False
+    return bool(msg.pinned or msg.event_start or msg.show_until)
+
+
+def when_text(msg) -> str:
+    if not msg.event_start:
+        return ""
+    a, b = msg.event_start, msg.event_end
+    if b is None:
+        return a.strftime("%d.%m.%Y %H:%M") if (a.hour or a.minute) else a.strftime("%d.%m.%Y")
+    if a.date() == b.date():
+        return f"{a:%d.%m.%Y}, {a:%H:%M} – {b:%H:%M} Uhr"
+    return f"{a:%d.%m.%Y %H:%M} – {b:%d.%m.%Y %H:%M}"
+
+
+def _push_title(msg) -> str:
+    label, icon, *_ = CATEGORIES.get(msg.category, CATEGORIES["info"])
+    return f"{icon} {msg.title}"
+
+
+def _push_body(msg) -> str:
+    w = when_text(msg)
+    return (f"{w} · " if w else "") + msg.body
+def message_parties(s: Session, msg) -> list[Party]:
+    q = s.query(Party).filter(Party.active.is_(True))
+    parties = q.all()
+    return parties if not msg.party_ids else [p for p in parties if p.id in set(msg.party_ids)]
+
+
+def messages_for_party(s: Session, party_id: int, limit: int = 20) -> list:
+    from .db import Message
+
+    out = []
+    for m in s.query(Message).order_by(Message.created_at.desc()).limit(200):
+        if not m.party_ids or party_id in m.party_ids:
+            out.append(m)
+            if len(out) >= limit:
+                break
+    return out
+
+
+def send_message(s: Session, msg, via_mail: bool = False) -> dict:
+    """Mitteilung zustellen: Push an alle Mieter-Geräte der Parteien, optional E-Mail an die Partei-Adressen."""
+    from . import mailer
+
+    parties = message_parties(s, msg)
+    pids = [p.id for p in parties]
+    users = s.query(User).filter(User.role == "tenant", User.active.is_(True), User.party_id.in_(pids)).all() if pids else []
+    subs = subs_for_users(s, [u.id for u in users])
+    ok, errors = send_to(s, subs, {"title": _push_title(msg), "body": _push_body(msg)[:240],
+                                   "url": f"/portal#m{msg.id}", "tag": f"msg-{msg.id}"}) if subs else (0, [])
+    stats = {"parties": [p.name for p in parties], "push_devices": len(subs), "push_ok": ok,
+             "push_errors": errors[:3], "mail_ok": 0, "mail_errors": []}
+    if via_mail and mailer.configured():
+        st = get_settings(s)
+        for p in parties:
+            to = [a.strip() for a in (p.email or "").replace(";", ",").split(",") if a.strip()]
+            if not to:
+                continue
+            body = f"Hallo {p.name},\n\n{msg.body}\n\nViele Grüße\n{st.get('landlord_name', '')}"
+            label = CATEGORIES.get(msg.category, CATEGORIES["info"])[0]
+            facts = [("Art", label, False)] + ([("Wann", when_text(msg), True)] if msg.event_start else [])
+            html = mailer.render_html(
+                title=msg.title, preheader=_push_body(msg)[:120], facts=facts, brand=st.get("building_title") or "Nebenkostenabrechnung",
+                brand_sub=st.get("building_address", ""), paragraphs=[f"Hallo {p.name},"] + [
+                    x.strip() for x in msg.body.split("\n\n") if x.strip()],
+                closing=f"Viele Grüße\n{st.get('landlord_name', '')}",
+                button_url=f"{config.app_base_url}/portal" if (p.portal and config.app_base_url) else "",
+                button_label="Zum Mieterportal", footer=st.get("building_address", ""))
+            try:
+                mailer.send_mail(to, msg.title, body, [], html=html)
+                stats["mail_ok"] += 1
+            except Exception as e:  # noqa: BLE001
+                stats["mail_errors"].append(f"{p.name}: {e}")
+    msg.stats = stats
+    s.commit()
+    return stats
+
+
+
+def tenant_users_for(s: Session, msg) -> list[int]:
+    pids = [p.id for p in message_parties(s, msg)]
+    if not pids:
+        return []
+    return [u.id for u in s.query(User).filter(User.role == "tenant", User.active.is_(True), User.party_id.in_(pids))]
+
+
+def send_reminders(s: Session, now: Optional[datetime] = None) -> int:
+    """Erinnerung am Vortag für geplante Ereignisse (läuft im Hintergrund alle 15 Minuten)."""
+    from datetime import timedelta
+
+    from .db import Message
+
+    now = now or datetime.now()
+    count = 0
+    for m in s.query(Message).filter(Message.remind.is_(True), Message.reminded_at.is_(None),
+                                     Message.archived.is_(False), Message.event_start.isnot(None)):
+        if now < m.event_start <= now + timedelta(hours=24):
+            subs = subs_for_users(s, tenant_users_for(s, m))
+            send_to(s, subs, {"title": f"Erinnerung: {_push_title(m)}", "body": _push_body(m)[:240],
+                              "url": f"/portal#m{m.id}", "tag": f"msg-{m.id}"})
+            m.reminded_at = now
+            count += 1
+    s.commit()
+    return count

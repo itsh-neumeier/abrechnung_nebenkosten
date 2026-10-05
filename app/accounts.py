@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from . import auth, mailer, notify
 from .config import config
-from .db import Billing, Party, PushSubscription, User, get_session, get_settings, save_settings
+from .db import Billing, Message, Party, PushSubscription, User, get_session, get_settings, save_settings
 from .render import invoice_html, invoice_pdf, party_result, pdf_name, period_text, templates
 
 router = APIRouter()
@@ -379,7 +379,11 @@ def portal(request: Request, party: Optional[int] = None, s: Session = Depends(g
     p = _portal_party(request, s, party)
     rows = [(b, party_result(b, p.id)) for b in visible_billings(s, p)] if p else []
     parties = s.query(Party).order_by(Party.sort, Party.id).all() if (me is None or me.is_admin) else []
-    return _page(request, "portal.html", party=p, rows=rows, parties=parties, period_text=period_text)
+    msgs = notify.messages_for_party(s, p.id, limit=30) if p else []
+    current_ = sorted([m for m in msgs if notify.is_current(m)], key=lambda m: (m.event_start or m.created_at))
+    history = [m for m in msgs if m not in current_ and not m.archived][:10]
+    return _page(request, "portal.html", party=p, rows=rows, parties=parties, period_text=period_text,
+                 current=current_, history=history, cats=notify.CATEGORIES, when=notify.when_text)
 
 
 def _portal_billing(request: Request, s: Session, bid: int, party: Optional[int]):
@@ -457,3 +461,92 @@ def push_test(request: Request, s: Session = Depends(get_session)):
         "title": "Test-Benachrichtigung", "body": "Benachrichtigungen der Nebenkostenabrechnung funktionieren ✅",
         "url": url, "tag": "test"})
     return {"ok": ok, "errors": errors}
+
+
+# --------------------------------------------------------------------------- Mitteilungen / Hinweise (Verwalter)
+def _dt(value) -> Optional[datetime]:
+    value = str(value or "").strip()
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+@router.get("/messages", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
+def messages_page(request: Request, edit: int = 0, s: Session = Depends(get_session)):
+    msgs = s.query(Message).order_by(Message.created_at.desc()).limit(100).all()
+    parties = s.query(Party).filter(Party.active.is_(True)).order_by(Party.sort, Party.id).all()
+    current_ = [m for m in msgs if notify.is_current(m)]
+    current_.sort(key=lambda m: (m.event_start or m.created_at))
+    m = s.get(Message, edit) if edit else None
+    return _page(request, "messages.html", msgs=msgs, current=current_, parties=parties, cats=notify.CATEGORIES,
+                 when=notify.when_text, is_current=notify.is_current, m=m, mail_ok=mailer.configured())
+
+
+@router.post("/messages", dependencies=[Depends(require_admin)])
+async def message_save(request: Request, s: Session = Depends(get_session)):
+    form = await request.form()
+    mid = int(form.get("id") or 0)
+    m = s.get(Message, mid) if mid else Message()
+    if m is None:
+        raise HTTPException(404)
+    title = str(form.get("title", "")).strip()
+    if not title:
+        return _redirect("/messages", "Bitte einen Titel eingeben.")
+    target = form.getlist("party_ids")
+    m.title, m.body = title, str(form.get("body", "")).strip()
+    m.category = str(form.get("category", "info")) if form.get("category") in notify.CATEGORIES else "info"
+    m.party_ids = [] if (not target or "all" in target) else sorted({int(x) for x in target if str(x).isdigit()})
+    m.pinned = bool(form.get("pinned"))
+    m.event_start, m.event_end, m.show_until = _dt(form.get("event_start")), _dt(form.get("event_end")), _dt(form.get("show_until"))
+    if m.event_start and m.event_end and m.event_end < m.event_start:
+        return _redirect("/messages" + (f"?edit={mid}" if mid else ""), "Ende liegt vor dem Beginn.")
+    remind = bool(form.get("remind")) and m.event_start is not None
+    if remind and not m.remind:
+        m.reminded_at = None
+    m.remind = remind
+    me = current(request)
+    m.sender = me.display if me else "Verwalter"
+    if not mid:
+        s.add(m)
+    s.commit()
+    msg = "Hinweis gespeichert"
+    if form.get("notify_now"):
+        st = notify.send_message(s, m, via_mail=bool(form.get("via_mail")))
+        msg += f" · Push an {st['push_ok']} von {st['push_devices']} Gerät(en)"
+        if form.get("via_mail"):
+            msg += f" · {st['mail_ok']} E-Mail(s)"
+            if st["mail_errors"]:
+                msg += f" ({len(st['mail_errors'])} fehlgeschlagen)"
+    return _redirect("/messages", msg)
+
+
+@router.post("/messages/{mid}/archive", dependencies=[Depends(require_admin)])
+def message_archive(mid: int, s: Session = Depends(get_session)):
+    m = s.get(Message, mid)
+    if m is None:
+        raise HTTPException(404)
+    m.archived = not m.archived
+    s.commit()
+    return _redirect("/messages", "Archiviert" if m.archived else "Wieder aktiv")
+
+
+@router.post("/messages/{mid}/delete", dependencies=[Depends(require_admin)])
+def message_delete(mid: int, s: Session = Depends(get_session)):
+    m = s.get(Message, mid)
+    if m is not None:
+        s.delete(m)
+        s.commit()
+    return _redirect("/messages", "Gelöscht")
+
+
+@router.post("/messages/{mid}/send", dependencies=[Depends(require_admin)])
+async def message_resend(request: Request, mid: int, s: Session = Depends(get_session)):
+    m = s.get(Message, mid)
+    if m is None:
+        raise HTTPException(404)
+    form = await request.form()
+    st = notify.send_message(s, m, via_mail=bool(form.get("via_mail")))
+    return _redirect("/messages", f"Erneut gesendet · Push an {st['push_ok']} von {st['push_devices']} Gerät(en)")

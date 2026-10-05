@@ -1,0 +1,14 @@
+{% macro notice(m, cats, when, admin=false) %}
+{% set c = cats.get(m.category, cats['info']) %}
+<div class="notice" id="m{{ m.id }}" style="--nc:{{ c[2] }};--nbg:{{ c[3] }}">
+  <div class="notice-head">
+    <span class="notice-cat">{{ c[1] }} {{ c[0] }}</span>
+    {% if m.pinned %}<span class="notice-pin" title="dauerhaft angezeigt">📌</span>{% endif %}
+  </div>
+  <div class="notice-title">{{ m.title }}</div>
+  {% if m.event_start %}<div class="notice-when">🕒 {{ when(m) }}</div>{% endif %}
+  {% if m.body %}<div class="notice-body">{{ m.body }}</div>{% endif %}
+  <div class="notice-meta">{{ m.created_at.strftime('%d.%m.%Y') }}{% if m.sender %} · {{ m.sender }}{% endif %}
+    {% if admin %} · {{ "alle Parteien" if not m.party_ids else (m.stats.parties|join(", ") if m.stats and m.stats.parties else m.party_ids|length ~ " Partei(en)") }}{% endif %}</div>
+</div>
+{% endmacro %}

@@ -14,5 +14,5 @@
   <p class="muted">Nach einer Passwortänderung werden alle anderen Sitzungen abgemeldet.</p>
 </form>
 {% set me_ = request.state.user %}
-{% with push_text = ("Benachrichtigung auf diesem Gerät, sobald eine neue Abrechnung für dich veröffentlicht wird." if me_ and not me_.is_admin else "Benachrichtigung auf diesem Gerät, sobald eine neue Stromrechnung eingegangen ist.") %}{% include "_push.html" %}{% endwith %}
+{% with push_text = ("Benachrichtigung auf diesem Gerät, bei neuen Abrechnungen und Mitteilungen der Hausverwaltung (z. B. geplante Wasserabschaltung)." if me_ and not me_.is_admin else "Benachrichtigung auf diesem Gerät, sobald eine neue Stromrechnung eingegangen ist.") %}{% include "_push.html" %}{% endwith %}
 {% endblock %}

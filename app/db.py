@@ -76,6 +76,27 @@ class PushSubscription(Base):
     failures: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class Message(Base):
+    """Mitteilung des Verwalters an alle Parteien (Broadcast) oder ausgewählte Parteien (Unicast)."""
+
+    __tablename__ = "messages"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text, default="")
+    party_ids: Mapped[list] = mapped_column(JSON, default=list)  # leer = alle Parteien
+    sender: Mapped[str] = mapped_column(String(100), default="")
+    stats: Mapped[dict] = mapped_column(JSON, default=dict)  # Zustellung: Push-Geräte, E-Mails
+    category: Mapped[str] = mapped_column(String(20), default="info")  # info | termin | wartung | abschaltung | ok
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)  # dauerhaft oben anzeigen
+    event_start: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)  # geplantes Ereignis
+    event_end: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    show_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    remind: Mapped[bool] = mapped_column(Boolean, default=False)  # Erinnerung am Vortag
+    reminded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class FixedCost(Base):
     """Weitere Fixkosten je Abrechnung, z. B. IPTV-Bereitstellung."""
 
@@ -209,7 +230,7 @@ def _add_missing_columns() -> None:
                 elif isinstance(default, str):
                     literal = "'" + default.replace("'", "''") + "'"
                 elif isinstance(col.type, JSON):
-                    literal = "'{}'" if col.name in ("sent", "values", "amounts", "result", "key", "import_info", "values_meta") else "'[]'"
+                    literal = "'{}'" if col.name in ("sent", "values", "amounts", "result", "key", "import_info", "values_meta", "stats") else "'[]'"
                 else:
                     literal = "NULL"
                 coltype = col.type.compile(engine.dialect)

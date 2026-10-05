@@ -169,6 +169,14 @@ Fehler (Versand, Postfach, WhatsApp) und optional WhatsApp zugestellt/gelesen. E
 (Ende-zu-Ende verschlüsselt, VAPID-Schlüssel erzeugt die App selbst – kein Firebase-Konto nötig, optional fester
 Schlüssel über `VAPID_PRIVATE_KEY`). Voraussetzung: HTTPS; auf dem iPhone nur in der installierten App (iOS 16.4+).
 
+### Mitteilungen & Hinweise (Broadcast / Unicast)
+
+Menü **Mitteilungen**: Nachricht an **alle Parteien** oder **ausgewählte Parteien** – per Push, optional zusätzlich per
+E-Mail. Farbige Kategorien: ℹ️ Information, 📅 Termin, 🔧 Wartung / geplante Arbeiten, ⛔ Abschaltung, ✅ Erledigt.
+**Geplante Ereignisse** (Beginn/Ende) stehen im Mieterportal oben, bis sie vorbei sind (oder bis „Anzeigen bis“);
+📌 angeheftete Hinweise bleiben dauerhaft bis zum Archivieren. Optional **Erinnerung am Vortag** per Push.
+Mitteilungen ohne Datum erscheinen im Verlauf.
+
 ## Entwicklung
 
 ```bash

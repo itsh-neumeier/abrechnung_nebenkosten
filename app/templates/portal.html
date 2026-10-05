@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Meine Abrechnungen{% endblock %}
+{% from "_notice.html" import notice %}
 {% block content %}
 {% set me = request.state.user %}
 <h1>{{ "Meine Abrechnungen" if me and not me.is_admin else "Mieterportal – Vorschau" }}</h1>
@@ -10,6 +11,11 @@
     {% for p in parties %}<option value="{{ p.id }}" {% if party and party.id == p.id %}selected{% endif %}>{{ p.name }}{% if not p.portal %} (Portal nicht freigegeben){% endif %}</option>{% endfor %}
   </select>
 </form>
+{% endif %}
+{% if party and current %}
+<div class="notices" id="mitteilungen">
+{% for x in current %}{{ notice(x, cats, when) }}{% endfor %}
+</div>
 {% endif %}
 {% if party %}
 <div class="card scroll">
@@ -33,7 +39,17 @@
   <p class="muted">Noch keine veröffentlichten Abrechnungen.</p>
   {% endif %}
 </div>
-{% if me and not me.is_admin and party.portal %}{% with push_text = "Benachrichtigung auf diesem Gerät, sobald eine neue Abrechnung für dich veröffentlicht wird." %}{% include "_push.html" %}{% endwith %}{% endif %}
+{% if history %}
+<div class="card">
+  <h2 style="margin-top:0">Mitteilungen</h2>
+  {% for x in history %}{% set c = cats.get(x.category, cats['info']) %}
+  <div class="msg-row" id="m{{ x.id }}"><span class="cat-dot" style="background:{{ c[2] }}"></span>
+    <b>{{ x.title }}</b> <span class="muted">· {{ x.created_at.strftime('%d.%m.%Y') }}</span>
+    {% if x.body %}<div class="muted msg-text">{{ x.body }}</div>{% endif %}</div>
+  {% endfor %}
+</div>
+{% endif %}
+{% if me and not me.is_admin and party.portal %}{% with push_text = "Benachrichtigung auf diesem Gerät, bei neuen Abrechnungen und Mitteilungen der Hausverwaltung (z. B. geplante Wasserabschaltung)." %}{% include "_push.html" %}{% endwith %}{% endif %}
 {% elif me and not me.is_admin %}
 <div class="warn">Dein Zugang ist keiner Partei zugeordnet – bitte an die Hausverwaltung wenden.</div>
 {% endif %}

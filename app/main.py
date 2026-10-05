@@ -27,6 +27,18 @@ from .ha import HAClient
 from .render import BASE, invoice_html, invoice_pdf, parse_float, party_result, pdf_name, templates
 
 
+async def reminder_loop() -> None:
+    """Erinnerungen für geplante Ereignisse (Vortag) – alle 15 Minuten prüfen."""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            with SessionLocal() as s:
+                await asyncio.to_thread(notify.send_reminders, s)
+        except Exception:  # noqa: BLE001
+            pass
+        await asyncio.sleep(14 * 60)
+
+
 @asynccontextmanager
 async def lifespan(_app):
     init_db()
@@ -38,6 +50,7 @@ async def lifespan(_app):
         tasks.append(asyncio.create_task(mailbox.poll_forever()))
     if config.victron_logger:
         tasks.append(asyncio.create_task(victron.logger.run_forever()))
+    tasks.append(asyncio.create_task(reminder_loop()))
     yield
     for t in tasks:
         t.cancel()

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "_notice.html" import notice %}
+{% block title %}Mitteilungen{% endblock %}
+{% block content %}
+<h1>Mitteilungen &amp; Hinweise</h1>
+
+<form method="post" action="/messages" class="card">
+  <h2 style="margin-top:0">{{ "Hinweis bearbeiten" if m else "Neue Mitteilung" }}</h2>
+  {% if m %}<input type="hidden" name="id" value="{{ m.id }}">{% endif %}
+  <div class="grid">
+    <div><label>Kategorie</label><select name="category">
+      {% for k, c in cats.items() %}<option value="{{ k }}" {% if (m.category if m else 'info') == k %}selected{% endif %}>{{ c[1] }} {{ c[0] }}</option>{% endfor %}
+    </select></div>
+    <div><label>An</label><select name="party_ids" multiple size="{{ [parties|length + 1, 5]|min }}">
+      <option value="all" {% if not m or not m.party_ids %}selected{% endif %}>Alle Parteien (Broadcast)</option>
+      {% for p in parties %}<option value="{{ p.id }}" {% if m and p.id in m.party_ids %}selected{% endif %}>{{ p.name }}{% if p.unit_id %} ({{ p.unit_id }}){% endif %}</option>{% endfor %}
+    </select><p class="hint muted">Strg/⌘ bzw. lange tippen für mehrere Parteien.</p></div>
+  </div>
+  <label>Titel</label><input type="text" name="title" required maxlength="200" value="{{ m.title if m else '' }}" placeholder="z. B. Wasser wird abgestellt">
+  <label>Text</label><textarea name="body" rows="4" placeholder="z. B. Wegen Arbeiten am Hausanschluss ist das Wasser abgestellt.">{{ m.body if m else '' }}</textarea>
+  <div class="grid">
+    <div><label>Geplantes Ereignis – Beginn (optional)</label><input type="datetime-local" name="event_start" value="{{ m.event_start.strftime('%Y-%m-%dT%H:%M') if m and m.event_start else '' }}"></div>
+    <div><label>Ende (optional)</label><input type="datetime-local" name="event_end" value="{{ m.event_end.strftime('%Y-%m-%dT%H:%M') if m and m.event_end else '' }}"></div>
+    <div><label>Anzeigen bis (optional)</label><input type="datetime-local" name="show_until" value="{{ m.show_until.strftime('%Y-%m-%dT%H:%M') if m and m.show_until else '' }}"></div>
+  </div>
+  <div class="check"><input type="checkbox" name="pinned" id="pin" {% if m and m.pinned %}checked{% endif %}><label for="pin" style="margin:0">📌 Dauerhaft oben im Mieterportal anzeigen (bis „Anzeigen bis“ bzw. Archivieren)</label></div>
+  <div class="check"><input type="checkbox" name="remind" id="rem" {% if not m or m.remind %}checked{% endif %}><label for="rem" style="margin:0">🔔 Erinnerung am Vortag (nur mit Beginn)</label></div>
+  <div class="check"><input type="checkbox" name="notify_now" id="now" {% if not m %}checked{% endif %}><label for="now" style="margin:0">Jetzt per Push benachrichtigen</label></div>
+  <div class="check"><input type="checkbox" name="via_mail" id="vm" {% if not mail_ok %}disabled{% endif %}><label for="vm" style="margin:0">zusätzlich per E-Mail an die Parteien{% if not mail_ok %} (SMTP nicht eingerichtet){% endif %}</label></div>
+  <p class="muted">Geplante Ereignisse bleiben oben stehen, bis sie vorbei sind; ohne Datum und ohne 📌 erscheint die Mitteilung nur im Verlauf.</p>
+  <button>{{ "Speichern" if m else "Veröffentlichen" }}</button>
+  {% if m %}<a class="btn sec" href="/messages">Abbrechen</a>{% endif %}
+</form>
+
+<h2>Aktuell im Mieterportal</h2>
+{% if current %}
+<div class="notices">
+{% for x in current %}{{ notice(x, cats, when, admin=true) }}{% endfor %}
+</div>
+{% else %}<p class="muted">Keine aktuellen Hinweise.</p>{% endif %}
+
+<h2>Alle Mitteilungen</h2>
+<div class="card scroll">
+<table>
+<tr><th>Datum</th><th>Art</th><th>Titel</th><th>An</th><th>Zustellung</th><th>Status</th><th></th></tr>
+{% for x in msgs %}{% set c = cats.get(x.category, cats['info']) %}
+<tr>
+  <td>{{ x.created_at.strftime('%d.%m.%Y') }}</td>
+  <td><span class="cat-dot" style="background:{{ c[2] }}"></span>{{ c[0] }}</td>
+  <td><b>{{ x.title }}</b>{% if x.event_start %}<br><span class="muted">🕒 {{ when(x) }}</span>{% endif %}</td>
+  <td>{{ "alle" if not x.party_ids else (x.stats.parties|join(", ") if x.stats and x.stats.parties else x.party_ids|length ~ " Partei(en)") }}</td>
+  <td class="muted">{% if x.stats %}🔔 {{ x.stats.push_ok }}/{{ x.stats.push_devices }}{% if x.stats.mail_ok %} · ✉️ {{ x.stats.mail_ok }}{% endif %}{% else %}–{% endif %}
+    {% if x.reminded_at %}<br>Erinnerung {{ x.reminded_at.strftime('%d.%m. %H:%M') }}{% endif %}</td>
+  <td>{% if x.archived %}<span class="badge">archiviert</span>{% elif is_current(x) %}<span class="badge final">aktuell</span>{% else %}Verlauf{% endif %}</td>
+  <td class="r">
+    <a href="/messages?edit={{ x.id }}">Bearbeiten</a>
+    <form method="post" action="/messages/{{ x.id }}/send" style="display:inline"><button class="sec pick-btn">erneut senden</button></form>
+    <form method="post" action="/messages/{{ x.id }}/archive" style="display:inline"><button class="sec pick-btn">{{ "aktivieren" if x.archived else "archivieren" }}</button></form>
+    <form method="post" action="/messages/{{ x.id }}/delete" style="display:inline" onsubmit="return confirm('Mitteilung löschen?')"><button class="danger pick-btn">löschen</button></form>
+  </td>
+</tr>
+{% else %}<tr><td colspan="7" class="muted">Noch keine Mitteilungen.</td></tr>{% endfor %}
+</table>
+</div>
+{% endblock %}
