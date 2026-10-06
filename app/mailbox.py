@@ -20,7 +20,7 @@ from . import invoice_import, service
 from .config import config
 from email.message import EmailMessage
 
-from .db import Billing, SessionLocal, get_settings
+from .db import Billing, IgnoredInvoice, SessionLocal, get_settings
 
 log = logging.getLogger("mailbox")
 status: dict = {"last_run": None, "last_result": "", "running": False}
@@ -119,6 +119,7 @@ async def check_mailbox() -> str:
             patterns = sender_patterns(st)
             forwarded = bool(st.get("imap_forwarded"))
             known = {m for (m,) in s.query(Billing.mail_message_id).all() if m}
+            known |= {m for (m,) in s.query(IgnoredInvoice.message_id).all() if m}  # gelöscht → nicht neu laden
             for raw in raws:
                 msg = invoice_import.parse_email(raw)
                 mid = str(msg.get("Message-ID", ""))
@@ -131,7 +132,7 @@ async def check_mailbox() -> str:
                 for name, pdf in invoice_import.pdf_attachments(msg):
                     try:
                         b, text = await service.import_invoice(s, pdf, name, mid, source=f"E-Mail „{msg['Subject']}“")
-                        if b is not None and b.mail_message_id == mid:
+                        if b is None or b.mail_message_id == mid:  # neu importiert bzw. gesperrt
                             results.append(text)
                     except invoice_import.ImportError_ as e:
                         results.append(f"{name}: {e}")

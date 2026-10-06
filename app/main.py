@@ -21,8 +21,8 @@ from sqlalchemy.orm import Session
 
 from . import accounts, auth, branding, invoice_import, mailbox, mailer, notify, service, victron, vrm, wa_cloud, whatsapp
 from .config import config
-from .db import (Allocation, Billing, FixedCost, Party, SessionLocal, get_session, get_settings, init_db,
-                 save_settings)
+from .db import (Allocation, Billing, FixedCost, IgnoredInvoice, Party, SessionLocal, get_session, get_settings,
+                 init_db, save_settings)
 from .ha import HAClient
 from .render import BASE, invoice_html, invoice_pdf, parse_float, party_result, pdf_name, templates
 
@@ -203,6 +203,31 @@ def index(request: Request, s: Session = Depends(get_session)):
                   senders=mailbox.sender_patterns(st), forwarded=bool(st["imap_forwarded"]))
 
 
+@app.post("/admin/billings/delete")
+async def billings_bulk_delete(request: Request, s: Session = Depends(get_session)):
+    """Mehrere Entwürfe auf einmal löschen (abgeschlossene Abrechnungen bleiben unangetastet)."""
+    form = await request.form()
+    ids = [int(x) for x in form.getlist("ids") if str(x).isdigit()]
+    n = blocked = 0
+    for b in s.query(Billing).filter(Billing.id.in_(ids), Billing.status != "final").all() if ids else []:
+        blocked += service.delete_billing(s, b)
+        n += 1
+    if not n:
+        return redirect("/admin", "Keine Entwürfe ausgewählt.")
+    return redirect("/admin", f"{n} Entwurf/Entwürfe gelöscht" + (f" · {blocked} für den Postfach-Abruf gesperrt" if blocked else ""))
+
+
+@app.post("/admin/mailbox/unignore/{iid}")
+def mailbox_unignore(iid: int, s: Session = Depends(get_session)):
+    from .db import IgnoredInvoice
+
+    row = s.get(IgnoredInvoice, iid)
+    if row is not None:
+        s.delete(row)
+        s.commit()
+    return redirect("/admin/settings#eingang", "Wieder zugelassen – wird beim nächsten Postfach-Abruf erneut importiert.")
+
+
 @app.post("/admin/mailbox/check")
 async def mailbox_check():
     return redirect("/admin", await mailbox.check_mailbox())
@@ -234,7 +259,8 @@ def settings_page(request: Request, s: Session = Depends(get_session)):
                   ha_token_set=bool(config.ha_token), house_entities=service.HOUSE_ENTITIES,
                   victron=service.VICTRON_HINTS,
                   smtp=config, mail_ok=mailer.configured(), imap_ok=mailbox.configured(),
-                  vrm_ok=vrm.configured(), vrm_mix=vrm.MIX_FIELDS)
+                  vrm_ok=vrm.configured(), vrm_mix=vrm.MIX_FIELDS,
+                  ignored=s.query(IgnoredInvoice).order_by(IgnoredInvoice.created_at.desc()).all())
 
 
 @app.post("/admin/settings")
@@ -782,9 +808,9 @@ async def billing_save(request: Request, bid: int, s: Session = Depends(get_sess
     st = get_settings(s)
 
     if action == "delete":
-        s.delete(b)
-        s.commit()
-        return redirect("/admin", "Abrechnung gelöscht")
+        blocked = service.delete_billing(s, b, block_reimport=not form.get("allow_reimport"))
+        return redirect("/admin", "Abrechnung gelöscht" + (" · wird beim Postfach-Abruf nicht erneut importiert"
+                                                           if blocked else ""))
     if action == "reopen":
         b.status = "draft"
         s.commit()

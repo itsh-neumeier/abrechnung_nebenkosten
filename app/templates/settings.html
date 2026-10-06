@@ -231,6 +231,16 @@
   <button class="sec" formaction="/admin/settings/testmail" {% if not mail_ok %}disabled title="SMTP nicht eingerichtet"{% endif %}
           onclick="this.form.test_to.value = this.form.notify_email.value || this.form.test_to.value">Test-Hinweis-Mail senden</button>
   <p class="muted">„Postfach testen“ nutzt die Absender oben auch ungespeichert und importiert nichts.</p>
+  {% if ignored %}
+  <h3>Gesperrt (gelöscht – wird nicht erneut importiert)</h3>
+  <table>
+  {% for x in ignored %}
+  <tr><td>{{ x.title }}{% if x.invoice_no %} <span class="muted">· Nr. {{ x.invoice_no }}</span>{% endif %}</td>
+    <td class="muted">gelöscht {{ x.created_at.strftime('%d.%m.%Y') }}</td>
+    <td class="r"><button class="sec pick-btn" formaction="/admin/mailbox/unignore/{{ x.id }}">wieder zulassen</button></td></tr>
+  {% endfor %}
+  </table>
+  {% endif %}
 </div>
 <button>Speichern</button>
 </form>

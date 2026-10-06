@@ -267,3 +267,63 @@ def test_sender_matching_and_forwarded_mails():
     assert not mailbox.matches(spam, ["awattar.de", "ich@hauptmail.de"])[0]
     assert mailbox.matches(spam, [])[0]  # keine Absender eingetragen = alle
     assert mailbox.sender_patterns({"imap_senders": " awattar.de; Ich@Hauptmail.de "}) == ["awattar.de", "ich@hauptmail.de"]
+
+
+def test_deleted_mail_drafts_are_not_reimported(monkeypatch):
+    """Gelöschte Entwürfe aus dem Postfach landen auf der Sperrliste und kommen nicht wieder."""
+    import asyncio
+
+    from fastapi.testclient import TestClient
+
+    from app import mailbox
+    from app.db import Billing, IgnoredInvoice, SessionLocal
+    from app.main import app
+
+    raw = make_eml(make_pdf(), "<del-1@awattar.de>")
+
+    class FakeIMAP:
+        def __init__(self, *a):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def login(self, *a):
+            pass
+
+        def select(self, folder, readonly=False):
+            pass
+
+        def uid(self, cmd, *args):
+            return ("OK", [b"1"]) if cmd == "SEARCH" else ("OK", [(b"1 (BODY[] {1}", raw), b")"])
+
+    monkeypatch.setattr(imaplib, "IMAP4_SSL", FakeIMAP)
+    monkeypatch.setattr(mailbox, "configured", lambda: True)
+    with TestClient(app) as c:
+        c.post("/admin/settings", data={"import_mode": "review"})
+        assert "2026000001" in asyncio.run(mailbox.check_mailbox())
+        with SessionLocal() as s:
+            bid = s.query(Billing).one().id
+        r = c.post("/admin/billings/delete", data={"ids": [str(bid)]})
+        assert "1 Entwurf/Entwürfe gelöscht · 1 für den Postfach-Abruf gesperrt" in r.text
+        assert "Keine neuen Rechnungen" in asyncio.run(mailbox.check_mailbox())
+        with SessionLocal() as s:
+            assert s.query(Billing).count() == 0
+            iid = s.query(IgnoredInvoice).one().id
+        # auch unter neuer Message-ID (z. B. erneut weitergeleitet): Rechnungsnummer ist gesperrt
+        raw = make_eml(make_pdf(), "<del-2@weiter.de>")
+        assert "gesperrt" in asyncio.run(mailbox.check_mailbox())
+        page = c.get("/admin/settings").text
+        assert "wird nicht erneut importiert" in page and "Nr. 2026000001" in page
+        # manueller Upload bleibt möglich; wieder zulassen → Abruf importiert erneut
+        c.post(f"/admin/mailbox/unignore/{iid}")
+        assert "importiert" in asyncio.run(mailbox.check_mailbox())
+        with SessionLocal() as s:
+            b = s.query(Billing).one()
+        # Löschen mit „erneut importieren erlauben“ sperrt nicht
+        c.post(f"/admin/billings/{b.id}", data={"action": "delete", "allow_reimport": "1"})
+        with SessionLocal() as s:
+            assert s.query(IgnoredInvoice).count() == 0

@@ -160,7 +160,10 @@
 {% else %}
   <button class="sec" name="action" value="reopen">Wieder öffnen</button>
 {% endif %}
-  <button class="danger" name="action" value="delete" onclick="return confirm('Abrechnung löschen?')">Löschen</button>
+  <button class="danger" name="action" value="delete" onclick="return confirm('Abrechnung löschen?{% if b.mail_message_id or b.invoice_no %} Die Rechnung wird beim Postfach-Abruf nicht erneut importiert.{% endif %}')">Löschen</button>
+  {% if b.mail_message_id or b.invoice_no %}
+  <div class="check"><input type="checkbox" name="allow_reimport" id="ari"><label for="ari" style="margin:0" class="muted">beim Löschen erneuten Import aus dem Postfach erlauben (z. B. um neu einzulesen)</label></div>
+  {% endif %}
 </div>
 </form>
 {% endblock %}

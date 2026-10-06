@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from . import billing as calc
 from . import invoice_import, mailer, notify, render, victron, vrm, wa_cloud, whatsapp
 from .config import config
-from .db import Allocation, Billing, FixedCost, Party, get_settings
+from .db import Allocation, Billing, FixedCost, IgnoredInvoice, Party, get_settings
 from .ha import HAClient, HAError
 
 # Einstellungs-Schlüssel der Haus-Entitäten und ihre Rolle
@@ -532,6 +532,26 @@ def invoice_dir() -> Path:
     return d
 
 
+def delete_billing(s: Session, b: Billing, block_reimport: bool = True) -> bool:
+    """Abrechnung löschen; stammt sie aus dem Postfach, wird die Mail/Rechnungsnummer gesperrt, damit der
+    nächste Abruf sie nicht wieder anlegt. Ergebnis: ob gesperrt wurde."""
+    blocked = False
+    if block_reimport and (b.mail_message_id or b.invoice_no):
+        s.add(IgnoredInvoice(message_id=b.mail_message_id or "", invoice_no=b.invoice_no or "",
+                             title=b.title or f"{b.period_start:%m/%Y}"))
+        blocked = True
+    s.delete(b)
+    s.commit()
+    return blocked
+
+
+def is_ignored(s: Session, message_id: str = "", invoice_no: str = "") -> bool:
+    q = s.query(IgnoredInvoice)
+    if message_id and q.filter(IgnoredInvoice.message_id == message_id).first():
+        return True
+    return bool(invoice_no and q.filter(IgnoredInvoice.invoice_no == invoice_no).first())
+
+
 def find_duplicate(s: Session, inv: invoice_import.ParsedInvoice, message_id: str = "") -> Billing | None:
     q = s.query(Billing)
     if inv.invoice_no:
@@ -579,6 +599,8 @@ async def import_invoice(s: Session, pdf: bytes, filename: str, message_id: str 
     je nach Einstellung „import_mode“ als Entwurf belassen oder automatisch abschließen
     und versenden, anschließend benachrichtigen."""
     inv = invoice_import.parse_pdf(pdf)
+    if source != "Upload" and is_ignored(s, message_id, inv.invoice_no):
+        return None, f"Rechnung {inv.invoice_no or filename} wurde gelöscht und ist für den Abruf gesperrt."
     dup = find_duplicate(s, inv, message_id)
     if dup:
         return dup, f"Rechnung {inv.invoice_no or filename} ist bereits erfasst."

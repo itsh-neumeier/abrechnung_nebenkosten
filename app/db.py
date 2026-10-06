@@ -61,6 +61,17 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 
+class IgnoredInvoice(Base):
+    """Gelöschte Rechnung aus dem Postfach – wird beim Abruf nicht erneut importiert."""
+
+    __tablename__ = "ignored_invoices"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    message_id: Mapped[str] = mapped_column(String(255), default="", index=True)
+    invoice_no: Mapped[str] = mapped_column(String(100), default="", index=True)
+    title: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
 class PushSubscription(Base):
     """Web-Push-Abo eines Geräts (PWA/Browser) für einen Benutzer."""
 

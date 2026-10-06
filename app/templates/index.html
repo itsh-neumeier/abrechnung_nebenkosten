@@ -20,21 +20,27 @@
   {% endif %}
   <a class="btn" href="/admin/billings/new">+ Rechnung hochladen / erfassen</a>
 </div>
-<div class="card scroll" style="margin-top:12px">
+<form method="post" action="/admin/billings/delete" class="card scroll" style="margin-top:12px" id="billing-list">
 <table>
-<tr><th>Zeitraum</th><th>Titel</th><th class="r">Ø Preis brutto</th><th class="r">Rechnung</th><th class="r">Umgelegt</th><th>Status</th></tr>
+<tr><th style="width:28px"></th><th>Zeitraum</th><th>Titel</th><th class="r">Ø Preis brutto</th><th class="r">Rechnung</th><th class="r">Umgelegt</th><th>Status</th></tr>
 {% for b in billings %}
 <tr>
+  <td>{% if b.status != 'final' %}<input type="checkbox" name="ids" value="{{ b.id }}" aria-label="Entwurf auswählen">{% endif %}</td>
   <td><a href="/admin/billings/{{ b.id }}">{{ b.period_start|de_date }} – {{ b.period_end|de_date }}</a></td>
-  <td>{{ b.title }}</td>
+  <td>{{ b.title }}{% if b.mail_message_id %} <span class="muted" title="aus dem Postfach">✉️</span>{% endif %}</td>
   <td class="r">{% if b.result.price_gross %}{{ (b.result.price_gross*100)|num(2) }} ct{% endif %}</td>
   <td class="r">{{ b.result.bill_gross|eur }}</td>
   <td class="r">{{ b.result.charged_total|eur }}</td>
   <td>{% if b.status == 'final' %}<span class="badge final">abgeschlossen</span>{% else %}<span class="badge">Entwurf</span>{% endif %}</td>
 </tr>
 {% else %}
-<tr><td colspan="6" class="muted">Noch keine Abrechnungen.</td></tr>
+<tr><td colspan="7" class="muted">Noch keine Abrechnungen.</td></tr>
 {% endfor %}
 </table>
-</div>
+{% if billings|selectattr('status', 'ne', 'final')|list %}
+<button class="danger" onclick="return confirm('Ausgewählte Entwürfe löschen? Rechnungen aus dem Postfach werden danach nicht erneut importiert.')">Ausgewählte Entwürfe löschen</button>
+<span class="muted">Abgeschlossene Abrechnungen bleiben unangetastet. Gelöschte Rechnungen aus dem Postfach werden gesperrt
+(wieder zulassen unter <a href="/admin/settings#eingang">Einstellungen → Rechnungseingang</a>).</span>
+{% endif %}
+</form>
 {% endblock %}
