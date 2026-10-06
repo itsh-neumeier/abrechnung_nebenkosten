@@ -26,9 +26,9 @@
 
   <h2>Foto des Standorts</h2>
   <div class="photo-row">
-    {% if b.photo %}<img class="avatar avatar-xl" id="crop-current" src="/photo/building/{{ b.id }}.jpg?v={{ b.photo_updated.timestamp()|int if b.photo_updated else 0 }}" alt="Aktuelles Foto">
+    {% if b.photo %}<img class="avatar avatar-xl" width="120" height="120" style="border-radius:50%;object-fit:cover" id="crop-current" src="/photo/building/{{ b.id }}.jpg?v={{ b.photo_updated.timestamp()|int if b.photo_updated else 0 }}" alt="Aktuelles Foto">
     {% else %}<span class="avatar avatar-xl avatar-empty">🏠</span>{% endif %}
-    <img class="avatar avatar-xl" id="crop-preview" alt="Neues Foto" hidden>
+    <img class="avatar avatar-xl" width="120" height="120" style="border-radius:50%;object-fit:cover" id="crop-preview" alt="Neues Foto" hidden>
   </div>
   <div id="cropper">
     <label>Neues Foto wählen und zuschneiden</label>
@@ -45,5 +45,5 @@
   <a class="btn sec" href="/admin/buildings">Zurück</a>
   {% if is_super and bid %}<button class="danger" name="delete" value="1" onclick="return confirm('Gebäude löschen?')">Löschen</button>{% endif %}
 </form>
-<script src="/static/crop.js" defer></script>
+<script src="/static/crop.js?v={{ app_version }}" defer></script>
 {% endblock %}

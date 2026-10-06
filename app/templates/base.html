@@ -15,7 +15,7 @@
 <meta name="apple-mobile-web-app-title" content="{{ brand_name }}">
 <meta name="application-name" content="{{ brand_name }}">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v={{ app_version }}">
 </head>
 <body>
 {% set me = request.state.user if request.state is defined else none %}
@@ -57,7 +57,7 @@
 {% block content %}{% endblock %}
 </main>
 <footer class="ver">Version {{ app_version }}</footer>
-<script src="/static/picker.js" defer></script>
-<script src="/static/app.js" defer></script>
+<script src="/static/picker.js?v={{ app_version }}" defer></script>
+<script src="/static/app.js?v={{ app_version }}" defer></script>
 </body>
 </html>

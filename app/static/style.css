@@ -171,6 +171,6 @@ header.area-home{border-top:3px solid #16a34a}
 .crop-area{display:none;max-width:320px}
 #cropper.has-image .crop-area{display:block}
 .crop-area canvas{width:100%;max-width:320px;aspect-ratio:1;border-radius:12px;background:#111;touch-action:none;cursor:grab}
-.home-hero{display:flex;gap:16px;align-items:center}
-.home-hero .avatar{width:84px;height:84px;font-size:2.4rem;border-width:3px;border-color:var(--accent)}
+.home-hero{display:flex;gap:14px;align-items:center}
+.home-hero .avatar{width:64px;height:64px;font-size:1.8rem;border:2px solid var(--card,#fff);box-shadow:0 0 0 1px var(--line),0 2px 6px rgba(0,0,0,.08)}
 .home-hero h2{margin:0 0 2px}

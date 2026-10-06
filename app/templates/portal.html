@@ -13,7 +13,7 @@
 {% endif %}
 {% if party %}
 <div class="card home-hero">
-  {% if bld and bld.photo %}<img class="avatar" src="/photo/building/{{ bld.id }}.jpg?v={{ bld.photo_updated.timestamp()|int if bld.photo_updated else 0 }}" alt="">
+  {% if bld and bld.photo %}<img class="avatar" width="64" height="64" style="border-radius:50%;object-fit:cover" src="/photo/building/{{ bld.id }}.jpg?v={{ bld.photo_updated.timestamp()|int if bld.photo_updated else 0 }}" alt="">
   {% else %}<span class="avatar avatar-empty">🏠</span>{% endif %}
   <div>
     <h2>{{ bld.name if bld and bld.name else party.name }}</h2>

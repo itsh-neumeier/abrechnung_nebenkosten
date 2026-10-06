@@ -3,11 +3,11 @@
    niemals Abrechnungen oder andere persönliche Daten. */
 const VERSION = "__VERSION__";
 const CACHE = "nk-static-" + VERSION;
-const PRECACHE = ["/offline", "/static/style.css", "/static/picker.js", "/static/favicon.svg",
+const PRECACHE = ["/offline", "/static/style.css?v=" + VERSION, "/static/picker.js?v=" + VERSION, "/static/favicon.svg",
                   "/static/icon-192.png", "/static/icon-512.png"];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(PRECACHE.map((u) => new Request(u, { cache: "reload" })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {
@@ -28,7 +28,7 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(fetch(req).catch(() => caches.match("/offline")));
     return;
   }
-  if (url.pathname.startsWith("/static/")) {  // statische Dateien: Cache, im Hintergrund aktualisieren
+  if (url.pathname.startsWith("/static/")) {  // statische Dateien (URL mit ?v=Version): Cache, im Hintergrund aktualisieren
     event.respondWith(
       caches.open(CACHE).then((cache) =>
         cache.match(req).then((hit) => {

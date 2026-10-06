@@ -6,7 +6,7 @@
 <div class="building-grid">
 {% for b in buildings %}
   <a class="card building-card" href="/admin/buildings/{{ b.id }}">
-    {% if b.photo %}<img class="avatar avatar-lg" src="/photo/building/{{ b.id }}.jpg?v={{ b.photo_updated.timestamp()|int if b.photo_updated else 0 }}" alt="">
+    {% if b.photo %}<img class="avatar avatar-lg" width="64" height="64" style="border-radius:50%;object-fit:cover" src="/photo/building/{{ b.id }}.jpg?v={{ b.photo_updated.timestamp()|int if b.photo_updated else 0 }}" alt="">
     {% else %}<span class="avatar avatar-lg avatar-empty">🏠</span>{% endif %}
     <span>
       <b>{{ b.name or 'Gebäude' }}</b>{% if not b.active %} <span class="badge">inaktiv</span>{% endif %}<br>
