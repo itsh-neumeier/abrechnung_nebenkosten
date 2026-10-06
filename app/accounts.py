@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import quote
@@ -76,7 +77,7 @@ async def login(request: Request, s: Session = Depends(get_session)):
         auth.login_throttle.clear(k)
     u.last_login = datetime.now()
     s.commit()
-    days = 30 if form.get("remember") else 0.5
+    days = auth.REMEMBER_DAYS if form.get("remember") else 0.5
     if u.role != "admin" and (nxt.startswith("/admin") or nxt.startswith("/api/")):
         nxt = "/"  # Mieter: immer „Mein Zuhause“
     elif u.role == "admin" and nxt == "/" and not form.get("next"):
@@ -241,8 +242,11 @@ async def account_save(request: Request, s: Session = Depends(get_session)):
         msg = "Passwort geändert"
     s.commit()
     resp = _redirect("/account", msg)
-    if new:  # Sitzungsversion hat sich geändert → Cookie erneuern
-        _set_cookie(resp, request, auth.make_cookie(s, u, 0.5), 0.5)
+    if new:  # Sitzungsversion hat sich geändert → Cookie erneuern (Dauer-Login bleibt erhalten)
+        old = request.cookies.get(auth.COOKIE, "")
+        exp = auth.cookie_expiry(old) or 0
+        days = auth.REMEMBER_DAYS if exp - time.time() > 2 * 86400 else 0.5
+        _set_cookie(resp, request, auth.make_cookie(s, u, days), days)
     return resp
 
 

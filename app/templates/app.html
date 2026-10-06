@@ -15,7 +15,10 @@
   <h2 style="margin-top:0">Status auf diesem Gerät</h2>
   <ul class="status-list">
     <li id="st-standalone">…</li>
-    <li id="st-secure">{{ "✔ Sichere Verbindung (HTTPS)" if https else "✘ Keine sichere Verbindung (HTTP) – Installation als App nicht möglich, siehe unten" }}</li>
+    {% set is_admin_view = request.state.brand and request.state.brand.kind == 'admin' %}
+    {% if https %}<li id="st-secure">✔ Sichere Verbindung</li>
+    {% elif is_admin_view %}<li id="st-secure">✘ Keine sichere Verbindung (HTTP) – Installation als App nicht möglich, siehe unten</li>
+    {% else %}<li id="st-secure">ℹ Die Installation als App ist gerade nicht möglich – bitte an die Hausverwaltung wenden.</li>{% endif %}
     <li id="st-sw">…</li>
   </ul>
   <button type="button" data-install hidden>📲 Jetzt installieren</button>
@@ -52,6 +55,7 @@
   </div>
 </div>
 
+{% if is_admin_view %}
 <div class="card">
   <h2 style="margin-top:0">Voraussetzung: HTTPS</h2>
   <p>Chrome installiert Web-Apps nur über eine <b>sichere Verbindung</b>. Über <code>http://192.168.…</code> im Heimnetz
@@ -63,6 +67,7 @@
     <li><b>Tailscale</b> (<code>tailscale serve</code>) oder <b>Cloudflare Tunnel</b> – HTTPS ohne Portfreigabe.</li>
   </ul>
   <p class="muted">Danach in Portainer <code>APP_BASE_URL</code> auf die https-Adresse setzen (für Links in E-Mails,
-  WhatsApp-Webhook und Passwort-Reset). Der Login bleibt in der App erhalten („angemeldet bleiben“ = 30 Tage).</p>
+  WhatsApp-Webhook und Passwort-Reset). Mit „dauerhaft angemeldet bleiben“ bleibt der Login in der App erhalten.</p>
 </div>
+{% endif %}
 {% endblock %}

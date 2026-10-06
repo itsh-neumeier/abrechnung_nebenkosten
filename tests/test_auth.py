@@ -51,7 +51,8 @@ def test_login_roles_portal_and_reset(monkeypatch):
 
     with TestClient(app) as c:
         # ohne Benutzer: offen, mit Hinweis
-        assert "Kein Login eingerichtet" in c.get("/").text
+        assert "Kein Login eingerichtet" in c.get("/admin").text
+        assert "Kein Login eingerichtet" not in c.get("/").text  # Mieter sehen den Hinweis nicht
         assert c.get("/favicon.ico").status_code == 200
 
         # Grunddaten + Abrechnung (noch offen)
@@ -239,3 +240,30 @@ def test_areas_home_and_admin_with_branding():
         # Verwalter landet nach dem Login in der Verwaltung
         assert c.post("/login", data={"username": "admin", "password": "admin-pass-1"},
                       follow_redirects=False).headers["location"] == "/admin"
+
+
+def test_persistent_login_is_renewed(monkeypatch):
+    import time as _time
+
+    auth.login_throttle.hits.clear()
+    with TestClient(app) as c:
+        c.post("/setup", data={"username": "admin", "password": "admin-pass-1", "password2": "admin-pass-1"})
+        c.get("/logout")
+        r = c.post("/login", data={"username": "admin", "password": "admin-pass-1", "remember": "1"},
+                   follow_redirects=False)
+        cookie = r.cookies.get(auth.COOKIE)
+        days = (auth.cookie_expiry(cookie) - _time.time()) / 86400
+        assert 399 < days <= 400 and "max-age=34560000" in r.headers["set-cookie"].lower()
+        assert not auth.needs_renewal(cookie)
+        # 30 Tage später: wird bei der nächsten Nutzung wieder auf 400 Tage verlängert
+        real = _time.time
+        monkeypatch.setattr(auth.time, "time", lambda: real() + 30 * 86400)
+        assert auth.needs_renewal(cookie)
+        r = c.get("/admin", follow_redirects=False)
+        assert r.status_code == 200 and auth.COOKIE in r.headers.get("set-cookie", "")
+        monkeypatch.setattr(auth.time, "time", real)
+        # ohne Häkchen: kurze Sitzung, keine Verlängerung
+        c.get("/logout")
+        r = c.post("/login", data={"username": "admin", "password": "admin-pass-1"}, follow_redirects=False)
+        assert not auth.needs_renewal(r.cookies.get(auth.COOKIE))
+        assert 'name="remember" id="rem" checked' in c.get("/login").text

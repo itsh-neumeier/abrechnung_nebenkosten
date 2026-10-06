@@ -168,8 +168,8 @@ Basic-Auth erreichbar, aber durch Token, Signatur bzw. signierte Links geschütz
   veröffentlichten** Abrechnungen ihrer Partei (Ansicht + PDF). Veröffentlichen automatisch beim Abschließen
   (abschaltbar) oder je Abrechnung per Knopf. Verwalter können über „Ansicht als Mieter“ prüfen, was sichtbar ist.
 - **Passwort vergessen:** Link per E-Mail über den eingerichteten Mailversand (SMTP), 1 Stunde gültig, nur einmal nutzbar.
-- Sicherheit: Passwörter PBKDF2-SHA256 (600 000 Runden), signierte HttpOnly-Cookies (SameSite=Lax, „angemeldet bleiben“
-  30 Tage), Sperre nach 5 Fehlversuchen, Passwortänderung meldet andere Sitzungen ab. Optional `APP_SECRET_KEY` als
+- Sicherheit: Passwörter PBKDF2-SHA256 (600 000 Runden), signierte HttpOnly-Cookies (SameSite=Lax, „dauerhaft angemeldet
+  bleiben“ – 400 Tage, bei jeder Nutzung automatisch verlängert), Sperre nach 5 Fehlversuchen, Passwortänderung meldet andere Sitzungen ab. Optional `APP_SECRET_KEY` als
   fester Cookie-Schlüssel (sonst automatisch erzeugt und in der Datenbank gespeichert).
 
 ### Push-Benachrichtigungen (PWA)

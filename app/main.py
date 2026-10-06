@@ -120,6 +120,12 @@ async def authenticate(request: Request, call_next):
     if not enabled or path.startswith(PUBLIC):
         return await call_next(request)
     user = request.state.user
+    renew = None
+    if user is not None and (cookie := request.cookies.get(auth.COOKIE)) and auth.needs_renewal(cookie):
+        with SessionLocal() as s:  # Dauer-Login gleitend verlängern
+            from .db import User as _U
+            if (db_user := s.get(_U, user.id)) is not None:
+                renew = auth.make_cookie(s, db_user, auth.REMEMBER_DAYS)
     if user is None:
         if path.startswith("/api/"):
             return JSONResponse({"detail": "Anmeldung erforderlich"}, status_code=401)
@@ -129,7 +135,11 @@ async def authenticate(request: Request, call_next):
         if request.method == "GET" and not path.startswith("/api/"):
             return RedirectResponse("/", status_code=303)
         return Response("Nur für Verwalter", status_code=403)
-    return await call_next(request)
+    response = await call_next(request)
+    if renew:
+        response.set_cookie(auth.COOKIE, renew, max_age=auth.REMEMBER_DAYS * 86400, httponly=True, samesite="lax",
+                            secure=request.url.scheme == "https", path="/")
+    return response
 
 
 @app.get("/favicon.ico")

@@ -102,6 +102,27 @@ def make_cookie(s: Session, u: User, days: float) -> str:
     return base64.urlsafe_b64encode(f"{msg}.{_sign(_secret(s), msg)}".encode()).decode()
 
 
+REMEMBER_DAYS = 400  # Höchstwert, den Chrome/Android für Cookies zulassen – wird bei Nutzung erneuert
+RENEW_BELOW_DAYS = 380
+
+
+def cookie_expiry(value: str) -> Optional[int]:
+    try:
+        return int(base64.urlsafe_b64decode(value.encode()).decode().split(".")[1])
+    except (ValueError, IndexError, UnicodeDecodeError):
+        return None
+
+
+def needs_renewal(value: str) -> bool:
+    """Dauer-Login („angemeldet bleiben“) gleitend verlängern: wer die App mindestens einmal im Jahr öffnet,
+    bleibt dauerhaft angemeldet. Kurze Sitzungen (ohne Häkchen) werden nicht verlängert."""
+    exp = cookie_expiry(value)
+    if exp is None:
+        return False
+    left = (exp - time.time()) / 86400
+    return 2 < left < RENEW_BELOW_DAYS
+
+
 def user_from_cookie(s: Session, value: str) -> Optional[User]:
     try:
         uid, exp, ver, sig = base64.urlsafe_b64decode(value.encode()).decode().split(".")

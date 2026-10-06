@@ -45,7 +45,7 @@
   </div>
 </nav></header>
 <main>
-{% if not auth_on and request.url.path not in ('/setup',) %}
+{% if not auth_on and admin_area and request.url.path not in ('/setup',) %}
 <div class="warn">🔓 Kein Login eingerichtet – jeder im Netz kann die Abrechnung öffnen. <a href="/setup">Verwalter-Zugang anlegen</a>
 (oder <code>APP_USER</code>/<code>APP_PASSWORD</code> in Portainer setzen).</div>
 {% endif %}
