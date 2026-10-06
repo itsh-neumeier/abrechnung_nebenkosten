@@ -12,9 +12,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
-from . import auth, branding, mailer, notify
+from . import auth, branding, mailer, notify, scope
 from .config import config
-from .db import Billing, Message, Party, PushSubscription, User, get_session, get_settings, save_settings
+from .db import Billing, Building, Message, Party, PushSubscription, User, get_session, get_settings, save_settings
 from .render import invoice_html, invoice_pdf, party_result, pdf_name, period_text, templates
 
 router = APIRouter()
@@ -78,13 +78,14 @@ async def login(request: Request, s: Session = Depends(get_session)):
     u.last_login = datetime.now()
     s.commit()
     days = auth.REMEMBER_DAYS if form.get("remember") else 0.5
-    if u.role != "admin" and (nxt.startswith("/admin") or nxt.startswith("/api/")):
+    is_admin = u.role in auth.ADMIN_ROLES
+    if not is_admin and (nxt.startswith("/admin") or nxt.startswith("/api/")):
         nxt = "/"  # Mieter: immer „Mein Zuhause“
-    elif u.role == "admin" and nxt == "/" and not form.get("next"):
+    elif is_admin and nxt == "/" and not form.get("next"):
         nxt = "/admin"
     resp = RedirectResponse(nxt, status_code=303)
     _set_cookie(resp, request, auth.make_cookie(s, u, days), days)
-    resp.set_cookie(branding.ROLE_COOKIE, "admin" if u.role == "admin" else "tenant", max_age=365 * 86400,
+    resp.set_cookie(branding.ROLE_COOKIE, "admin" if is_admin else "tenant", max_age=365 * 86400,
                     samesite="lax", secure=request.url.scheme == "https", path="/")
     return resp
 
@@ -115,7 +116,7 @@ async def setup(request: Request, s: Session = Depends(get_session)):
         return _redirect("/setup", "Passwörter stimmen nicht überein.")
     username = str(form.get("username", "")).strip() or "admin"
     u = User(username=username, name=str(form.get("name", "")).strip(), email=str(form.get("email", "")).strip(),
-             role="admin", active=True)
+             role="superadmin", active=True)
     auth.set_password(u, pw)
     s.add(u)
     s.commit()
@@ -136,7 +137,7 @@ def send_reset_mail(request: Request, s: Session, u: User, invite: bool = False)
     st = get_settings(s)
     sender = st["landlord_name"] or "Ihre Hausverwaltung"
     hello = f"Hallo {u.name or u.username},"
-    app_name = branding.admin_name(st) if u.role == "admin" else branding.for_party(
+    app_name = branding.admin_name(st) if u.role in auth.ADMIN_ROLES else branding.for_party(
         st, s.get(Party, u.party_id) if u.party_id else None)
     if invite:
         subject = f"Ihr Zugang zu „{app_name}“"
@@ -287,12 +288,13 @@ def user_edit(request: Request, uid: int, party: Optional[int] = None, s: Sessio
         if p:
             u.name, u.email = p.name, (p.email or "").split(",")[0].strip()
     parties = s.query(Party).order_by(Party.sort, Party.id).all()
-    return _page(request, "user_edit.html", u=u, uid=uid, parties=parties, roles=auth.ROLES,
+    buildings = s.query(Building).order_by(Building.sort, Building.id).all()
+    return _page(request, "user_edit.html", u=u, uid=uid, parties=parties, roles=auth.ROLES, buildings=buildings,
                  mail_ok=mailer.configured())
 
 
 def _admins(s: Session, exclude: int = 0) -> int:
-    return s.query(User).filter(User.role == "admin", User.active.is_(True), User.id != exclude).count()
+    return s.query(User).filter(User.role == "superadmin", User.active.is_(True), User.id != exclude).count()
 
 
 @router.post("/admin/users/{uid}", dependencies=[Depends(require_admin)])
@@ -305,8 +307,8 @@ async def user_save(request: Request, uid: int, s: Session = Depends(get_session
     if form.get("delete"):
         if me and u.id == me.id:
             return _redirect(f"/admin/users/{uid}", "Du kannst dich nicht selbst löschen.")
-        if u.role == "admin" and _admins(s, exclude=u.id) == 0:
-            return _redirect(f"/admin/users/{uid}", "Der letzte Verwalter kann nicht gelöscht werden.")
+        if u.role == "superadmin" and _admins(s, exclude=u.id) == 0:
+            return _redirect(f"/admin/users/{uid}", "Der letzte Super-Admin kann nicht gelöscht werden.")
         s.delete(u)
         s.commit()
         return _redirect("/admin/users", "Benutzer gelöscht")
@@ -320,8 +322,8 @@ async def user_save(request: Request, uid: int, s: Session = Depends(get_session
     role = str(form.get("role", "tenant"))
     role = role if role in auth.ROLES else "tenant"
     active = bool(form.get("active"))
-    if u.id and u.role == "admin" and (role != "admin" or not active) and _admins(s, exclude=u.id) == 0:
-        return _redirect(f"/admin/users/{uid}", "Der letzte aktive Verwalter muss Verwalter bleiben.")
+    if u.id and u.role == "superadmin" and (role != "superadmin" or not active) and _admins(s, exclude=u.id) == 0:
+        return _redirect(f"/admin/users/{uid}", "Der letzte aktive Super-Admin muss Super-Admin bleiben.")
     party_id = int(form.get("party_id") or 0) or None
     if role == "tenant" and not party_id:
         return _redirect(f"/admin/users/{uid}" + (f"?party={party_id}" if party_id else ""),
@@ -330,6 +332,7 @@ async def user_save(request: Request, uid: int, s: Session = Depends(get_session
     u.name = str(form.get("name", "")).strip()
     u.email = str(form.get("email", "")).strip()
     u.party_id = party_id if role == "tenant" else None
+    u.building_ids = sorted({int(x) for x in form.getlist("building_ids") if str(x).isdigit()}) if role == "admin" else []
     pw = str(form.get("password", ""))
     if pw:
         if problem := auth.password_problem(pw):
@@ -408,7 +411,8 @@ def portal(request: Request, party: Optional[int] = None, s: Session = Depends(g
     st = get_settings(s)
     pickups = waste.upcoming(waste.parse_ics(st.get("waste_ics_data", "")), json.loads(st.get("waste_types") or "[]"),
                              days=35)[:6] if p else []
-    return _page(request, "portal.html", party=p, rows=rows, parties=parties, period_text=period_text,
+    bld = s.get(Building, p.building_id) if (p and p.building_id) else None
+    return _page(request, "portal.html", party=p, rows=rows, parties=parties, period_text=period_text, bld=bld,
                  current=current_, history=history, done=done, cats=notify.CATEGORIES, when=notify.when_text,
                  prios=notify.PRIORITIES, is_done=notify.is_done, pickups=pickups, wstyle=waste.style,
                  today=datetime.now().date())
@@ -505,7 +509,11 @@ def _dt(value) -> Optional[datetime]:
 @router.get("/admin/messages", response_class=HTMLResponse, dependencies=[Depends(require_admin)])
 def messages_page(request: Request, edit: int = 0, s: Session = Depends(get_session)):
     msgs = s.query(Message).order_by(Message.created_at.desc()).limit(100).all()
-    parties = s.query(Party).filter(Party.active.is_(True)).order_by(Party.sort, Party.id).all()
+    parties = scope.filter_query(s.query(Party).filter(Party.active.is_(True)), Party.building_id) \
+        .order_by(Party.sort, Party.id).all()
+    if not scope.is_super():  # Verwalter: nur Mitteilungen, die ihre Parteien betreffen
+        mine = {p.id for p in parties}
+        msgs = [m for m in msgs if not m.party_ids or set(m.party_ids) & mine]
     current_ = sorted([m for m in msgs if notify.is_current(m)], key=notify.sort_key)
     m = s.get(Message, edit) if edit else None
     return _page(request, "messages.html", msgs=msgs, current=current_, parties=parties, cats=notify.CATEGORIES,
@@ -527,6 +535,9 @@ async def message_save(request: Request, s: Session = Depends(get_session)):
     m.title, m.body = title, str(form.get("body", "")).strip()
     m.category = str(form.get("category", "info")) if form.get("category") in notify.CATEGORIES else "info"
     m.party_ids = [] if (not target or "all" in target) else sorted({int(x) for x in target if str(x).isdigit()})
+    if not scope.is_super():  # Verwalter: „alle“ = alle Parteien der eigenen Gebäude
+        mine = {p.id for p in scope.filter_query(s.query(Party), Party.building_id)}
+        m.party_ids = sorted(mine if not m.party_ids else set(m.party_ids) & mine) or [-1]
     m.priority = str(form.get("priority", "normal")) if form.get("priority") in notify.PRIORITIES else "normal"
     m.pinned = bool(form.get("pinned"))
     m.event_start, m.event_end, m.show_until = _dt(form.get("event_start")), _dt(form.get("event_end")), _dt(form.get("show_until"))

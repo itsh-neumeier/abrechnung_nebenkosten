@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ b.name or 'Neues Gebäude' }}{% endblock %}
+{% block content %}
+<h1>{{ b.name or ('Neues Gebäude' if bid == 0 else 'Gebäude') }}</h1>
+<form method="post" action="/admin/buildings/{{ bid }}" class="card">
+  <div class="grid">
+    <div><label>Gebäude-ID</label><input type="text" name="code" value="{{ b.code or '' }}" placeholder="GID-01" maxlength="50"></div>
+    <div><label>Name</label><input type="text" name="name" value="{{ b.name or '' }}" placeholder="z. B. Köttmannsdorfer Hauptstraße 56" required></div>
+  </div>
+  <label>Anschrift (erscheint auf der Abrechnung)</label>
+  <input type="text" name="address" value="{{ b.address or '' }}" placeholder="Musterstraße 1, 12345 Musterstadt">
+  <label>Titel der Abrechnung</label>
+  <input type="text" name="title" value="{{ b.title or 'Nebenkostenabrechnung' }}">
+  {% if is_super %}
+  <div class="check"><input type="checkbox" name="active" id="ba" {% if b.active %}checked{% endif %}><label for="ba" style="margin:0">aktiv</label></div>
+  <input type="hidden" name="managers_form" value="1">
+  <label>Zuständige Verwalter (sehen nur ihre Gebäude)</label>
+  {% if admins %}
+  <div class="waste-kinds">
+  {% for u in admins %}
+    <label class="waste-kind" style="--wc:#2563eb"><input type="checkbox" name="managers" value="{{ u.id }}" {% if b.id and b.id in (u.building_ids or []) %}checked{% endif %}>{{ u.name or u.username }}</label>
+  {% endfor %}
+  </div>
+  {% else %}<p class="muted">Noch keine Benutzer mit der Rolle „Verwalter“ – unter <a href="/admin/users">Benutzer</a> anlegen. Super-Admins sehen ohnehin alle Gebäude.</p>{% endif %}
+  {% endif %}
+
+  <h2>Foto des Standorts</h2>
+  <div class="photo-row">
+    {% if b.photo %}<img class="avatar avatar-xl" id="crop-current" src="/photo/building/{{ b.id }}.jpg?v={{ b.photo_updated.timestamp()|int if b.photo_updated else 0 }}" alt="Aktuelles Foto">
+    {% else %}<span class="avatar avatar-xl avatar-empty">🏠</span>{% endif %}
+    <img class="avatar avatar-xl" id="crop-preview" alt="Neues Foto" hidden>
+  </div>
+  <div id="cropper">
+    <label>Neues Foto wählen und zuschneiden</label>
+    <input type="file" accept="image/*">
+    <div class="crop-area">
+      <canvas width="320" height="320" aria-label="Zuschnitt – verschieben mit Maus oder Finger"></canvas>
+      <label>Zoom</label><input type="range" min="1" max="6" step="0.01" value="1">
+      <p class="muted">Verschieben mit Maus oder Finger, zoomen mit Regler, Mausrad oder zwei Fingern. Der Kreis zeigt das spätere Avatar.</p>
+    </div>
+    <input type="hidden" name="photo_data">
+  </div>
+  {% if b.photo %}<div class="check"><input type="checkbox" name="photo_remove" id="pr"><label for="pr" style="margin:0">Foto entfernen</label></div>{% endif %}
+  <button>Speichern</button>
+  <a class="btn sec" href="/admin/buildings">Zurück</a>
+  {% if is_super and bid %}<button class="danger" name="delete" value="1" onclick="return confirm('Gebäude löschen?')">Löschen</button>{% endif %}
+</form>
+<script src="/static/crop.js" defer></script>
+{% endblock %}

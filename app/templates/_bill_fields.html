@@ -1,4 +1,10 @@
 <div class="grid">
+  {% if buildings and buildings|length > 1 %}
+  <div><label>Gebäude</label><select name="building_id" {{ 'disabled' if ro }} required>
+    {% if b and not b.building_id %}<option value="">– bitte zuordnen –</option>{% endif %}
+    {% for bd in buildings %}<option value="{{ bd.id }}" {% if b and b.building_id == bd.id %}selected{% endif %}>{{ bd.label }}</option>{% endfor %}
+  </select></div>
+  {% endif %}
   <div><label>Titel</label><input type="text" name="title" value="{{ b.title if b else '' }}" placeholder="Nebenkosten 09/2026" {{ ro }}></div>
   <div><label>Rechnungsnummer Anbieter</label><input type="text" name="invoice_no" value="{{ b.invoice_no if b else '' }}" {{ ro }}></div>
   <div><label>Zeitraum von</label><input type="date" name="period_start" value="{{ (b.period_start if b else start).isoformat() }}" required {{ ro }}></div>

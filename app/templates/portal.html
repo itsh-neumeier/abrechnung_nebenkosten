@@ -11,6 +11,17 @@
   </select>
 </form>
 {% endif %}
+{% if party %}
+<div class="card home-hero">
+  {% if bld and bld.photo %}<img class="avatar" src="/photo/building/{{ bld.id }}.jpg?v={{ bld.photo_updated.timestamp()|int if bld.photo_updated else 0 }}" alt="">
+  {% else %}<span class="avatar avatar-empty">🏠</span>{% endif %}
+  <div>
+    <h2>{{ bld.name if bld and bld.name else party.name }}</h2>
+    {% if bld and bld.address %}<div class="muted">{{ bld.address|replace('\n', ', ') }}</div>{% endif %}
+    <div>{{ party.name }}{% if party.unit_id %} · {{ party.unit_id }}{% endif %}</div>
+  </div>
+</div>
+{% endif %}
 {% if party and current %}
 <div class="notices" id="mitteilungen">
 {% for x in current %}{{ notice(x, cats, when, prios=prios) }}{% endfor %}

@@ -80,8 +80,31 @@ VICTRON_HINTS = {
 }
 
 
-def active_parties(s: Session) -> list[Party]:
-    return s.query(Party).filter(Party.active.is_(True)).order_by(Party.sort, Party.id).all()
+def active_parties(s: Session, building_id: Optional[int] = None) -> list[Party]:
+    """Aktive Parteien – mit ``building_id`` nur die des Gebäudes (Multi-Site)."""
+    q = s.query(Party).filter(Party.active.is_(True))
+    if building_id is not None:
+        q = q.filter(Party.building_id == building_id)
+    return q.order_by(Party.sort, Party.id).all()
+
+
+def default_building(s: Session) -> Optional["Building"]:
+    """Gebäude für neue Abrechnungen: das einzige aktive, sonst keins (muss zugeordnet werden)."""
+    from .db import Building
+
+    rows = s.query(Building).filter(Building.active.is_(True)).limit(2).all()
+    return rows[0] if len(rows) == 1 else None
+
+
+def building_info(s: Session, b: Billing, st: dict) -> dict:
+    """Kopfdaten für die Abrechnung: aus dem zugeordneten Gebäude, sonst aus den Einstellungen."""
+    from .db import Building
+
+    bld = s.get(Building, b.building_id) if b.building_id else None
+    if bld is None:
+        return {k: st[k] for k in ("building_title", "building_address", "building_id")}
+    return {"building_title": bld.title or "Nebenkostenabrechnung", "building_address": bld.address or "",
+            "building_id": bld.code or "", "building_name": bld.name or ""}
 
 
 def energy_entities(st: dict[str, str]) -> calc.EnergyEntities:
@@ -102,11 +125,11 @@ def _roles(spec: str, role: str) -> list[tuple[str, str]]:
     return [(e, role) for e in ids]
 
 
-def required_entities(s: Session) -> list[tuple[str, str]]:
+def required_entities(s: Session, building_id: Optional[int] = None) -> list[tuple[str, str]]:
     """Alle Entitäten, deren Verbrauch für eine Abrechnung gebraucht wird: (entity_id, Rolle)."""
     st = get_settings(s)
     out: list[tuple[str, str]] = [x for k, role in HOUSE_ENTITIES for x in _roles(st[k], role)]
-    parties = active_parties(s)
+    parties = active_parties(s, building_id)
     names = {p.id: p.name for p in parties}
     for p in parties:
         if p.is_owner:
@@ -136,7 +159,7 @@ async def fetch_values(s: Session, b: Billing) -> dict[str, str]:
     Jede Quelle wird für sich abgefragt – fällt eine aus, werden die übrigen trotzdem geladen.
     Rückgabe: Entitäten ohne Wert mit Grund.
     """
-    ents = [e for e, _ in required_entities(s)]
+    ents = [e for e, _ in required_entities(s, b.building_id)]
     ha_ids = [e for e in ents if not victron.is_victron(e) and not vrm.is_vrm(e)]
     vic_ids = [e for e in ents if victron.is_victron(e)]
     vrm_ids = [e for e in ents if vrm.is_vrm(e)]
@@ -223,7 +246,7 @@ def fetch_message(missing: dict[str, str]) -> str:
 
 def recompute(s: Session, b: Billing) -> dict:
     st = get_settings(s)
-    db_parties = active_parties(s)
+    db_parties = active_parties(s, b.building_id)
     parties = [
         calc.PartyCfg(id=p.id, name=p.name, meters=list(p.meters or []), is_owner=p.is_owner,
                       address=p.address, unit=p.unit)
@@ -275,7 +298,7 @@ def recompute(s: Session, b: Billing) -> dict:
                 f"{e}: aus Leistung berechnet, aber nur für {m['hours']} von {m['expected_hours']} Stunden Daten "
                 f"({m['coverage']:.0%}) – Verbrauch fällt evtl. zu niedrig aus."
             )
-    missing = calc.missing_entities([e for e, _ in required_entities(s)], b.values or {})
+    missing = calc.missing_entities([e for e, _ in required_entities(s, b.building_id)], b.values or {})
     if missing:
         vm = b.values_meta or {}
         detail = [f"{e} ({vm[e]['missing']})" if vm.get(e, {}).get("missing") else e for e in missing]
@@ -289,7 +312,7 @@ def recompute(s: Session, b: Billing) -> dict:
         k: st[k] for k in ("landlord_name", "landlord_address", "landlord_contact", "landlord_iban",
                            "payment_days", "invoice_text")
     }
-    result["building"] = {k: st[k] for k in ("building_title", "building_address", "building_id")}
+    result["building"] = building_info(s, b, st)
     result["computed_at"] = datetime.now().isoformat(timespec="seconds")
     b.result = result
     return result
@@ -583,6 +606,7 @@ def create_from_invoice(s: Session, inv: invoice_import.ParsedInvoice, pdf: byte
         import_info={**inv.info(), "filename": filename},
         mail_message_id=message_id,
         notes=f"Automatisch importiert aus {filename}",
+        building_id=(default_building(s).id if default_building(s) else None),
     )
     s.add(b)
     s.flush()

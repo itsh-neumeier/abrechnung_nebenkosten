@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Gebäude{% endblock %}
+{% block content %}
+<h1>Gebäude</h1>
+{% if is_super %}<a class="btn" href="/admin/buildings/0">+ Gebäude anlegen</a>{% endif %}
+<div class="building-grid">
+{% for b in buildings %}
+  <a class="card building-card" href="/admin/buildings/{{ b.id }}">
+    {% if b.photo %}<img class="avatar avatar-lg" src="/photo/building/{{ b.id }}.jpg?v={{ b.photo_updated.timestamp()|int if b.photo_updated else 0 }}" alt="">
+    {% else %}<span class="avatar avatar-lg avatar-empty">🏠</span>{% endif %}
+    <span>
+      <b>{{ b.name or 'Gebäude' }}</b>{% if not b.active %} <span class="badge">inaktiv</span>{% endif %}<br>
+      <span class="muted">{{ b.code }}{% if b.address %} · {{ b.address|replace('\n', ', ') }}{% endif %}</span><br>
+      <span class="muted">{{ counts.get(b.id, 0) }} Partei(en){% if managers.get(b.id) %} · Verwalter: {{ managers[b.id]|join(', ') }}{% endif %}</span>
+    </span>
+  </a>
+{% else %}<p class="muted">Keine Gebäude zugewiesen.</p>{% endfor %}
+</div>
+{% endblock %}

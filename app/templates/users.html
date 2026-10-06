@@ -5,12 +5,12 @@
 <a class="btn" href="/admin/users/0">+ Benutzer anlegen</a>
 <div class="card scroll" style="margin-top:12px">
 <table>
-<tr><th>Benutzer</th><th>Rolle</th><th>Partei</th><th>E-Mail</th><th>Letzte Anmeldung</th><th>🔔 Geräte</th><th>Status</th></tr>
+<tr><th>Benutzer</th><th>Rolle</th><th>Partei / Gebäude</th><th>E-Mail</th><th>Letzte Anmeldung</th><th>🔔 Geräte</th><th>Status</th></tr>
 {% for u in users %}
 <tr>
   <td><a href="/admin/users/{{ u.id }}">{{ u.username }}</a>{% if u.name %}<br><span class="muted">{{ u.name }}</span>{% endif %}</td>
   <td>{{ roles[u.role] }}</td>
-  <td>{{ parties[u.party_id].name if u.party_id in parties else '–' }}</td>
+  <td>{% if u.role == 'tenant' %}{{ parties[u.party_id].name if u.party_id in parties else '–' }}{% elif u.role == 'admin' %}{{ (u.building_ids or [])|length }} Gebäude{% else %}alle Gebäude{% endif %}</td>
   <td>{{ u.email or '–' }}</td>
   <td>{{ u.last_login.strftime('%d.%m.%Y %H:%M') if u.last_login else '–' }}</td>
   <td>{{ devices.get(u.id, 0) or '–' }}</td>

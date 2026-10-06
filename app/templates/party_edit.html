@@ -8,6 +8,10 @@
     <div><label>Lage (intern)</label><input type="text" name="unit" value="{{ p.unit or '' }}" placeholder="EG links"></div>
     <div><label>Sortierung</label><input type="number" name="sort" value="{{ p.sort or 0 }}"></div>
   </div>
+  {% if buildings|length > 1 %}
+  <label>Gebäude</label>
+  <select name="building_id">{% for bd in buildings %}<option value="{{ bd.id }}" {% if p.building_id == bd.id %}selected{% endif %}>{{ bd.label }}</option>{% endfor %}</select>
+  {% elif buildings %}<input type="hidden" name="building_id" value="{{ buildings[0].id }}">{% endif %}
   <label>E-Mail für den Versand (mehrere mit Komma trennen)</label>
   <input type="text" name="email" value="{{ p.email or '' }}" placeholder="familie@example.de">
   <div class="grid">

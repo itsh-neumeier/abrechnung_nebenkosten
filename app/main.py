@@ -12,6 +12,7 @@ import time
 import zipfile
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
+from typing import Optional
 from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -19,9 +20,9 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from . import accounts, auth, branding, invoice_import, mailbox, mailer, notify, service, victron, vrm, wa_cloud, whatsapp
+from . import accounts, auth, branding, scope, invoice_import, mailbox, mailer, notify, service, victron, vrm, wa_cloud, whatsapp
 from .config import config
-from .db import (Allocation, Billing, FixedCost, IgnoredInvoice, Party, SessionLocal, get_session, get_settings,
+from .db import (Allocation, Billing, Building, FixedCost, IgnoredInvoice, Party, User, SessionLocal, get_session, get_settings,
                  init_db, save_settings)
 from .ha import HAClient
 from .render import BASE, invoice_html, invoice_pdf, parse_float, party_result, pdf_name, templates
@@ -114,6 +115,8 @@ async def authenticate(request: Request, call_next):
                 u = auth.user_from_basic(s, request.headers["authorization"])
         request.state.user = auth.snapshot(u) if u else None
         request.state.auth_enabled = enabled
+        scope.current_user.set(request.state.user)
+        scope.auth_enabled.set(enabled)
         request.state.brand = branding.resolve(
             s, request.state.user, get_settings(s), path, request.query_params.get("next", ""),
             request.cookies.get(branding.ROLE_COOKIE, ""))
@@ -135,6 +138,10 @@ async def authenticate(request: Request, call_next):
         if request.method == "GET" and not path.startswith("/api/"):
             return RedirectResponse("/", status_code=303)
         return Response("Nur für Verwalter", status_code=403)
+    if path.startswith(scope.SUPER_ONLY) and not user.is_super:
+        if request.method == "GET":
+            return RedirectResponse("/admin?msg=" + quote("Nur für Super-Admins"), status_code=303)
+        return Response("Nur für Super-Admins", status_code=403)
     response = await call_next(request)
     if renew:
         response.set_cookie(auth.COOKIE, renew, max_age=auth.REMEMBER_DAYS * 86400, httponly=True, samesite="lax",
@@ -200,7 +207,8 @@ def healthz():
 # --------------------------------------------------------------------------- Übersicht
 @app.get("/admin", response_class=HTMLResponse)
 def index(request: Request, s: Session = Depends(get_session)):
-    billings = s.query(Billing).order_by(Billing.period_start.desc()).all()
+    # Verwalter sehen nur ihre Gebäude; nicht zugeordnete Rechnungen sieht (und ordnet zu) der Super-Admin
+    billings = scope.filter_query(s.query(Billing), Billing.building_id).order_by(Billing.period_start.desc()).all()
     st = get_settings(s)
     setup_missing = [
         label for key, label in (("entity_total", "Gesamtverbrauch-Entität"), ("entity_grid", "Zähler-Entität"))
@@ -209,6 +217,7 @@ def index(request: Request, s: Session = Depends(get_session)):
     if not service.active_parties(s):
         setup_missing.append("Parteien")
     return render(request, "index.html", billings=billings, setup_missing=setup_missing,
+                  buildings={b.id: b for b in _buildings(s)},
                   imap_ok=mailbox.configured(), mbox=mailbox.status, imap=config,
                   senders=mailbox.sender_patterns(st), forwarded=bool(st["imap_forwarded"]))
 
@@ -280,6 +289,16 @@ async def settings_save(request: Request, s: Session = Depends(get_session)):
     for flag in ("mail_auto_send", "victron_enabled", "owner_free_own_energy", "imap_forwarded"):  # Checkboxen
         data[flag] = "1" if form.get(flag) else ""
     save_settings(s, data)
+    # Einzelobjekt: Objektangaben der Einstellungen gelten für das (einzige) Gebäude
+    rows = s.query(Building).limit(2).all()
+    if len(rows) == 1 and any(k in form for k in ("building_id", "building_address", "building_title")):
+        bld = rows[0]
+        bld.code = data.get("building_id", bld.code) or bld.code
+        bld.address = data.get("building_address", bld.address)
+        bld.title = data.get("building_title", bld.title) or bld.title
+        if not bld.name or bld.name == "Mein Gebäude":
+            bld.name = (bld.address or "").split(",")[0].strip() or bld.name
+    s.commit()
     return redirect("/admin/settings", "Gespeichert")
 
 
@@ -598,19 +617,141 @@ def victron_status():
     return victron.logger.status
 
 
+# --------------------------------------------------------------------------- Gebäude (Multi-Site)
+MAX_PHOTO = 2_000_000
+
+
+def _decode_photo(data_url: str) -> Optional[bytes]:
+    """Data-URL aus dem Zuschnitt-Editor → JPEG/PNG-Bytes (geprüft, max. 2 MB)."""
+    import base64 as _b64
+
+    m = re.match(r"data:image/(jpeg|png);base64,(.+)$", data_url or "", re.S)
+    if not m:
+        return None
+    try:
+        raw = _b64.b64decode(m.group(2), validate=True)
+    except ValueError:
+        return None
+    if len(raw) > MAX_PHOTO or not (raw[:3] == b"\xff\xd8\xff" or raw[:8] == b"\x89PNG\r\n\x1a\n"):
+        return None
+    return raw
+
+
+@app.get("/admin/buildings", response_class=HTMLResponse)
+def buildings_page(request: Request, s: Session = Depends(get_session)):
+    rows = _buildings(s)
+    counts = {b.id: s.query(Party).filter(Party.building_id == b.id, Party.active.is_(True)).count() for b in rows}
+    managers: dict = {}
+    for u in s.query(User).filter(User.role == "admin").all():
+        for bid in u.building_ids or []:
+            managers.setdefault(int(bid), []).append(u.name or u.username)
+    return render(request, "buildings.html", buildings=rows, counts=counts, managers=managers,
+                  is_super=scope.is_super())
+
+
+@app.get("/admin/buildings/{bid}", response_class=HTMLResponse)
+def building_edit(request: Request, bid: int, s: Session = Depends(get_session)):
+    if bid == 0:
+        if not scope.is_super():
+            raise HTTPException(403, "Nur Super-Admins legen Gebäude an")
+        b = Building(active=True, title="Nebenkostenabrechnung")
+    else:
+        b = s.get(Building, bid)
+        if b is None or not scope.can(b.id):
+            raise HTTPException(404)
+    admins = s.query(User).filter(User.role == "admin").order_by(User.username).all()
+    return render(request, "building_edit.html", b=b, bid=bid, admins=admins, is_super=scope.is_super())
+
+
+@app.post("/admin/buildings/{bid}")
+async def building_save(request: Request, bid: int, s: Session = Depends(get_session)):
+    form = await request.form()
+    if bid == 0:
+        if not scope.is_super():
+            raise HTTPException(403)
+        b = Building(active=True)
+        s.add(b)
+    else:
+        b = s.get(Building, bid)
+        if b is None or not scope.can(b.id):
+            raise HTTPException(404)
+    if form.get("delete") and scope.is_super() and bid:
+        if s.query(Party).filter(Party.building_id == b.id).count() or \
+                s.query(Billing).filter(Billing.building_id == b.id).count():
+            return redirect(f"/admin/buildings/{bid}", "Gebäude hat noch Parteien oder Abrechnungen – erst umziehen/löschen.")
+        s.delete(b)
+        s.commit()
+        return redirect("/admin/buildings", "Gebäude gelöscht")
+    b.code = str(form.get("code", "")).strip()[:50]
+    b.name = str(form.get("name", "")).strip()[:200]
+    b.address = str(form.get("address", "")).strip()
+    b.title = str(form.get("title", "")).strip()[:200] or "Nebenkostenabrechnung"
+    if scope.is_super():
+        b.active = bool(form.get("active"))
+    msg = "Gespeichert"
+    if form.get("photo_remove"):
+        b.photo, b.photo_updated = None, datetime.now()
+    elif form.get("photo_data"):
+        raw = _decode_photo(str(form.get("photo_data")))
+        if raw is None:
+            return redirect(f"/admin/buildings/{bid}", "Foto ungültig oder zu groß (max. 2 MB, JPEG/PNG).")
+        b.photo, b.photo_updated = raw, datetime.now()
+        msg += " · Foto aktualisiert"
+    s.flush()
+    if scope.is_super() and form.get("managers_form"):  # zuständige Verwalter
+        chosen = {int(x) for x in form.getlist("managers") if str(x).isdigit()}
+        for u in s.query(User).filter(User.role == "admin").all():
+            ids = {int(x) for x in (u.building_ids or [])}
+            ids = ids | {b.id} if u.id in chosen else ids - {b.id}
+            u.building_ids = sorted(ids)
+    s.commit()
+    return redirect(f"/admin/buildings/{b.id}", msg)
+
+
+@app.get("/photo/building/{bid}.jpg")
+def building_photo(request: Request, bid: int, s: Session = Depends(get_session)):
+    """Gebäudefoto für Verwalter des Gebäudes und Mieter, deren Partei im Gebäude liegt."""
+    b = s.get(Building, bid)
+    me = request.state.user
+    allowed = scope.can(bid)
+    if not allowed and me is not None and me.party_id:
+        p = s.get(Party, me.party_id)
+        allowed = p is not None and p.building_id == bid
+    if b is None or not b.photo or not allowed:
+        raise HTTPException(404)
+    mime = "image/png" if b.photo[:4] == b"\x89PNG" else "image/jpeg"
+    return Response(b.photo, media_type=mime, headers={"Cache-Control": "private, max-age=86400"})
+
+
 # --------------------------------------------------------------------------- Parteien
+def _buildings(s: Session) -> list:
+    """Gebäude, die der angemeldete Benutzer sehen darf."""
+    return scope.filter_query(s.query(Building), Building.id).order_by(Building.sort, Building.id).all()
+
+
+def _pick_building(s: Session, value) -> Optional[int]:
+    """Gebäude aus dem Formular übernehmen (nur erlaubte), sonst das erste erlaubte."""
+    allowed = [b.id for b in _buildings(s)]
+    try:
+        bid = int(value or 0)
+    except (TypeError, ValueError):
+        bid = 0
+    return bid if bid in allowed else (allowed[0] if allowed else None)
+
+
 @app.get("/admin/parties", response_class=HTMLResponse)
 def parties_page(request: Request, s: Session = Depends(get_session)):
-    parties = s.query(Party).order_by(Party.active.desc(), Party.sort, Party.id).all()
-    return render(request, "parties.html", parties=parties)
+    q = scope.filter_query(s.query(Party), Party.building_id)
+    parties = q.order_by(Party.active.desc(), Party.sort, Party.id).all()
+    return render(request, "parties.html", parties=parties, buildings={b.id: b for b in _buildings(s)})
 
 
 @app.get("/admin/parties/{pid}", response_class=HTMLResponse)
 def party_edit(request: Request, pid: int, s: Session = Depends(get_session)):
     p = Party(name="", meters=[], active=True, is_owner=False, sort=0) if pid == 0 else s.get(Party, pid)
-    if p is None:
+    if p is None or (pid and not scope.can(p.building_id)):
         raise HTTPException(404)
-    return render(request, "party_edit.html", p=p, pid=pid)
+    return render(request, "party_edit.html", p=p, pid=pid, buildings=_buildings(s))
 
 
 @app.post("/admin/parties/{pid}")
@@ -618,13 +759,14 @@ async def party_save(request: Request, pid: int, s: Session = Depends(get_sessio
     form = await request.form()
     if form.get("delete"):
         p = s.get(Party, pid)
-        if p:
+        if p and scope.can(p.building_id):
             s.delete(p)
             s.commit()
         return redirect("/admin/parties", "Gelöscht")
     p = Party() if pid == 0 else s.get(Party, pid)
-    if p is None:
+    if p is None or (pid and not scope.can(p.building_id)):
         raise HTTPException(404)
+    p.building_id = _pick_building(s, form.get("building_id") or p.building_id)
     p.name = str(form.get("name", "")).strip()
     p.unit = str(form.get("unit", "")).strip()
     p.unit_id = str(form.get("unit_id", "")).strip()
@@ -756,7 +898,7 @@ def _apply_bill_form(b: Billing, form, st: dict) -> None:
 def billing_new(request: Request, s: Session = Depends(get_session)):
     st = get_settings(s)
     end = date.today().replace(day=1) - timedelta(days=1)
-    return render(request, "billing_new.html", start=end.replace(day=1), end=end, st=st)
+    return render(request, "billing_new.html", start=end.replace(day=1), end=end, st=st, buildings=_buildings(s))
 
 
 @app.post("/admin/billings")
@@ -765,6 +907,7 @@ async def billing_create(request: Request, s: Session = Depends(get_session)):
     st = get_settings(s)
     b = Billing(values={}, amounts={}, result={}, sent={})
     _apply_bill_form(b, form, st)
+    b.building_id = _pick_building(s, form.get("building_id"))
     if not b.title:
         b.title = f"Nebenkosten {b.period_start.strftime('%m/%Y')}"
     s.add(b)
@@ -782,7 +925,7 @@ async def billing_create(request: Request, s: Session = Depends(get_session)):
 
 def _get_billing(s: Session, bid: int) -> Billing:
     b = s.get(Billing, bid)
-    if b is None:
+    if b is None or not scope.can(b.building_id):  # Verwalter: nur eigene Gebäude
         raise HTTPException(404)
     return b
 
@@ -798,7 +941,8 @@ def billing_view(request: Request, bid: int, s: Session = Depends(get_session)):
         by_mail, by_wa = service.channels(p)
         contacts[p.id] = {"mail": by_mail and bool(p.email), "wa": by_wa and bool(p.phone),
                           "want_mail": by_mail, "want_wa": by_wa}
-    return render(request, "billing.html", b=b, r=b.result or {}, entities=service.required_entities(s),
+    return render(request, "billing.html", b=b, r=b.result or {}, buildings=_buildings(s),
+                  entities=service.required_entities(s, b.building_id),
                   amount_allocs=allocs, st=st, contacts=contacts, mail_ok=mailer.configured(),
                   wa_ok=whatsapp.configured(st), send_ok=service.can_send(st),
                   compare=service.victron_comparison(s, b))
@@ -843,6 +987,8 @@ async def billing_save(request: Request, bid: int, s: Session = Depends(get_sess
         return redirect(f"/admin/billings/{bid}", "Abrechnung ist abgeschlossen")
 
     _apply_bill_form(b, form, st)
+    if form.get("building_id"):
+        b.building_id = _pick_building(s, form.get("building_id"))
     b.notes = str(form.get("notes", "")).strip()
     values = {}
     for k, v in form.items():

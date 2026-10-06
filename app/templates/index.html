@@ -22,11 +22,12 @@
 </div>
 <form method="post" action="/admin/billings/delete" class="card scroll" style="margin-top:12px" id="billing-list">
 <table>
-<tr><th style="width:28px"></th><th>Zeitraum</th><th>Titel</th><th class="r">Ø Preis brutto</th><th class="r">Rechnung</th><th class="r">Umgelegt</th><th>Status</th></tr>
+<tr><th style="width:28px"></th><th>Zeitraum</th>{% if buildings|length > 1 %}<th>Gebäude</th>{% endif %}<th>Titel</th><th class="r">Ø Preis brutto</th><th class="r">Rechnung</th><th class="r">Umgelegt</th><th>Status</th></tr>
 {% for b in billings %}
 <tr>
   <td>{% if b.status != 'final' %}<input type="checkbox" name="ids" value="{{ b.id }}" aria-label="Entwurf auswählen">{% endif %}</td>
   <td><a href="/admin/billings/{{ b.id }}">{{ b.period_start|de_date }} – {{ b.period_end|de_date }}</a></td>
+  {% if buildings|length > 1 %}<td>{% if b.building_id in buildings %}{{ buildings[b.building_id].label }}{% else %}<span class="badge" style="color:var(--danger)">⚠ zuordnen</span>{% endif %}</td>{% endif %}
   <td>{{ b.title }}{% if b.mail_message_id %} <span class="muted" title="aus dem Postfach">✉️</span>{% endif %}</td>
   <td class="r">{% if b.result.price_gross %}{{ (b.result.price_gross*100)|num(2) }} ct{% endif %}</td>
   <td class="r">{{ b.result.bill_gross|eur }}</td>
@@ -34,7 +35,7 @@
   <td>{% if b.status == 'final' %}<span class="badge final">abgeschlossen</span>{% else %}<span class="badge">Entwurf</span>{% endif %}</td>
 </tr>
 {% else %}
-<tr><td colspan="7" class="muted">Noch keine Abrechnungen.</td></tr>
+<tr><td colspan="8" class="muted">Noch keine Abrechnungen.</td></tr>
 {% endfor %}
 </table>
 {% if billings|selectattr('status', 'ne', 'final')|list %}

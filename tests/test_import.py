@@ -212,7 +212,8 @@ def test_auto_send_without_validation(monkeypatch):
     with TestClient(app) as c:
         c.post("/admin/settings", data={"import_mode": "auto_always"})
         with SessionLocal() as s:
-            s.add(Party(name="Auto Mieter", email="auto@test.de", meters=[], active=True, is_owner=False, sort=0))
+            s.add(Party(name="Auto Mieter", email="auto@test.de", meters=[], active=True, is_owner=False, sort=0,
+                        building_id=1))
             s.commit()
             b, msg = asyncio.run(service.import_invoice(s, make_pdf(text), "r.pdf"))
             assert b.status == "final"

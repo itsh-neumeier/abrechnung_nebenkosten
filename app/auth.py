@@ -24,7 +24,8 @@ from .db import User, get_settings, save_settings
 COOKIE = "nk_session"
 ITERATIONS = 600_000
 MIN_PASSWORD = 8
-ROLES = {"admin": "Verwalter", "tenant": "Mieter"}
+ROLES = {"superadmin": "Super-Admin", "admin": "Verwalter", "tenant": "Mieter"}
+ADMIN_ROLES = ("superadmin", "admin")
 
 
 @dataclass(frozen=True)
@@ -37,10 +38,20 @@ class CurrentUser:
     email: str
     role: str
     party_id: Optional[int]
+    building_ids: tuple = ()
 
     @property
     def is_admin(self) -> bool:
-        return self.role == "admin"
+        """Verwalter oder Super-Admin (Zugang zu /admin)."""
+        return self.role in ADMIN_ROLES
+
+    @property
+    def is_super(self) -> bool:
+        return self.role == "superadmin"
+
+    def can_building(self, building_id) -> bool:
+        """Super-Admin: alle Gebäude; Verwalter: nur zugewiesene."""
+        return self.is_super or (self.is_admin and building_id in self.building_ids)
 
     @property
     def display(self) -> str:
@@ -48,7 +59,8 @@ class CurrentUser:
 
 
 def snapshot(u: User) -> CurrentUser:
-    return CurrentUser(u.id, u.username, u.name or "", u.email or "", u.role, u.party_id)
+    return CurrentUser(u.id, u.username, u.name or "", u.email or "", u.role, u.party_id,
+                       tuple(int(x) for x in (u.building_ids or [])))
 
 
 # --------------------------------------------------------------------------- Passwörter
@@ -144,7 +156,7 @@ def user_from_basic(s: Session, header: str) -> Optional[User]:
     except Exception:  # noqa: BLE001
         return None
     u = find_user(s, name)
-    if u and u.active and u.role == "admin" and verify_password(pw, u.password_hash):
+    if u and u.active and u.role in ADMIN_ROLES and verify_password(pw, u.password_hash):
         return u
     return None
 
@@ -167,7 +179,7 @@ def bootstrap(s: Session) -> Optional[str]:
     """Ersten Verwalter aus APP_USER/APP_PASSWORD anlegen (nur wenn noch kein Benutzer existiert)."""
     if has_users(s) or not (config.app_user and config.app_password):
         return None
-    u = User(username=config.app_user, name="Verwalter", role="admin", active=True)
+    u = User(username=config.app_user, name="Super-Admin", role="superadmin", active=True)
     u.password_hash = hash_password(config.app_password)
     s.add(u)
     s.commit()

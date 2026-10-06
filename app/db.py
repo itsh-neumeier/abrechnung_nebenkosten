@@ -6,7 +6,7 @@ import os
 from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import (JSON, Boolean, Date, DateTime, Float, Integer, String, Text, UniqueConstraint,
+from sqlalchemy import (JSON, Boolean, Date, DateTime, Float, Integer, LargeBinary, String, Text, UniqueConstraint,
                         create_engine, inspect, text)
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
@@ -21,6 +21,25 @@ class Setting(Base):
     __tablename__ = "settings"
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(Text, default="")
+
+
+class Building(Base):
+    """Gebäude/Standort (Multi-Site): Gebäude-ID, Anschrift, Foto, zuständige Verwalter."""
+
+    __tablename__ = "buildings"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(50), default="")  # Gebäude-ID, z. B. GID-01
+    name: Mapped[str] = mapped_column(String(200), default="")  # Anzeigename, z. B. „Köttmannsdorfer Hauptstraße 56“
+    address: Mapped[str] = mapped_column(Text, default="")
+    title: Mapped[str] = mapped_column(String(200), default="Nebenkostenabrechnung")  # Titel der Abrechnung
+    photo: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)  # zugeschnitten, quadratisch (JPEG)
+    photo_updated: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort: Mapped[int] = mapped_column(Integer, default=0)
+
+    @property
+    def label(self) -> str:
+        return " · ".join(x for x in (self.code, self.name) if x) or f"Gebäude {self.id}"
 
 
 class Party(Base):
@@ -40,6 +59,7 @@ class Party(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     sort: Mapped[int] = mapped_column(Integer, default=0)
     portal: Mapped[bool] = mapped_column(Boolean, default=False)  # Mieterportal: veröffentlichte Abrechnungen sichtbar
+    building_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
 
 
 class User(Base):
@@ -51,7 +71,8 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(200), default="")
     email: Mapped[str] = mapped_column(String(200), default="")
     password_hash: Mapped[str] = mapped_column(String(255), default="")
-    role: Mapped[str] = mapped_column(String(20), default="tenant")  # admin | tenant
+    role: Mapped[str] = mapped_column(String(20), default="tenant")  # superadmin | admin | tenant
+    building_ids: Mapped[list] = mapped_column(JSON, default=list)  # Verwalter: zugewiesene Gebäude
     party_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     session_version: Mapped[int] = mapped_column(Integer, default=1)  # erhöhen = alle Sitzungen abmelden
@@ -163,6 +184,7 @@ class Billing(Base):
     result: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | final
     published: Mapped[bool] = mapped_column(Boolean, default=False)  # im Mieterportal sichtbar (nur wenn final)
+    building_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     notified: Mapped[list] = mapped_column(JSON, default=list)  # Benutzer-IDs, die per Push benachrichtigt wurden
     notes: Mapped[str] = mapped_column(Text, default="")
     fetched_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -201,6 +223,25 @@ def init_db() -> None:
     Base.metadata.create_all(engine)
     _add_missing_columns()
     _rename_legacy_titles()
+    _migrate_multisite()
+
+
+def _migrate_multisite() -> None:
+    """Einmalig: erstes Gebäude aus den bisherigen Einstellungen anlegen, alle Parteien/Abrechnungen zuordnen,
+    bisherige Verwalter zu Super-Admins machen (sie hatten vorher Zugriff auf alles)."""
+    with SessionLocal() as s:
+        if s.query(Building).first() is None:
+            st = get_settings(s)
+            b = Building(code=st.get("building_id", "") or "GID-01",
+                         name=(st.get("building_address", "") or "").split(",")[0].strip() or "Mein Gebäude",
+                         address=st.get("building_address", ""), title=st.get("building_title") or "Nebenkostenabrechnung")
+            s.add(b)
+            s.flush()
+            s.query(Party).filter(Party.building_id.is_(None)).update({Party.building_id: b.id})
+            s.query(Billing).filter(Billing.building_id.is_(None)).update({Billing.building_id: b.id})
+        if s.query(User).filter(User.role == "superadmin").first() is None:
+            s.query(User).filter(User.role == "admin").update({User.role: "superadmin"})
+        s.commit()
 
 
 def _rename_legacy_titles() -> None:

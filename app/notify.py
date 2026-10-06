@@ -135,7 +135,8 @@ def subs_for_users(s: Session, user_ids: Iterable[Optional[int]]) -> list[PushSu
 
 
 def admin_ids(s: Session) -> list[Optional[int]]:
-    ids: list[Optional[int]] = [u.id for u in s.query(User).filter(User.role == "admin", User.active.is_(True))]
+    ids: list[Optional[int]] = [u.id for u in s.query(User).filter(User.role.in_(("admin", "superadmin")),
+                                                                     User.active.is_(True))]
     return ids + [None]  # Abos aus der Zeit ohne Login
 
 

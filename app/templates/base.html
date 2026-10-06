@@ -30,11 +30,14 @@
   <a href="/admin">Abrechnungen</a>
   <a href="/admin/parties">Parteien</a>
   <a href="/admin/costs">Fixkosten &amp; Umlagen</a>
+  <a href="/admin/buildings">Gebäude</a>
   <a href="/admin/messages">Mitteilungen</a>
   <a href="/admin/waste">Abfall</a>
+  {% if not auth_on or (me and me.is_super) %}
   <a href="/admin/whatsapp">WhatsApp</a>
   <a href="/admin/settings">Einstellungen</a>
   <a href="/admin/users">Benutzer</a>
+  {% endif %}
   <a href="/" class="switch-link" title="Ansicht für Mieter">🏠 Mein Zuhause</a>
   {% else %}
   <a href="/">Übersicht</a>

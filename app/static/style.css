@@ -159,3 +159,18 @@ html.standalone footer.ver{padding-bottom:max(18px,env(safe-area-inset-bottom))}
 header.area-admin{border-top:3px solid #1e3a8a}
 header.area-home{border-top:3px solid #16a34a}
 .nav-links a.switch-link{color:var(--muted)}
+/* ---- Gebäude / Avatar ---- */
+.avatar{display:inline-flex;align-items:center;justify-content:center;border-radius:50%;object-fit:cover;flex:none;
+  background:var(--bg);border:2px solid var(--line);overflow:hidden}
+.avatar-lg{width:64px;height:64px;font-size:1.8rem}
+.avatar-xl{width:120px;height:120px;font-size:3rem}
+.avatar-empty{color:var(--muted)}
+.building-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:12px}
+.building-card{display:flex;gap:14px;align-items:center;color:var(--fg);text-decoration:none}
+.photo-row{display:flex;gap:16px;align-items:center;margin:6px 0 10px}
+.crop-area{display:none;max-width:320px}
+#cropper.has-image .crop-area{display:block}
+.crop-area canvas{width:100%;max-width:320px;aspect-ratio:1;border-radius:12px;background:#111;touch-action:none;cursor:grab}
+.home-hero{display:flex;gap:16px;align-items:center}
+.home-hero .avatar{width:84px;height:84px;font-size:2.4rem;border-width:3px;border-color:var(--accent)}
+.home-hero h2{margin:0 0 2px}

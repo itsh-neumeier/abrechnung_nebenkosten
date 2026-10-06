@@ -116,7 +116,7 @@ def test_login_roles_portal_and_reset(monkeypatch):
         assert f"/portal/{bid}.pdf?party=2" in c.get("/?party=2").text
         assert "nicht freigegeben" in c.get("/?party=3").text
         # letzter Verwalter bleibt geschützt
-        assert "letzte aktive Verwalter" in c.post("/admin/users/1", data={"username": "admin", "role": "tenant",
+        assert "letzte aktive Super-Admin" in c.post("/admin/users/1", data={"username": "admin", "role": "tenant",
                                                                        "party_id": "2", "active": "1"}).text
         assert "nicht selbst löschen" in c.post("/admin/users/1", data={"delete": "1"}).text
         c.get("/logout")
@@ -171,7 +171,7 @@ def test_bootstrap_admin_from_env(monkeypatch):
     with SessionLocal() as s:
         assert auth.bootstrap(s) == "chef"
         u = s.query(User).one()
-        assert u.role == "admin" and auth.verify_password("start-pass-1", u.password_hash)
+        assert u.role == "superadmin" and auth.verify_password("start-pass-1", u.password_hash)
         assert auth.bootstrap(s) is None  # nur beim ersten Mal
 
 

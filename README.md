@@ -160,13 +160,20 @@ Basic-Auth erreichbar, aber durch Token, Signatur bzw. signierte Links geschütz
 
 ### Login, Benutzer und Mieterportal
 
-- **Erster Start:** Ist `APP_USER`/`APP_PASSWORD` gesetzt, wird daraus der erste **Verwalter** angelegt; sonst ist die App
+- **Erster Start:** Ist `APP_USER`/`APP_PASSWORD` gesetzt, wird daraus der erste **Super-Admin** angelegt; sonst ist die App
   offen und zeigt einen Hinweis mit Link zur Einrichtung (`/setup`). Danach ist für alle Seiten eine Anmeldung nötig.
-- **Benutzer** (Menü „Benutzer“): Verwalter (alles) und **Mieter** (an eine Partei gebunden). Neue Benutzer ohne Passwort
+- **Rollen** (Menü „Benutzer“): **Super-Admin** (alle Gebäude, Einstellungen, Benutzer, WhatsApp, Postfach),
+  **Verwalter** (nur die ihm zugewiesenen Gebäude: Abrechnungen, Parteien, Mitteilungen) und **Mieter** (an eine Partei
+  gebunden). Bestehende Verwalter werden beim Update automatisch zu Super-Admins, damit nichts verloren geht. Neue Benutzer ohne Passwort
   bekommen eine **Einladung** per E-Mail (Link 7 Tage gültig).
 - **Mieterportal:** je Partei freigeben; Mieter sehen unter „Mein Zuhause“ (Startseite) nur die **abgeschlossenen und
   veröffentlichten** Abrechnungen ihrer Partei (Ansicht + PDF). Veröffentlichen automatisch beim Abschließen
   (abschaltbar) oder je Abrechnung per Knopf. Verwalter können über „Ansicht als Mieter“ prüfen, was sichtbar ist.
+- **Gebäude / Multi-Site** (Menü „Gebäude“): jedes Gebäude hat eine Gebäude-ID, Anschrift und Abrechnungstitel;
+  Parteien und Abrechnungen (Rechnungen) sind einem Gebäude zugeordnet. Der Super-Admin weist jedem Gebäude die
+  zuständigen Verwalter zu. Ein **Foto des Standorts** lässt sich hochladen und im Editor zuschneiden (verschieben,
+  zoomen); es erscheint als rundes Avatar in der Übersicht „Mein Zuhause“. Bei nur einem Gebäude werden die Angaben
+  aus den Einstellungen („Objekt“) automatisch übernommen.
 - **Passwort vergessen:** Link per E-Mail über den eingerichteten Mailversand (SMTP), 1 Stunde gültig, nur einmal nutzbar.
 - Sicherheit: Passwörter PBKDF2-SHA256 (600 000 Runden), signierte HttpOnly-Cookies (SameSite=Lax, „dauerhaft angemeldet
   bleiben“ – 400 Tage, bei jeder Nutzung automatisch verlängert), Sperre nach 5 Fehlversuchen, Passwortänderung meldet andere Sitzungen ab. Optional `APP_SECRET_KEY` als
