@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+{% set theme = request.cookies.get('nk_theme', 'auto') %}<html lang="de"{% if theme in ('light', 'dark') %} data-theme="{{ theme }}"{% endif %}>
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 {% set brand = request.state.brand if request.state.brand else none %}
@@ -8,7 +8,7 @@
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon.ico" sizes="32x32">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="theme-color" content="#2563eb">
+<meta name="theme-color" content="{{ brand.color if brand and brand.color else '#2563eb' }}">
 <link rel="manifest" href="/manifest.webmanifest?app={{ brand.kind if brand else 'admin' }}{% if brand and brand.kind == 'tenant' %}&amp;name={{ brand_name|urlencode }}{% endif %}">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -22,7 +22,7 @@
 {% set auth_on = request.state.auth_enabled if request.state is defined else false %}
 {% set is_admin_user = (not auth_on) or (me and me.is_admin) %}
 {% set admin_area = brand and brand.kind == 'admin' and is_admin_user %}
-<header class="{{ 'area-admin' if admin_area else 'area-home' }}"><nav>
+<header class="{{ 'area-admin' if admin_area else 'area-home' }}"{% if brand and brand.color %} style="border-top-color:{{ brand.color }}"{% endif %}><nav>
   <a class="brand" href="{{ '/admin' if admin_area else '/' }}"><img src="/static/favicon.svg" alt="" class="logo"> {{ brand_name }}</a>
   <button type="button" class="menu-toggle" aria-label="Menü" aria-expanded="false"><span></span><span></span><span></span></button>
   <div class="nav-links">
@@ -45,6 +45,8 @@
   {% if is_admin_user %}<a href="/admin" class="switch-link">⚙️ Verwaltung</a>{% endif %}
   {% endif %}
   <a href="/app" class="app-link" title="Als App installieren">📲 App</a>
+  <button type="button" class="theme-toggle" data-theme-toggle data-theme="{{ theme if theme in ('light', 'dark') else 'auto' }}"
+    title="Darstellung wechseln">{{ {'light': '☀️ Hell', 'dark': '🌙 Dunkel'}.get(theme, '🌓 Automatisch') }}</button>
   {% if me %}<a href="/account" class="who">👤 {{ me.display }}</a><a href="/logout">Abmelden</a>{% endif %}
   </div>
 </nav></header>

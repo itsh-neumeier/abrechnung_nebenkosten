@@ -5,6 +5,7 @@ Gilt für Webseiten, die installierbare App (eigenes Manifest je Rolle) und Mail
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -19,6 +20,7 @@ ROLE_COOKIE = "nk_app"  # merkt sich die zuletzt angemeldete Rolle (für die Log
 class Brand:
     name: str
     kind: str  # admin | tenant
+    color: str = ""  # Farbe der oberen Leiste / Statusleiste der installierten App
 
     @property
     def start_url(self) -> str:
@@ -28,6 +30,24 @@ class Brand:
 def clean(name: str) -> str:
     name = " ".join((name or "").split())[:30]
     return name
+
+
+ADMIN_COLOR, TENANT_COLOR = "#1e3a8a", "#16a34a"
+THEMES = ("auto", "light", "dark")
+THEME_COOKIE = "nk_theme"
+
+
+def clean_color(value: str, default: str = "") -> str:
+    value = (value or "").strip()
+    return value.lower() if re.fullmatch(r"#[0-9a-fA-F]{6}", value) else default
+
+
+def admin_color(st: dict) -> str:
+    return clean_color(st.get("admin_app_color", ""), ADMIN_COLOR)
+
+
+def tenant_color(st: dict) -> str:
+    return clean_color(st.get("tenant_app_color", ""), TENANT_COLOR)
 
 
 def admin_name(st: dict) -> str:
@@ -46,8 +66,8 @@ def for_party(st: dict, party=None) -> str:
 def resolve(s: Session, user, st: dict, path: str = "", next_url: str = "", role_hint: str = "") -> Brand:
     """Name nach Bereich: „/admin…“ = Verwalter-App, „/“ (Mein Zuhause) und Portal-Dokumente = Mieter-App.
     Gemeinsame Seiten (Login, Konto, App) richten sich nach der Rolle bzw. der zuletzt genutzten App."""
-    admin = Brand(admin_name(st), "admin")
-    tenant = Brand(tenant_default(st), "tenant")
+    admin = Brand(admin_name(st), "admin", admin_color(st))
+    tenant = Brand(tenant_default(st), "tenant", tenant_color(st))
     if path == "/admin" or path.startswith("/admin/"):
         return admin
     if path == "/" or path.startswith("/portal"):

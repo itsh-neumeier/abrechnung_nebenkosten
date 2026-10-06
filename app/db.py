@@ -370,6 +370,8 @@ SETTING_DEFAULTS = {
     "push_admin_delivery": "",  # Web-Push-Schlüssel (wird erzeugt, oder VAPID_PRIVATE_KEY)
     "portal_auto_publish": "1",
     "admin_app_name": "ImmoVerwaltung",
+    "admin_app_color": "#1e3a8a",  # Farbe der oberen Leiste (installierte App)
+    "tenant_app_color": "#16a34a",
     "tenant_app_name": "Mein Zuhause",  # Name der App für Mieter  # beim Abschließen im Mieterportal veröffentlichen
     # Rechnungsimport
     "imap_senders": "",  # leer = IMAP_SENDER aus der .env (Standard awattar.de)

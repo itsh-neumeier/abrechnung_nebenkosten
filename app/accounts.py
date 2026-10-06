@@ -271,7 +271,11 @@ async def users_settings(request: Request, s: Session = Depends(get_session)):
     else:  # Formular „Mieterportal“
         save_settings(s, {"portal_auto_publish": "1" if form.get("portal_auto_publish") else "",
                           "tenant_app_name": branding.clean(str(form.get("tenant_app_name", ""))) or "Mein Zuhause",
-                          "admin_app_name": branding.clean(str(form.get("admin_app_name", ""))) or "ImmoVerwaltung"})
+                          "admin_app_name": branding.clean(str(form.get("admin_app_name", ""))) or "ImmoVerwaltung",
+                          "tenant_app_color": branding.clean_color(str(form.get("tenant_app_color", "")),
+                                                                   branding.TENANT_COLOR),
+                          "admin_app_color": branding.clean_color(str(form.get("admin_app_color", "")),
+                                                                  branding.ADMIN_COLOR)})
         for p in s.query(Party).all():
             p.portal = bool(form.get(f"portal_{p.id}"))
     s.commit()

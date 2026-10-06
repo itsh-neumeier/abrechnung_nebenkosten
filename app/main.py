@@ -163,12 +163,14 @@ def manifest(app: str = "admin", name: str = "", s: Session = Depends(get_sessio
     st = get_settings(s)
     if app == "tenant":
         title = branding.clean(name) or branding.tenant_default(st)
+        data["theme_color"] = branding.tenant_color(st)
         data.update(id="/", start_url="/?source=pwa", scope="/", name=title, short_name=title,
                     description=f"{title} – Abrechnungen, Mitteilungen und Abfuhrtermine",
                     shortcuts=[{"name": "Übersicht", "url": "/", "icons": data["icons"][:1]},
                                {"name": "Mein Konto", "url": "/account", "icons": data["icons"][:1]}])
     else:
         title = branding.admin_name(st)
+        data["theme_color"] = branding.admin_color(st)
         data.update(id="/admin", start_url="/admin?source=pwa", scope="/", name=title, short_name=title,
                     description=f"{title} – Abrechnung, Mieterportal und Hausverwaltung",
                     shortcuts=[{"name": "Abrechnungen", "url": "/admin", "icons": data["icons"][:1]},

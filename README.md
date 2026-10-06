@@ -179,6 +179,13 @@ Basic-Auth erreichbar, aber durch Token, Signatur bzw. signierte Links geschütz
   bleiben“ – 400 Tage, bei jeder Nutzung automatisch verlängert), Sperre nach 5 Fehlversuchen, Passwortänderung meldet andere Sitzungen ab. Optional `APP_SECRET_KEY` als
   fester Cookie-Schlüssel (sonst automatisch erzeugt und in der Datenbank gespeichert).
 
+### Darstellung
+
+- **Hell / Dunkel:** im Menü „🌓 Automatisch → ☀️ Hell → 🌙 Dunkel“ umschalten; gilt für das jeweilige Gerät (Cookie),
+  „Automatisch“ folgt der Systemeinstellung.
+- **Farbe der oberen Leiste:** unter „Benutzer → Mieterportal“ je App (Mieter / Verwalter) wählbar – färbt die
+  Statusleiste der installierten App und den Streifen oben auf der Seite.
+
 ### Push-Benachrichtigungen (PWA)
 
 Unter „Mein Konto“, im Mieterportal und auf der Seite „📲 App“: **„Auf diesem Gerät aktivieren“**. Mieter werden

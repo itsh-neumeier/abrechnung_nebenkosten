@@ -1,5 +1,7 @@
 :root{--bg:#f6f7f9;--card:#fff;--fg:#1d2330;--muted:#667085;--line:#e3e6eb;--accent:#2563eb;--warn:#b45309;--warnbg:#fff7e6;--ok:#15803d;--danger:#b91c1c}
-@media (prefers-color-scheme:dark){:root{--bg:#12151b;--card:#1b2029;--fg:#e6e8ec;--muted:#98a2b3;--line:#2c3340;--accent:#60a5fa;--warn:#fbbf24;--warnbg:#2b2312;--ok:#4ade80;--danger:#f87171}}
+:root{color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){color-scheme:dark;--bg:#12151b;--card:#1b2029;--fg:#e6e8ec;--muted:#98a2b3;--line:#2c3340;--accent:#60a5fa;--warn:#fbbf24;--warnbg:#2b2312;--ok:#4ade80;--danger:#f87171}}
+:root[data-theme=dark]{color-scheme:dark;--bg:#12151b;--card:#1b2029;--fg:#e6e8ec;--muted:#98a2b3;--line:#2c3340;--accent:#60a5fa;--warn:#fbbf24;--warnbg:#2b2312;--ok:#4ade80;--danger:#f87171}
 *{box-sizing:border-box}
 body{margin:0;font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg)}
 header{background:var(--card);border-bottom:1px solid var(--line)}
@@ -82,6 +84,8 @@ img.logo { width: 22px; height: 22px; vertical-align: -4px; margin-right: 4px }
 header{position:sticky;top:0;z-index:20;padding-top:env(safe-area-inset-top)}
 .nav-links{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
 .nav-links a.who{color:var(--muted)}
+.theme-toggle{background:transparent;border:0;color:var(--fg);font:inherit;padding:0;margin:0;cursor:pointer;text-align:left}
+.color-input{width:64px;height:38px;padding:2px;border-radius:8px}
 .menu-toggle{display:none;background:transparent;border:1px solid var(--line);padding:8px 9px;margin:0;border-radius:8px}
 .menu-toggle span{display:block;width:20px;height:2px;margin:4px 0;background:var(--fg);border-radius:2px;transition:.2s}
 nav.open .menu-toggle span:nth-child(1){transform:translateY(6px) rotate(45deg)}
@@ -92,7 +96,7 @@ nav.open .menu-toggle span:nth-child(3){transform:translateY(-6px) rotate(-45deg
   .menu-toggle{display:block}
   .nav-links{display:none;width:100%;flex-direction:column;align-items:stretch;gap:0;padding:4px 0 6px}
   nav.open .nav-links{display:flex}
-  .nav-links a{padding:11px 4px;border-top:1px solid var(--line)}
+  .nav-links a,.nav-links .theme-toggle{padding:11px 4px;border-top:1px solid var(--line)}
 }
 /* ---- App-Seite ---- */
 .app-hero{display:flex;gap:16px;align-items:center}
@@ -131,7 +135,8 @@ html.standalone footer.ver{padding-bottom:max(18px,env(safe-area-inset-bottom))}
 .cat-dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:0}
 .msg-row{padding:8px 0;border-top:1px solid var(--line)}.msg-row:first-of-type{border-top:0}
 .msg-text{white-space:pre-line;margin:2px 0 0 16px}
-@media (prefers-color-scheme:dark){.notice{filter:brightness(.92)}}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .notice{filter:brightness(.92)}}
+:root[data-theme=dark] .notice{filter:brightness(.92)}
 .prio-badge{display:inline-block;white-space:nowrap;font-size:.72rem;font-weight:700;padding:1px 8px;border-radius:99px;margin-right:6px;text-transform:none;letter-spacing:0}
 .prio-badge.prio-high{background:#ffedd5;color:#9a3412}
 .prio-badge.prio-urgent{background:#dc2626;color:#fff}

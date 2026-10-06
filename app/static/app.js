@@ -26,6 +26,17 @@
       deferred = null;
       buttons().forEach((b) => (b.hidden = true));
     }
+    const themeBtn = e.target.closest("[data-theme-toggle]");
+    if (themeBtn) {  // Automatisch → Hell → Dunkel → Automatisch (gemerkt per Cookie, gilt für dieses Gerät)
+      const order = ["auto", "light", "dark"];
+      const labels = { auto: "🌓 Automatisch", light: "☀️ Hell", dark: "🌙 Dunkel" };
+      const next = order[(order.indexOf(themeBtn.dataset.theme || "auto") + 1) % order.length];
+      themeBtn.dataset.theme = next;
+      themeBtn.textContent = labels[next];
+      if (next === "auto") document.documentElement.removeAttribute("data-theme");
+      else document.documentElement.setAttribute("data-theme", next);
+      document.cookie = "nk_theme=" + next + ";path=/;max-age=" + 400 * 86400 + ";samesite=lax";
+    }
     const toggle = e.target.closest(".menu-toggle");
     if (toggle) {
       const nav = toggle.closest("nav");

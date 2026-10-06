@@ -41,7 +41,13 @@
       <input type="text" name="tenant_app_name" maxlength="30" value="{{ st.tenant_app_name or 'Mein Zuhause' }}"></div>
     <div><label>Name der App für Verwalter</label>
       <input type="text" name="admin_app_name" maxlength="30" value="{{ st.admin_app_name or 'ImmoVerwaltung' }}"></div>
+    <div><label>Farbe der oberen Leiste – Mieter-App</label>
+      <input type="color" name="tenant_app_color" value="{{ st.tenant_app_color or '#16a34a' }}" class="color-input"></div>
+    <div><label>Farbe der oberen Leiste – Verwalter-App</label>
+      <input type="color" name="admin_app_color" value="{{ st.admin_app_color or '#1e3a8a' }}" class="color-input"></div>
   </div>
+  <p class="muted">Die Farbe färbt die Statusleiste der installierten App und den Streifen oben auf der Seite. Bereits installierte
+  Apps übernehmen eine neue Farbe beim nächsten Öffnen (manche Android-Versionen erst nach Neuinstallation).</p>
   <div class="check"><input type="checkbox" name="portal_auto_publish" id="pap" {% if st.portal_auto_publish %}checked{% endif %}>
     <label for="pap" style="margin:0">Abrechnungen beim Abschließen automatisch veröffentlichen</label></div>
   <p class="muted">Sonst in der Abrechnung über „Im Mieterportal veröffentlichen“. Einladungen und „Passwort vergessen“ laufen über den
