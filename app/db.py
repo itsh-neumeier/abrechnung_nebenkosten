@@ -93,6 +93,22 @@ class IgnoredInvoice(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 
+class ApiKey(Base):
+    """API-Schlüssel für Webhooks (n8n, Home Assistant): Benachrichtigungen auslösen. Gespeichert wird nur der Hash."""
+
+    __tablename__ = "api_keys"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), default="")
+    prefix: Mapped[str] = mapped_column(String(20), default="")  # Anfang des Schlüssels zum Wiedererkennen
+    key_hash: Mapped[str] = mapped_column(String(64), index=True)
+    building_ids: Mapped[list] = mapped_column(JSON, default=list)  # leer = alle Gebäude
+    allow_admins: Mapped[bool] = mapped_column(Boolean, default=True)  # darf auch Verwalter benachrichtigen
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    last_used: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    uses: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class PushSubscription(Base):
     """Web-Push-Abo eines Geräts (PWA/Browser) für einen Benutzer."""
 

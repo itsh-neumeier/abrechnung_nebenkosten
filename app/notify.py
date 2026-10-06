@@ -306,7 +306,7 @@ def messages_for_party(s: Session, party_id: int, limit: int = 20) -> list:
     return out
 
 
-def send_message(s: Session, msg, via_mail: bool = False) -> dict:
+def send_message(s: Session, msg, via_mail: bool = False, persist: bool = True) -> dict:
     """Mitteilung zustellen: Push an alle Mieter-Geräte der Parteien, optional E-Mail an die Partei-Adressen."""
     from . import mailer
 
@@ -315,7 +315,8 @@ def send_message(s: Session, msg, via_mail: bool = False) -> dict:
     users = s.query(User).filter(User.role == "tenant", User.active.is_(True), User.party_id.in_(pids)).all() if pids else []
     subs = subs_for_users(s, [u.id for u in users])
     ok, errors = send_to(s, subs, {"title": _push_title(msg), "body": _push_body(msg)[:240],
-                                   "url": f"/#m{msg.id}", "tag": f"msg-{msg.id}"},
+                                   "url": f"/#m{msg.id}" if persist else "/",
+                                   "tag": f"msg-{msg.id}" if persist else f"api-{datetime.now():%H%M%S}"},
                          msg.priority or "normal") if subs else (0, [])
     stats = {"parties": [p.name for p in parties], "push_devices": len(subs), "push_ok": ok,
              "push_errors": errors[:3], "mail_ok": 0, "mail_errors": []}
@@ -343,8 +344,9 @@ def send_message(s: Session, msg, via_mail: bool = False) -> dict:
                 stats["mail_ok"] += 1
             except Exception as e:  # noqa: BLE001
                 stats["mail_errors"].append(f"{p.name}: {e}")
-    msg.stats = stats
-    s.commit()
+    if persist:
+        msg.stats = stats
+        s.commit()
     return stats
 
 

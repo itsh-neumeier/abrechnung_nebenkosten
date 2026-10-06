@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from . import accounts, auth, branding, scope, invoice_import, mailbox, mailer, notify, service, victron, vrm, wa_cloud, whatsapp
+from . import accounts, api, auth, branding, scope, invoice_import, mailbox, mailer, notify, service, victron, vrm, wa_cloud, whatsapp
 from .config import config
 from .db import (Allocation, Billing, Building, FixedCost, IgnoredInvoice, Party, User, SessionLocal, get_session, get_settings,
                  init_db, save_settings)
@@ -62,6 +62,7 @@ async def lifespan(_app):
 app = FastAPI(title="ImmoVerwaltung", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 app.include_router(accounts.router)
+app.include_router(api.router)
 
 
 # --------------------------------------------------------------------------- Helfer
@@ -84,7 +85,7 @@ def redirect(url: str, msg: str = "") -> RedirectResponse:
 
 
 PUBLIC = ("/login", "/logout", "/setup", "/password/", "/static/", "/healthz", "/favicon", "/apple-touch-icon",
-          "/api/n8n/", "/api/whatsapp/", "/manifest.webmanifest", "/sw.js", "/offline", "/app")
+          "/api/n8n/", "/api/whatsapp/", "/api/v1/", "/manifest.webmanifest", "/sw.js", "/offline", "/app")
 # frühere Adressen des Verwalterbereichs → /admin/… (Lesezeichen, Links in alten Mails)
 LEGACY_ADMIN = ("/billings", "/costs", "/mailbox", "/messages", "/parties", "/settings", "/users", "/victron", "/vrm",
                 "/waste", "/whatsapp")
@@ -93,7 +94,7 @@ LEGACY_ADMIN = ("/billings", "/costs", "/mailbox", "/messages", "/parties", "/se
 def _is_admin_path(path: str) -> bool:
     if path == "/admin" or path.startswith("/admin/"):
         return True
-    return path.startswith("/api/") and not path.startswith(("/api/push/", "/api/n8n/", "/api/whatsapp/"))
+    return path.startswith("/api/") and not path.startswith(("/api/push/", "/api/n8n/", "/api/whatsapp/", "/api/v1/"))
 
 
 @app.middleware("http")

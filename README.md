@@ -201,6 +201,24 @@ Vorbei, aber noch nicht archiviert: im Portal grau unter **„✓ Abgeschlossen�
 danach im Verlauf mit Kennzeichnung – so kann ein vergangener Hinweis nicht mit einem aktuellen verwechselt werden.
 Systemmeldungen: Fehler = hoch, Versand/Zustellung = niedrig, Rechnungseingang mit Hinweisen = hoch.
 
+### Webhook-API (n8n, Home Assistant)
+
+Menü **API** (nur Super-Admin): API-Schlüssel anlegen (optional auf Gebäude beschränkt, optional ohne Recht auf
+Verwalter-Benachrichtigungen). Der Schlüssel wird nur einmal angezeigt, gespeichert ist nur sein SHA-256-Hash.
+
+```bash
+curl -X POST https://<host>/api/v1/notify -H 'X-Api-Key: imv_…' -H 'Content-Type: application/json' \
+  -d '{"title": "Wasser wird abgestellt", "body": "Morgen 9–12 Uhr", "priority": "high", "category": "abschaltung"}'
+```
+
+- `audience`: `tenants` (Standard), `admins` oder `all`; `parties`: IDs, Wohnungsnummern oder Namen (leer = alle
+  Parteien → Broadcast); `building`: Gebäude-ID oder -Code.
+- `persist` (Standard `true`) zeigt die Nachricht zusätzlich als Mitteilung in „Mein Zuhause“, `false` = nur Push;
+  `mail: true` zusätzlich per E-Mail. Außerdem `priority`, `category`, `pinned`, `event_start`/`event_end`, `remind`.
+- `GET /api/v1/ping` prüft den Schlüssel, `GET /api/v1/parties` liefert die erlaubten Gebäude und Parteien.
+- Fertige Beispiele zum Kopieren (curl, Home-Assistant-`rest_command` mit Automation, n8n-Flow) stehen auf der Seite.
+  Höchstens 60 Aufrufe pro Minute und Schlüssel.
+
 ### Abfallkalender (ICS)
 
 Menü **Abfall**: Link zur ICS-Datei des Entsorgers eintragen (z. B. abfalltermine-bamberg.de → „ICS“) oder Datei

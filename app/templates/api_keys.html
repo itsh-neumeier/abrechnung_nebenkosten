@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}API &amp; Webhooks{% endblock %}
+{% block content %}
+<h1>API &amp; Webhooks</h1>
+<p class="muted">Benachrichtigungen von außen auslösen – z. B. aus <b>n8n</b> oder <b>Home Assistant</b>: an einzelne Parteien,
+an alle Mieter (Broadcast), an die Verwalter oder an alle. Jeder Aufruf braucht einen API-Schlüssel.</p>
+
+{% if new_key %}
+<div class="card" style="border:2px solid #16a34a">
+  <h2 style="margin-top:0">🔑 Neuer Schlüssel</h2>
+  <p>Jetzt kopieren und sicher ablegen – er wird <b>nur dieses eine Mal</b> angezeigt (gespeichert ist nur ein Hash).</p>
+  <textarea id="cp-key" rows="2" readonly style="font-family:monospace">{{ new_key }}</textarea>
+  <button type="button" onclick="copyText('key', this)">📋 Schlüssel kopieren</button>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0">Schlüssel</h2>
+  {% if keys %}
+  <div class="scroll"><table>
+    <tr><th>Name</th><th>Schlüssel</th><th>Gebäude</th><th>Verwalter</th><th>Zuletzt genutzt</th><th></th></tr>
+    {% for k in keys %}
+    <tr{% if not k.active %} class="muted"{% endif %}>
+      <td><b>{{ k.name }}</b>{% if not k.active %} <span class="badge">gesperrt</span>{% endif %}</td>
+      <td><code>{{ k.prefix }}…</code></td>
+      <td>{% if k.building_ids %}{% for bid in k.building_ids %}{{ bnames.get(bid, bid) }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}alle{% endif %}</td>
+      <td>{{ 'ja' if k.allow_admins else 'nein' }}</td>
+      <td>{{ k.last_used.strftime('%d.%m.%Y %H:%M') if k.last_used else '–' }}{% if k.uses %} · {{ k.uses }}×{% endif %}</td>
+      <td style="white-space:nowrap">
+        <form method="post" action="/admin/api-keys/{{ k.id }}/toggle" style="display:inline"><button class="sec">{{ 'Sperren' if k.active else 'Aktivieren' }}</button></form>
+        <form method="post" action="/admin/api-keys/{{ k.id }}/delete" style="display:inline" onsubmit="return confirm('Schlüssel löschen? Aufrufe damit schlagen danach fehl.')"><button class="danger">Löschen</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<p class="muted">Noch kein Schlüssel angelegt.</p>{% endif %}
+
+  <h3>Neuen Schlüssel anlegen</h3>
+  <form method="post" action="/admin/api-keys">
+    <label>Name (wofür?)</label>
+    <input type="text" name="name" placeholder="z. B. Home Assistant, n8n" maxlength="100" required>
+    {% if buildings|length > 1 %}
+    <label>Nur für Gebäude (leer = alle)</label>
+    <div class="waste-kinds">
+    {% for b in buildings %}<label class="waste-kind" style="--wc:#2563eb"><input type="checkbox" name="building_ids" value="{{ b.id }}">{{ b.label }}</label>{% endfor %}
+    </div>
+    {% endif %}
+    <div class="check"><input type="checkbox" name="allow_admins" id="aa" checked><label for="aa" style="margin:0">darf auch Verwalter benachrichtigen</label></div>
+    <button>Schlüssel erzeugen</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Schnittstelle</h2>
+  <p><code>POST {{ base }}/api/v1/notify</code> · Header <code>X-Api-Key: &lt;Schlüssel&gt;</code>
+  (oder <code>Authorization: Bearer &lt;Schlüssel&gt;</code>) · JSON-Body:</p>
+  <pre style="white-space:pre-wrap;font-size:12px">{{ ex.payload }}</pre>
+  <div class="scroll"><table>
+    <tr><th>Feld</th><th>Bedeutung</th></tr>
+    <tr><td><code>title</code></td><td>Pflicht. Überschrift der Benachrichtigung</td></tr>
+    <tr><td><code>body</code></td><td>Text</td></tr>
+    <tr><td><code>audience</code></td><td><code>tenants</code> (Standard: Mieter), <code>admins</code> (Verwalter), <code>all</code> (beide)</td></tr>
+    <tr><td><code>parties</code></td><td>Partei-IDs, Wohnungsnummern oder Namen – leer = <b>alle Parteien</b> (Broadcast)</td></tr>
+    <tr><td><code>building</code></td><td>Gebäude-ID oder Gebäude-Code – schränkt auf ein Gebäude ein</td></tr>
+    <tr><td><code>priority</code></td><td>{% for k, p in prios.items() %}<code>{{ k }}</code> {{ p[1] }}{% if not loop.last %}, {% endif %}{% endfor %}</td></tr>
+    <tr><td><code>category</code></td><td>{% for k, c in cats.items() %}<code>{{ k }}</code> {{ c[1] }}{% if not loop.last %}, {% endif %}{% endfor %}</td></tr>
+    <tr><td><code>persist</code></td><td><code>true</code> (Standard): zusätzlich als Mitteilung in „Mein Zuhause“ · <code>false</code>: nur Push</td></tr>
+    <tr><td><code>mail</code></td><td><code>true</code>: zusätzlich per E-Mail an die Parteien</td></tr>
+    <tr><td><code>pinned</code>, <code>event_start</code>, <code>event_end</code>, <code>show_until</code>, <code>remind</code></td><td>wie bei Mitteilungen (Datum im ISO-Format, z. B. <code>2026-10-07T09:00</code>)</td></tr>
+    <tr><td><code>url</code></td><td>nur Verwalter: Ziel beim Antippen (Standard <code>/admin</code>)</td></tr>
+  </table></div>
+  <p class="muted">Weitere Aufrufe: <code>GET /api/v1/ping</code> (Schlüssel prüfen), <code>GET /api/v1/parties</code> (erlaubte Gebäude
+  und Parteien). Antwort u. a. <code>push_ok</code>, <code>push_devices</code>, <code>mail_ok</code>, <code>errors</code>.
+  Höchstens 60 Aufrufe pro Minute und Schlüssel.</p>
+</div>
+
+{% for k, label, hint in [('curl', 'curl (Test im Terminal)', ''),
+                          ('ha', 'Home Assistant', 'In configuration.yaml einfügen, Schlüssel in secrets.yaml ablegen, HA neu starten. Danach steht der Dienst rest_command.immo_notify für Automationen und Skripte bereit.'),
+                          ('n8n', 'n8n-Flow', 'Kopieren und in n8n mit Strg+V auf der Arbeitsfläche einfügen; im HTTP-Knoten den Schlüssel eintragen (besser als Header-Auth-Credential).')] %}
+<div class="card">
+  <h2 style="margin-top:0">{{ label }}</h2>
+  {% if hint %}<p class="muted">{{ hint }}</p>{% endif %}
+  <textarea id="cp-{{ k }}" rows="{{ 5 if k == 'curl' else 14 }}" readonly style="font-family:monospace;font-size:12px">{{ ex[k] }}</textarea>
+  <button type="button" onclick="copyText('{{ k }}', this)">📋 Kopieren</button>
+</div>
+{% endfor %}
+<script>
+function copyText(k, btn) {
+  const ta = document.getElementById('cp-' + k);
+  const done = () => { const t = btn.textContent; btn.textContent = '✔ kopiert'; setTimeout(() => btn.textContent = t, 2000); };
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(ta.value).then(done);
+  else { ta.focus(); ta.select(); document.execCommand('copy'); done(); }
+}
+</script>
+{% endblock %}
